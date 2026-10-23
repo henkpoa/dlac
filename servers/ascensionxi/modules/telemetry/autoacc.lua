@@ -56,6 +56,12 @@
     arrives with every non-gear input unchanged, the prediction is compared
     with the server's own numbers. A mismatch keeps the pieces involved on
     for the rest of the session (mispredicted), and the readout names it.
+    "Unchanged" covers each hand's skill and every input's value without
+    gear (R), so a skill-up, food or a song landing first leaves the
+    prediction unchecked (2026-10-23: a skill-up kept six pieces on with 182
+    ACC to spare). The one exception is an input that a level-scaling row of
+    a swapped piece adds to: that latent sits inside R, so its R moves with
+    the swap itself and the comparison has to judge it.
 
     Weapon skills (2026-10-18, the Set Type). A weapon skill dispatch
     releases only candidates from a set typed '1-Hit WS', and never for a
@@ -418,9 +424,28 @@ local function contextOf(frame, kind)
     return nil;
 end
 
-local function sameState(a, b)
+-- The stats a swap's level-scaling rows add to: { statKey = n }. Those
+-- latents sit inside R (the server sums only the items' own mods), so the
+-- R of these inputs moves with the swap itself.
+local function levelMoved(beforeIds, afterIds, level)
+    local out = {};
+    for slot = 0, 15 do
+        local before, after = beforeIds[slot] or 0, afterIds[slot] or 0;
+        if before ~= after then
+            levelRows(before, level, out);
+            levelRows(after, level, out);
+        end
+    end
+    return out;
+end
+
+-- moved: levelMoved's answer for the swap between the two frames' outfits.
+local function sameState(a, b, moved)
     for _, f in ipairs(STATE_FIELDS) do
         if a[f] ~= b[f] then return false; end
+    end
+    for _, k in ipairs(INPUTS) do
+        if moved[INPUT_STAT[k]] == nil and a[k .. 'R'] ~= b[k .. 'R'] then return false; end
     end
     if #(a.contexts or {}) ~= #(b.contexts or {}) then return false; end
     for _, ca in ipairs(a.contexts or {}) do
@@ -429,6 +454,7 @@ local function sameState(a, b)
         for _, f in ipairs(CONTEXT_STATE) do
             if ca[f] ~= cb[f] then return false; end
         end
+        if moved[SKILL_STAT[ca.skillType]] == nil and ca.skillR ~= cb.skillR then return false; end
     end
     return true;
 end
@@ -447,7 +473,7 @@ local function measure(frame)
     local outfit = st.ring[frame.equipRev];
     if outfit == nil or not sameIds(outfit.ids, pr.ids) then return; end
     if frame.laneState ~= wire.laneState.LIVE then return; end
-    if not sameState(pr.basis, frame) then
+    if not sameState(pr.basis, frame, pr.moved) then
         pr.verdict = 'not checked';
         pr.why = 'something besides the gear changed before the server measured it';
         return;
@@ -503,6 +529,7 @@ local function predict(out, accepted, basis)
     pr = { ids = {}, basisIds = {}, basis = basis.frame, release = out.release, rows = {}, verdict = 'waiting',
            at = M._clock() };
     for slot = 0, 15 do pr.ids[slot], pr.basisIds[slot] = accepted[slot] or 0, basis.outfit.ids[slot] or 0; end
+    pr.moved = levelMoved(pr.basisIds, pr.ids, basis.frame.mainLevel or 0);
     for _, m in ipairs(out.metrics or {}) do
         pr.rows[m.kind] = { acc = m.acc, threshold = m.threshold, accToCap = m.accToCap };
     end
