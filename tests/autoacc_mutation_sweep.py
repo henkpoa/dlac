@@ -172,7 +172,7 @@ M = [
      "        elseif typedId ~= accepted[slot] then why = 'the slot is not the piece';", '        elseif false then'),
 
     # ---- the prediction check ----
-    ('P01', 'only an unchanged state can check a prediction', AA, '    if not sameState(pr.basis, frame) then', '    if false then'),
+    ('P01', 'only an unchanged state can check a prediction', AA, '    if not sameState(pr.basis, frame, pr.moved) then', '    if false then'),
     ('P02', 'the prediction is compared with the server', AA,
      '            if row.acc ~= ctx.liveAcc or row.threshold ~= ctx.thresholdBp then ok = false; end\n', ''),
     ('P03', 'a wrong prediction keeps its pieces on', AA,
@@ -188,6 +188,14 @@ M = [
      '    if outfit == nil or not sameIds(outfit.ids, pr.ids) then return; end', '    if outfit == nil then return; end'),
     ('P08', 'every passing frame is measured', AA, '    addBasis(frame, outfit);\n    measure(frame);', '    addBasis(frame, outfit);'),
     ('P09', 'zoning forgets the verdicts', AA, '    st.prediction, st.mispredicted = nil, {};\n', ''),
+    ('P10', 'an input that moved without gear leaves a prediction unchecked', AA,
+     "        if moved[INPUT_STAT[k]] == nil and a[k .. 'R'] ~= b[k .. 'R'] then return false; end\n", ''),
+    ('P11', 'a skill-up leaves a prediction unchecked', AA,
+     '        if moved[SKILL_STAT[ca.skillType]] == nil and ca.skillR ~= cb.skillR then return false; end\n', ''),
+    ('P12', "a swapped piece's level row lets its input's R move", AA,
+     "        if moved[INPUT_STAT[k]] == nil and a[k .. 'R']", "        if a[k .. 'R']"),
+    ('P13', "the swap's level rows are read", AA,
+     '    pr.moved = levelMoved(pr.basisIds, pr.ids, basis.frame.mainLevel or 0);', '    pr.moved = {};'),
 
     # ---- the engine's single send ----
     ('D01', 'the slot\'s last writer decides whether it holds a candidate', DS,
