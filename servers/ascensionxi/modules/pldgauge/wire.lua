@@ -37,12 +37,15 @@
     STATE, 14 bytes:
          0 u8 proto (1)        1 u8 job (7 = PLD)
          2 u8 stance (0 none, 1 Divine Guard, 2 Divine Fury)
-         3 u8 points (0-3)
+         3 u8 points (0-5)
          4 u8 palisade         the Palisade buff's stacks (0-30)
          5 u8 palisade max     (30)
-         6 u8 flags            7 u8 0
+         6 u8 flags            7 u8 points max (5; 0 from a server before
+                                    the five-point gauge, which had 3)
          8 u16 charge         10 u16 threshold   (blocks fill the bar toward a point)
         12 u16 rev            (wraps; a push older than the last one is ignored)
+    Flag OVERFLOW (0x01): every point is held, so each full bar restores MP
+    instead (15 at level 75).
 ]]--
 
 local M = {};
@@ -53,12 +56,13 @@ M.op = { SUBSCRIBE = 0xD2, STATE = 0xDA };
 M.PROTO = 1;
 M.STATE_SIZE = 14;
 M.JOB_PLD = 7;
-M.MAX_POINTS = 3;
-M.PALISADE_MAX = 30;   -- what a server that sends 0 for the cap means
+M.POINTS_BEFORE_MAX = 3;   -- what a server that sends 0 for points max meant
+M.MAX_SLOTS = 5;           -- the most point slots the art lays out
+M.PALISADE_MAX = 30;       -- what a server that sends 0 for the cap means
 M.stance = { NONE = 0, GUARD = 1, FURY = 2 };
 M.status = { OK = 0, BAD_OP = 1, MALFORMED = 2, BUSY = 3, UNAVAILABLE = 5 };
 M.flag = {
-    CAPPED = 0x01,   -- three points and a full bar: blocks fill nothing until one is spent
+    OVERFLOW = 0x01,   -- every point is held: each full bar restores MP instead
 };
 
 local function u16(s, o)
@@ -87,15 +91,18 @@ function M.incoming(data)
 end
 
 -- A STATE payload as a table, or nil (short, or a protocol this client
--- does not read). Every field is clamped, so a bad byte can never draw a
--- fourth point or a stack count the art has no room for.
+-- does not read). Every field is clamped, so a bad byte can never draw more
+-- slots, points or stacks than the art has room for.
 function M.state(p)
     if type(p) ~= 'string' or #p < M.STATE_SIZE then return nil; end
     if p:byte(1) ~= M.PROTO then return nil; end
     local st = p:byte(3) or 0;
     if st > 2 then st = 0; end
+    local maxPoints = p:byte(8) or 0;
+    if maxPoints == 0 then maxPoints = M.POINTS_BEFORE_MAX; end
+    if maxPoints > M.MAX_SLOTS then maxPoints = M.MAX_SLOTS; end
     local points = p:byte(4) or 0;
-    if points > M.MAX_POINTS then points = M.MAX_POINTS; end
+    if points > maxPoints then points = maxPoints; end
     local cap = p:byte(6) or 0;
     if cap == 0 or cap > 99 then cap = M.PALISADE_MAX; end
     local stacks = p:byte(5) or 0;
@@ -107,6 +114,7 @@ function M.state(p)
         palisade    = stacks,
         palisadeMax = cap,
         flags       = p:byte(7) or 0,
+        maxPoints   = maxPoints,
         charge      = u16(p, 8),
         threshold   = u16(p, 10),
         rev         = u16(p, 12),
@@ -119,7 +127,7 @@ function M.encodeState(s)
     local function w(v) v = math.floor(tonumber(v) or 0); if v < 0 then v = 0; end
         v = v % 65536; return string.char(v % 256, math.floor(v / 256)); end
     return b(M.PROTO) .. b(s.job or M.JOB_PLD) .. b(s.stance) .. b(s.points)
-        .. b(s.palisade) .. b(s.palisadeMax) .. b(s.flags) .. b(0)
+        .. b(s.palisade) .. b(s.palisadeMax) .. b(s.flags) .. b(s.maxPoints)
         .. w(s.charge) .. w(s.threshold) .. w(s.rev);
 end
 

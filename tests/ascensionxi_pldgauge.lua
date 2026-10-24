@@ -65,10 +65,11 @@ check(transport.producerOf(0xD0) == 'whm gauge' and transport.producerOf(0xD8) =
 -- ---------------------------------------------------------------------------
 -- wire
 -- ---------------------------------------------------------------------------
-local S0 = { stance = 1, points = 2, palisade = 17, palisadeMax = 30, flags = 0, charge = 50, threshold = 100, rev = 65535 };
+local S0 = { stance = 1, points = 2, palisade = 17, palisadeMax = 30, flags = 0, maxPoints = 5, charge = 50,
+             threshold = 100, rev = 65535 };
 -- The shared vector: the server suite (ascensionxi repo, the Divine Guard
 -- xi_test suite) encodes these same 14 bytes.
-local VECTOR = '01 07 01 02 11 1E 00 00 32 00 64 00 FF FF';
+local VECTOR = '01 07 01 02 11 1E 00 05 32 00 64 00 FF FF';
 local function hex(s)
     local out = {};
     for i = 1, #s do out[#out + 1] = string.format('%02X', s:byte(i)); end
@@ -79,14 +80,23 @@ check(hex(bytes) == VECTOR, 'STATE matches the server test vector: ' .. hex(byte
 check(#bytes == wire.STATE_SIZE, 'STATE is 14 bytes');
 local back = wire.state(bytes);
 check(back.job == 7 and back.stance == 1 and back.points == 2 and back.palisade == 17 and back.palisadeMax == 30
-      and back.flags == 0 and back.charge == 50 and back.threshold == 100 and back.rev == 65535, 'STATE round-trips');
-check(wire.hasFlag(wire.state(wire.encodeState({ stance = 1, points = 3, palisadeMax = 30, flags = 1, charge = 100,
-      threshold = 100, rev = 1 })).flags, wire.flag.CAPPED), 'CAPPED decodes');
+      and back.flags == 0 and back.maxPoints == 5 and back.charge == 50 and back.threshold == 100 and back.rev == 65535,
+      'STATE round-trips');
+check(wire.hasFlag(wire.state(wire.encodeState({ stance = 1, points = 5, palisadeMax = 30, flags = 1, maxPoints = 5,
+      charge = 50, threshold = 100, rev = 1 })).flags, wire.flag.OVERFLOW), 'OVERFLOW decodes');
+local old = wire.state(wire.encodeState({ stance = 1, points = 3, palisadeMax = 30, flags = 0, maxPoints = 0,
+      charge = 0, threshold = 100, rev = 1 }));
+check(old.maxPoints == 3 and old.points == 3, 'points max 0 (a server before the five-point gauge) means three');
+check(wire.state(wire.encodeState({ stance = 1, points = 4, palisadeMax = 30, flags = 0, maxPoints = 0,
+      charge = 0, threshold = 100, rev = 1 })).points == 3, '...and its points clamp to three');
+local wide = wire.state(wire.encodeState({ stance = 1, points = 9, palisadeMax = 30, flags = 0, maxPoints = 9,
+      charge = 0, threshold = 100, rev = 1 }));
+check(wide.maxPoints == 5 and wide.points == 5, 'more slots than the art lays out clamp to five');
 check(wire.state(bytes:sub(1, 13)) == nil, 'a short STATE is refused');
 check(wire.state('\2' .. bytes:sub(2)) == nil, 'another protocol is refused');
 local bad = bytes:sub(1, 2) .. '\9\8' .. '\77\0' .. bytes:sub(7);
 local clamped = wire.state(bad);
-check(clamped.stance == 0 and clamped.points == 3 and clamped.palisadeMax == 30 and clamped.palisade == 30,
+check(clamped.stance == 0 and clamped.points == 5 and clamped.palisadeMax == 30 and clamped.palisade == 30,
       'an out-of-range stance, points, cap and stacks clamp');
 check(wire.newer(0, 65535) and wire.newer(5, 4) and not wire.newer(4, 5) and not wire.newer(7, 7),
       'rev comparison survives the wrap');
@@ -135,7 +145,8 @@ local function push(st) return deliver(wire.s2cFrame(0xDA, 0, 0, wire.encodeStat
 local function zoneIn() receive({ id = 0x00A, data = string.rep('\0', 16) }); end
 local function zoneOut() receive({ id = 0x00B, data = '' }); end
 local function st(over)
-    local base = { stance = 1, points = 0, palisade = 0, palisadeMax = 30, flags = 0, charge = 0, threshold = 100, rev = 1 };
+    local base = { stance = 1, points = 0, palisade = 0, palisadeMax = 30, flags = 0, maxPoints = 5, charge = 0,
+                   threshold = 100, rev = 1 };
     for k, val in pairs(over or {}) do base[k] = val; end
     return base;
 end
@@ -205,12 +216,17 @@ time = time + 1;
 check(gauge.view().burst[3] == nil, 'the burst fades');
 push(st({ points = 0, rev = 9 }));
 check(gauge.view().points == 3, 'an older rev is ignored');
-push(st({ points = 3, flags = 1, charge = 100, rev = 15 }));
+check(gauge.view().maxPoints == 5 and not gauge.view().overflow, 'five slots, not every point held');
+push(st({ points = 5, flags = 1, charge = 50, rev = 15 }));
 v = gauge.view();
-check(v.capped and v.progress == 1, 'capped: three points and a full bar');
-push(st({ points = 2, charge = 100, rev = 16 }));
-push(st({ points = 3, charge = 0, rev = 17 }));
-check(gauge.view().burst[3] ~= nil, 'a point spent and refilled bursts again');
+check(v.overflow and v.points == 5 and v.progress == 0.5, 'OVERFLOW: every point held, the bar fills toward MP');
+time = time + 1;
+push(st({ points = 0, charge = 50, rev = 16 }));
+check(not gauge.view().overflow and gauge.view().points == 0, 'Palisade spent all five: no overflow');
+push(st({ points = 1, charge = 0, rev = 17 }));
+check(gauge.view().burst[1] ~= nil, 'a point spent and refilled bursts again');
+push(st({ points = 1, maxPoints = 0, rev = 18 }));
+check(gauge.view().maxPoints == 3, 'a server before the five-point gauge draws three slots');
 
 -- Zoning: the subscription dies with the zone; exactly one more request.
 zoneOut();
@@ -406,8 +422,8 @@ local function u32(c)
     return 0xFFFFFFFF;
 end
 local function viewOf(over)
-    local base = { stance = 1, level = 75, synced = true, agree = true, live = true, points = 2, charge = 50,
-                   threshold = 100, progress = 0.5, capped = false, palisade = 12, palisadeMax = 30,
+    local base = { stance = 1, level = 75, synced = true, agree = true, live = true, points = 2, maxPoints = 5,
+                   charge = 50, threshold = 100, progress = 0.5, overflow = false, palisade = 12, palisadeMax = 30,
                    burst = {}, now = 12.5 };
     for k, val in pairs(over or {}) do base[k] = val; end
     return base;
@@ -416,11 +432,12 @@ local views = {
     viewOf(),
     viewOf({ points = 0, progress = 0, palisade = 0 }),
     viewOf({ points = 1, burst = { 0.3 }, progress = 0.9 }),
-    viewOf({ points = 3, capped = true, progress = 1, palisade = 30 }),
-    viewOf({ points = 3, progress = 0.4 }),
+    viewOf({ points = 5, overflow = true, progress = 0.5, palisade = 30 }),
+    viewOf({ points = 4, progress = 0.4 }),
     viewOf({ stance = 2, points = 2, palisade = 0 }),
-    viewOf({ stance = 2, points = 3, capped = true, progress = 1 }),
+    viewOf({ stance = 2, points = 5, overflow = true, progress = 0 }),
     viewOf({ stance = 2, points = 0, progress = 0.5 }),
+    viewOf({ maxPoints = 3, points = 3, progress = 0.5 }),   -- a server before the five-point gauge
 };
 for i, vv in ipairs(views) do
     calls = {};
@@ -435,22 +452,103 @@ for i, vv in ipairs(views) do
 end
 check(draw.tooltip(views[1]):find('Divine Guard', 1, true) ~= nil, 'Divine Guard names itself');
 check(draw.tooltip(views[1]):find('+12%', 1, true) ~= nil, 'Palisade reads as block rate');
-check(draw.tooltip(views[1]):find('Points: 2 / 3', 1, true) ~= nil, 'the points read out');
-check(draw.tooltip(views[4]):find('full bar', 1, true) ~= nil, 'capped says why the bar waits');
+check(draw.tooltip(views[1]):find('Points: 2 / 5', 1, true) ~= nil, 'the points read out of five');
+check(draw.tooltip(views[9]):find('Points: 3 / 3', 1, true) ~= nil, '...or of three from an older server');
+check(draw.tooltip(views[1]):find('spends every point', 1, true) ~= nil, 'Palisade spends every point');
+check(draw.tooltip(views[4]):find('restore MP', 1, true) ~= nil, 'OVERFLOW says blocks now restore MP');
+check(draw.tooltip(views[1]):find('restore MP', 1, true) == nil, 'and only then');
 check(draw.tooltip(views[6]):find('Divine Fury', 1, true) ~= nil and draw.tooltip(views[6]):find('Palisade', 1, true) == nil,
       'Divine Fury has no Palisade line');
+for _, vv in ipairs(views) do
+    check(draw.tooltip(vv):find('10 minutes', 1, true) == nil, 'no tooltip names the old 10 minutes');
+end
 local w, h = draw.size(1.5);
 check(w == math.floor(draw.W * 1.5 + 0.5) and h == math.floor(draw.H * 1.5 + 0.5), 'size scales');
--- Everything stays inside the box at scale 1: slot glow and burst, bar, big shield ring.
-local L = draw.layout();
-for i = 1, 3 do
-    local x, y = L.slots[i][1], L.slots[i][2];
-    check(x - (draw.GLOW_R + 10) >= 0 and y - (draw.GLOW_R + 10) >= 0, 'slot ' .. i .. ' burst ring inside the box');
-    check(y + draw.SLOT_R <= L.bar[2], 'slot ' .. i .. ' icon above the bar');
+
+-- Count the slots each panel draws: any shape drawn at a slot's centre.
+local function slotsDrawn(vv)
+    local L5 = draw.layout(5);
+    local seen = {};
+    local function mark(a)
+        for i, sl in ipairs(L5.slots) do
+            if math.abs(a[1] - sl[1]) < 12 and math.abs(a[2] - sl[2]) < 14 then seen[i] = true; end
+        end
+    end
+    local dl = setmetatable({
+        AddLine = function(_, a) mark(a); end,
+        PathLineTo = function(_, a) mark(a); end,
+    }, { __index = function() return function() end; end });
+    draw.panel(dl, u32, 0, 0, 1, vv);
+    local n = 0;
+    for i = 1, 5 do if seen[i] then n = n + 1; end end
+    return n;
 end
-check(L.bar[3] < L.side[1] - draw.RING_R, 'the bar stops before the Palisade ring');
-check(L.side[1] + draw.RING_R + 2 <= draw.W and L.side[2] + draw.RING_R + 2 <= draw.H
-      and L.side[2] - draw.RING_R - 2 >= 0, 'the Palisade ring stays inside the box');
+check(slotsDrawn(viewOf({ points = 0, progress = 0 })) == 5, 'five slots are drawn for points max 5');
+check(slotsDrawn(viewOf({ maxPoints = 3, points = 0, progress = 0 })) == 3, 'three for an older server');
+
+-- Everything stays inside the box at scale 1: slot glow and burst, bar, big shield ring.
+for _, n in ipairs({ 3, 5 }) do
+    local Ln = draw.layout(n);
+    check(#Ln.slots == n, n .. ' slots laid out');
+    for i = 1, n do
+        local x, y = Ln.slots[i][1], Ln.slots[i][2];
+        check(x - (draw.GLOW_R + 10) >= 0 and y - (draw.GLOW_R + 10) >= 0, 'slot ' .. i .. ' burst ring inside the box');
+        check(y + draw.SLOT_R <= Ln.bar[2], 'slot ' .. i .. ' icon above the bar');
+        if i > 1 then
+            check(Ln.slots[i][1] - Ln.slots[i - 1][1] >= 2 * draw.SLOT_R + 8, 'slot ' .. i .. ' clear of its neighbour');
+        end
+    end
+    check(Ln.bar[1] <= Ln.slots[1][1] - 12 and Ln.bar[3] >= Ln.slots[n][1] + 12, 'the bar spans the ' .. n .. ' slots');
+    check(Ln.bar[3] < Ln.side[1] - draw.RING_R, 'the bar stops before the Palisade ring');
+    check(Ln.side[1] + draw.RING_R + 2 <= draw.W and Ln.side[2] + draw.RING_R + 2 <= draw.H
+          and Ln.side[2] - draw.RING_R - 2 >= 0, 'the Palisade ring stays inside the box');
+end
+local L = draw.layout(5);
+
+-- No cross (owner, 2026-10-24: "remove the cross in em, this is not a christian
+-- game"). The old emblem was two long thin bars; nothing a shield paints may be
+-- a bar-shaped polygon, nor a line or rect across it.
+local function shieldShapes(r)
+    local polys, strokes = {}, 0;
+    local P = {
+        poly = function(pts) polys[#polys + 1] = pts; end,
+        circle = function() end, ring = function() end, outline = function() end,
+        line = function() strokes = strokes + 1; end, rect = function() strokes = strokes + 1; end,
+        frame = function() end, text = function() end,
+    };
+    draw.shield(P, 0, 0, r, draw.PALETTE[1], 1, true);
+    return polys, strokes;
+end
+for _, r in ipairs({ 11, 19 }) do
+    local polys, strokes = shieldShapes(r);
+    check(strokes == 0, 'a shield draws no lines or rects across its face');
+    for _, pts in ipairs(polys) do
+        local minX, maxX, minY, maxY = math.huge, -math.huge, math.huge, -math.huge;
+        for _, q in ipairs(pts) do
+            minX, maxX = math.min(minX, q[1]), math.max(maxX, q[1]);
+            minY, maxY = math.min(minY, q[2]), math.max(maxY, q[2]);
+        end
+        local wq, hq = maxX - minX, maxY - minY;
+        local aspect = math.max(wq, hq) / math.max(1e-9, math.min(wq, hq));
+        check(aspect < 2, 'no bar in a shield (aspect ' .. string.format('%.1f', aspect) .. ')');
+    end
+end
+
+-- The bar: MP blue exactly when every point is held.
+local function barFills(vv)
+    local fills = {};
+    local dl = setmetatable({ AddRectFilled = function(_, a, b, col) fills[#fills + 1] = col; end },
+        { __index = function() return function() end; end });
+    local key = function(c) return string.format('%.3f,%.3f,%.3f', c[1], c[2], c[3]); end
+    draw.panel(dl, key, 0, 0, 1, vv);
+    local blue = key(draw.MP_BLUE);
+    local n = 0;
+    for _, c in ipairs(fills) do if c == blue then n = n + 1; end end
+    return n;
+end
+check(barFills(viewOf({ points = 5, overflow = true, progress = 0.5 })) == 1, 'OVERFLOW fills the bar MP blue');
+check(barFills(viewOf({ points = 4, overflow = false, progress = 0.5 })) == 0, 'otherwise the stance colour');
+check(barFills(viewOf({ stance = 2, points = 5, overflow = true, progress = 0.5 })) == 1, 'in Divine Fury too');
 
 -- The count stays on the big shield and inside the panel, whatever the font.
 for _, scale in ipairs({ 0.6, 1, 1.5, 3 }) do
@@ -479,7 +577,7 @@ local dt = 0;
 local src = demo.make(function() return dt; end);
 gauge.reset();
 gauge.setDemo(src);
-local sawGuard, sawFury, sawCapped, sawPalisade, sawBurst, sawGrow = false, false, false, false, false, false;
+local sawGuard, sawFury, sawOverflow, sawPalisade, sawBurst, sawGrow, sawFive = false, false, false, false, false, false, false;
 for step = 0, 400 do
     dt = step * 0.1;
     time = dt;
@@ -491,12 +589,13 @@ for step = 0, 400 do
     check(pcall(draw.panel, recorder(true), u32, 0, 0, 1, vv), 'demo frame ' .. step .. ' paints');
     if vv.stance == 1 then sawGuard = true; end
     if vv.stance == 2 and vv.points > 0 then sawFury = true; end
-    if vv.capped then sawCapped = true; end
+    if vv.overflow and vv.progress > 0 then sawOverflow = true; end
+    if vv.points == 5 and vv.maxPoints == 5 then sawFive = true; end
     if vv.palisade > 0 then sawPalisade = true; end
     if next(vv.burst) ~= nil then sawBurst = true; end
     if vv.points < 3 and vv.progress > 0 then sawGrow = true; end
 end
-check(sawGuard and sawFury and sawCapped and sawPalisade and sawBurst and sawGrow, 'the demo plays every state');
+check(sawGuard and sawFury and sawOverflow and sawPalisade and sawBurst and sawGrow and sawFive, 'the demo plays every state');
 gauge.setDemo(nil);
 
 -- Demo off over a live subscription: the demo overwrote the server's state,

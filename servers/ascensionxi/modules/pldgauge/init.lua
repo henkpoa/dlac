@@ -1,8 +1,8 @@
 --[[
     ascensionxi/pldgauge -- the Paladin Divine Guard gauge, as a server-pack
     module (ADR 0035). AscensionXI gives the Paladin two stances, Divine
-    Guard and Divine Fury, and three points that shield blocks earn in
-    Divine Guard and Palisade, Sacred Ward and Martyr's Grace spend (server
+    Guard and Divine Fury, and five points that shield blocks earn in
+    Divine Guard and its abilities spend (server
     documentation/custom/pld-divine-guard.md). The server decides every
     point; this module draws them, the White Mage gauge's frame with shields
     and crossed great swords.
@@ -227,8 +227,10 @@ local function command(args)
         local st = d.state;
         say(string.format('PLD gauge: channel %s%s; %s', tostring(d.sub or 'idle'),
             d.dormant and ' (server has no gauge)' or '',
-            st and string.format('stance %s, points %d, charge %d/%d, Palisade %d/%d, rev %d',
-                stanceName[st.stance] or '?', st.points, st.charge, st.threshold, st.palisade, st.palisadeMax, st.rev)
+            st and string.format('stance %s, points %d/%d%s, charge %d/%d, Palisade %d/%d, rev %d',
+                stanceName[st.stance] or '?', st.points, st.maxPoints,
+                wire.hasFlag(st.flags, wire.flag.OVERFLOW) and ' (overflow: blocks restore MP)' or '',
+                st.charge, st.threshold, st.palisade, st.palisadeMax, st.rev)
             or 'no state yet'));
     else
         say('PLD gauge: /dl gauge [show|hide|lock|unlock|scale N|demo|status]');

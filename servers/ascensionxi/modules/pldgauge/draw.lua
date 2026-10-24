@@ -5,16 +5,18 @@
     is the box it fills, which init.lua reserves with a Dummy.
     draw.tooltip(view) is the hover text.
 
-    The White Mage gauge's frame (three slots in a row, a charge bar under
-    them, one larger element beside them) with the owner's icons:
-      Divine Guard: each point is a heater shield, steel blue with a gold
-              cross. The big shield on the right carries the Palisade stack
-              count, with a ring that fills toward the cap.
+    The White Mage gauge's frame (slots in a row, a charge bar under them, one
+    larger element beside them), widened for five points, with the owner's
+    icons:
+      Divine Guard: each point is a heater shield, steel blue with a plain
+              gold boss (no cross: owner, 2026-10-24). The big shield on the
+              right carries the Palisade stack count, with a ring that fills
+              toward the cap.
       Divine Fury: each point is a pair of crossed great swords, steel
               blades on a crimson glow; the big element is the same pair.
     The next empty slot shows a dim icon that grows with the charge and
-    bursts into light when the point is made. With three points and a full
-    bar (CAPPED) the points and the bar pulse.
+    bursts into light when the point is made. Once every point is held
+    (OVERFLOW) the bar turns MP blue: each full bar restores MP instead.
 
     Geometry is pure (shieldPoints, bladePoints, layout) so the suite can
     check it without imgui; painting goes through the dl handed in.
@@ -24,11 +26,13 @@ local M = {};
 
 local PI = math.pi;
 
--- Base layout at scale 1, the White Mage gauge's: slots 40 px apart, the
--- side element on the right.
-M.W, M.H = 196, 70;
-local PAD, SLOT_X0, SLOT_DX, SLOT_Y, BAR_Y, BAR_H = 8, 30, 40, 28, 54, 5;
-local SIDE_X, SIDE_Y = 160, 30;
+-- Base layout at scale 1: point slots 34 px apart from the left, the bar
+-- under them, the big shield on the right.
+M.W, M.H = 248, 70;
+M.MAX_SLOTS = 5;
+local SLOT_X0, SLOT_DX, SLOT_Y = 28, 34, 28;
+local BAR_X0, BAR_Y, BAR_H = 12, 54, 5;
+local SIDE_X, SIDE_Y = 214, 30;
 M.SLOT_R = 11;    -- a point icon's half height
 M.SIDE_R = 19;    -- the big shield's half height
 M.RING_R = 25;    -- the Palisade ring around it
@@ -37,13 +41,15 @@ M.GLOW_R = 16;    -- a lit point's glow
 M.PALETTE = {
     [1] = { -- Divine Guard
         body = { 0.34, 0.50, 0.78 }, inner = { 0.62, 0.74, 0.94 }, emblem = { 1.00, 0.82, 0.30 },
-        glow = { 0.45, 0.70, 1.00 }, bar = { 0.52, 0.78, 1.00 }, edge = { 0.55, 0.72, 1.00 },
+        glow = { 0.45, 0.70, 1.00 }, bar = { 0.82, 0.86, 0.93 }, edge = { 0.55, 0.72, 1.00 },
     },
     [2] = { -- Divine Fury
         body = { 0.86, 0.89, 0.95 }, inner = { 0.62, 0.66, 0.74 }, emblem = { 1.00, 0.82, 0.30 },
         glow = { 1.00, 0.38, 0.22 }, bar = { 1.00, 0.46, 0.26 }, edge = { 0.95, 0.42, 0.32 },
     },
 };
+-- The charge bar once every point is held: it fills toward MP now.
+M.MP_BLUE = { 0.22, 0.48, 1.00 };
 local GOLD, WHITE, GREY = { 1.00, 0.82, 0.30 }, { 1, 1, 1 }, { 0.46, 0.48, 0.54 };
 local BG, TRACK = { 0.05, 0.06, 0.10, 0.74 }, { 0.16, 0.18, 0.24, 0.95 };
 
@@ -52,15 +58,16 @@ function M.size(scale)
     return math.floor(M.W * scale + 0.5), math.floor(M.H * scale + 0.5);
 end
 
--- Slot i's centre, the bar's rectangle and the side element's centre, all
--- relative to the panel's top-left, at scale 1.
-function M.layout()
+-- Slot i's centre (n slots), the bar's rectangle under them and the side
+-- element's centre, all relative to the panel's top-left, at scale 1.
+function M.layout(n)
+    n = math.max(1, math.min(M.MAX_SLOTS, n or M.MAX_SLOTS));
     local slots = {};
-    for i = 1, 3 do slots[i] = { PAD + SLOT_X0 - 10 + (i - 1) * SLOT_DX, PAD + SLOT_Y - 8 }; end
+    for i = 1, n do slots[i] = { SLOT_X0 + (i - 1) * SLOT_DX, SLOT_Y }; end
     return {
         slots = slots,
-        bar = { PAD + 4, PAD + BAR_Y - 8, PAD + 4 + 2 * SLOT_DX + 32, PAD + BAR_Y - 8 + BAR_H },
-        side = { PAD + SIDE_X - 10, PAD + SIDE_Y - 8 },
+        bar = { BAR_X0, BAR_Y, SLOT_X0 + (n - 1) * SLOT_DX + 16, BAR_Y + BAR_H },
+        side = { SIDE_X, SIDE_Y },
     };
 end
 
@@ -161,19 +168,18 @@ local function glow(P, x, y, r, c, a)
     end
 end
 
--- A heater shield with a gold cross, `r` its half height.
+-- A heater shield with a plain round boss, `r` its half height. No bars,
+-- no cross: the emblem is a stud with a rim and a highlight.
 function M.shield(P, x, y, r, pal, alpha, lit)
     local body = lit and pal.body or mix(pal.body, GREY, 0.55);
     local inner = lit and pal.inner or mix(pal.inner, GREY, 0.55);
     local emblem = lit and pal.emblem or mix(pal.emblem, GREY, 0.6);
     P.poly(M.shieldPoints(x, y, r), rgba(body, alpha));
     P.poly(M.shieldPoints(x, y - r * 0.04, r * 0.74), rgba(inner, alpha * 0.55));
-    -- The cross: two bars, each a convex quad.
-    local cw, top, bottom = r * 0.14, y - r * 0.66, y + r * 0.62;
-    P.poly({ { x - cw, top }, { x + cw, top }, { x + cw, bottom }, { x - cw, bottom } }, rgba(emblem, alpha));
-    local arm = y - r * 0.22;
-    P.poly({ { x - r * 0.52, arm - cw }, { x + r * 0.52, arm - cw }, { x + r * 0.52, arm + cw },
-             { x - r * 0.52, arm + cw } }, rgba(emblem, alpha));
+    local by = y - r * 0.08;
+    P.circle(x, by, r * 0.34, rgba(emblem, alpha), 20);
+    P.ring(x, by, r * 0.34, rgba(mix(emblem, { 0.35, 0.22, 0.05 }, 0.5), alpha), math.max(1, r * 0.07), 20);
+    P.circle(x - r * 0.10, by - r * 0.11, r * 0.11, rgba(WHITE, alpha * (lit and 0.75 or 0.35)), 10);
     P.outline(M.shieldPoints(x, y, r), rgba(lit and WHITE or GREY, alpha * 0.55), math.max(1, r * 0.08));
 end
 
@@ -209,16 +215,15 @@ local function icon(P, stance, x, y, r, pal, alpha, lit)
 end
 
 -- One point slot. `lit` false draws the dim next point; `grow` (0-1) scales
--- it with the charge; `burst` (0-1) is the lighting flash; `pulse` is set
--- while capped.
+-- it with the charge; `burst` (0-1) is the lighting flash.
 function M.point(P, stance, x, y, s, pal, opts)
     opts = opts or {};
     local t = opts.t or 0;
     local lit = opts.lit ~= false;
     local grow = opts.grow or 1;
     if lit then
-        local beat = opts.pulse and (0.75 + 0.25 * math.sin(t * 5)) or (0.88 + 0.12 * math.sin(t * 2 + x * 0.05));
-        glow(P, x, y, M.GLOW_R * s * beat, pal.glow, opts.pulse and 0.55 or 0.36);
+        local beat = 0.88 + 0.12 * math.sin(t * 2 + x * 0.05);
+        glow(P, x, y, M.GLOW_R * s * beat, pal.glow, 0.36);
     end
     icon(P, stance, x, y, M.SLOT_R * s * grow, pal, lit and 1 or 0.42, lit);
     if opts.burst ~= nil then   -- the moment it lights: an expanding ring
@@ -258,12 +263,17 @@ local function palisadeShield(P, x, y, s, v, pal, measure)
                    rgba(col, 0.95), 2.4 * s);
         end
     end
-    -- The count, on a dark plate so it reads over the cross.
+    -- The count, on a dark plate so it reads over the boss.
     local label = tostring(stacks);
     local tw, th = measure(label);
     local ty = y - th / 2 + 1 * s;
     P.rect(x - tw / 2 - 3 * s, ty - 1 * s, x + tw / 2 + 3 * s, ty + th + 1 * s, rgba(BG, up and 0.8 or 0.6), 3 * s);
     P.text(x - tw / 2, ty, rgba(up and WHITE or GREY, 1), label);
+end
+
+-- The bar's colour: MP blue once every point is held, the stance's otherwise.
+function M.barColour(v, pal)
+    return v.overflow and M.MP_BLUE or pal.bar;
 end
 
 -- Text size when no measure is handed in: about the game font's.
@@ -282,12 +292,13 @@ function M.panel(dl, u32, x0, y0, s, v, measure)
     P.rect(x0, y0, x0 + w, y0 + h, BG, 9 * s);
     P.frame(x0, y0, x0 + w, y0 + h, rgba(pal.edge, 0.45), 9 * s, 1);
 
-    local L = M.layout();
-    local points = math.max(0, math.min(3, v.points or 0));
-    for i = 1, 3 do
+    local n = math.max(1, math.min(M.MAX_SLOTS, v.maxPoints or M.MAX_SLOTS));
+    local L = M.layout(n);
+    local points = math.max(0, math.min(n, v.points or 0));
+    for i = 1, n do
         local sx, sy = x0 + L.slots[i][1] * s, y0 + L.slots[i][2] * s;
         if i <= points then
-            M.point(P, stance, sx, sy, s, pal, { t = t, burst = v.burst and v.burst[i], pulse = v.capped });
+            M.point(P, stance, sx, sy, s, pal, { t = t, burst = v.burst and v.burst[i] });
         elseif i == points + 1 and (v.progress or 0) > 0 then
             M.point(P, stance, sx, sy, s, pal, { t = t, lit = false, grow = 0.35 + 0.65 * v.progress });
         else
@@ -295,16 +306,14 @@ function M.panel(dl, u32, x0, y0, s, v, measure)
         end
     end
 
-    -- The charge bar: the stance colour toward a point, gold while it fills
-    -- the reserve behind three points, pulsing gold once that is full.
+    -- The charge bar: the stance colour toward a point, MP blue toward MP
+    -- once every point is held.
     local b = L.bar;
     local bx1, by1, bx2, by2 = x0 + b[1] * s, y0 + b[2] * s, x0 + b[3] * s, y0 + b[4] * s;
     P.rect(bx1, by1, bx2, by2, TRACK, 3 * s);
-    local fillCol, alpha = pal.bar, 0.95;
-    if v.capped then fillCol, alpha = GOLD, 0.7 + 0.3 * math.sin(t * 5);
-    elseif points >= 3 then fillCol = GOLD; end
-    local p = v.capped and 1 or (v.progress or 0);
-    if p > 0 then P.rect(bx1, by1, bx1 + (bx2 - bx1) * p, by2, rgba(fillCol, alpha), 3 * s); end
+    local p = v.progress or 0;
+    if p > 0 then P.rect(bx1, by1, bx1 + (bx2 - bx1) * p, by2, rgba(M.barColour(v, pal), 0.95), 3 * s); end
+    if v.overflow then P.frame(bx1, by1, bx2, by2, rgba(M.MP_BLUE, 0.6), 3 * s, 1); end
 
     local sx, sy = x0 + L.side[1] * s, y0 + L.side[2] * s;
     if stance == 1 then
@@ -322,16 +331,20 @@ end
 function M.tooltip(v)
     local lines = {};
     local guard = v.stance ~= 2;
+    local max = v.maxPoints or M.MAX_SLOTS;
     lines[#lines + 1] = guard and 'Divine Guard: shield points' or 'Divine Fury: your points carry over';
-    lines[#lines + 1] = string.format('Points: %d / 3', v.points or 0);
-    if v.capped then
-        lines[#lines + 1] = 'Three points and a full bar. Spend a point to keep charging.';
-    elseif (v.threshold or 0) > 0 then
-        lines[#lines + 1] = string.format('Next point: %d%%', math.floor((v.progress or 0) * 100 + 0.5));
+    lines[#lines + 1] = string.format('Points: %d / %d', v.points or 0, max);
+    local pct = math.floor((v.progress or 0) * 100 + 0.5);
+    if v.overflow then
+        lines[#lines + 1] = 'Every point is held: blocks now restore MP.';
+        if guard then lines[#lines + 1] = string.format('Next MP: %d%%', pct); end
+    elseif guard then
+        lines[#lines + 1] = string.format('Next point: %d%%', pct);
     end
     if guard then
         lines[#lines + 1] = 'Shield blocks fill the bar; a Shield Bash that interrupts a spell or TP move gives a point.';
         lines[#lines + 1] = string.format('Palisade: +%d%% block rate (up to +%d%%)', v.palisade or 0, v.palisadeMax or 30);
+        lines[#lines + 1] = 'Palisade spends every point, +1% each.';
     else
         lines[#lines + 1] = 'Points are earned in Divine Guard.';
     end

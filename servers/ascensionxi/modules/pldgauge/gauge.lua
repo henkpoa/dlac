@@ -7,8 +7,9 @@
         gauge.onFrame(f)    a decoded frame of slot 2 (wire.incoming)
         gauge.view()        what the renderer draws, or nil (draw nothing)
 
-    The server owns the points, the charge and the Palisade stack count; the
-    client owns what it can see for itself -- its job, its level, the stance
+    The server owns the points (five, or three from a server before the
+    five-point gauge), the charge and the Palisade stack count; the client
+    owns what it can see for itself -- its job, its level, the stance
     buffs (Divine Guard, Divine Fury) and the Palisade buff. The gauge shows
     only while the main job is PLD and a stance is up.
 
@@ -202,16 +203,17 @@ function M.view()
         agree       = s ~= nil and s.stance == stance,   -- the server has seen this stance too
         live        = sub == 'live' or demo ~= nil,
         points      = s and s.points or 0,
+        maxPoints   = s and s.maxPoints or wire.POINTS_BEFORE_MAX,
         charge      = s and s.charge or 0,
         threshold   = s and s.threshold or 0,
-        capped      = s ~= nil and wire.hasFlag(s.flags, wire.flag.CAPPED),
+        overflow    = s ~= nil and wire.hasFlag(s.flags, wire.flag.OVERFLOW),
         palisade    = (s ~= nil and palisadeUp) and s.palisade or 0,
         palisadeMax = s and s.palisadeMax or wire.PALISADE_MAX,
         burst       = {},
         now         = now,
     };
     v.progress = (v.threshold > 0) and math.max(0, math.min(1, v.charge / v.threshold)) or 0;
-    for i = 1, wire.MAX_POINTS do
+    for i = 1, v.maxPoints do
         local at = gainedAt[i];
         if at ~= nil and i <= v.points and now - at < M.BURST then v.burst[i] = (now - at) / M.BURST; end
     end
