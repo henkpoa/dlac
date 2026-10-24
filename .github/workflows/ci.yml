@@ -110,6 +110,9 @@ jobs:
       - name: AscensionXI Paladin Divine Guard gauge (slot 2, Palisade, shared /dl gauge)
         run: lua5.4 tests/ascensionxi_pldgauge.lua
 
+      - name: AscensionXI Paladin Divine Elements helper (the element rules, the plan, the window)
+        run: lua5.4 tests/ascensionxi_divine_elements.lua
+
       - name: AscensionXI lockstyle regression
         run: lua5.4 tests/lockstyle_vault.lua
 
