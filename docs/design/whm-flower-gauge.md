@@ -97,7 +97,9 @@ losing the stance (zoning, death, Dispel) keeps the flowers.
 - `demo`
 - `status` (channel state in chat)
 
-The position is remembered once a drag settles.
+The position is remembered once a drag settles. On a main Paladin `/dl gauge` belongs to the
+Paladin gauge instead ([pld-divine-guard-gauge.md](pld-divine-guard-gauge.md)); this module
+answers every other job.
 
 ## Field checks
 

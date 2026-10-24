@@ -107,6 +107,9 @@ jobs:
       - name: AscensionXI ascension packet regression
         run: lua5.4 tests/ascensionxi_ascension.lua
 
+      - name: AscensionXI Paladin Divine Guard gauge (slot 2, Palisade, shared /dl gauge)
+        run: lua5.4 tests/ascensionxi_pldgauge.lua
+
       - name: AscensionXI lockstyle regression
         run: lua5.4 tests/lockstyle_vault.lua
 

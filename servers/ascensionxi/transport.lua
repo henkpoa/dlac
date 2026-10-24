@@ -147,7 +147,8 @@ end
 -- assigns the partitions). The EXP band check (0x4C) sits inside the vault's
 -- band but is its own module with its own pending request, so it takes its
 -- own turns. The job gauge partition is shared by job, slot = op % 8 (0 the
--- White Mage gauge, 1 the Dancer status), and each slot is its own module.
+-- White Mage gauge, 1 the Dancer status, 2 the Paladin gauge), and each slot
+-- is its own module.
 -- Any other op is a producer of its own.
 function M.producerOf(op)
     if type(op) ~= 'number' then return 'unknown'; end
@@ -158,7 +159,12 @@ function M.producerOf(op)
     if op == 0x83 then return 'fishing'; end
     if op >= 0xA0 and op <= 0xAF then return 'ascension'; end
     if op >= 0xC0 and op <= 0xCF then return 'telemetry'; end
-    if op >= 0xD0 and op <= 0xDF then return (op % 8 == 1) and 'dnc status' or 'whm gauge'; end
+    if op >= 0xD0 and op <= 0xDF then
+        local slot = op % 8;
+        if slot == 1 then return 'dnc status'; end
+        if slot == 2 then return 'pld gauge'; end
+        return 'whm gauge';
+    end
     return op;
 end
 

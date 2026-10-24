@@ -235,6 +235,18 @@ pcall(function()
     require('dlac\\gear\\serverpack').provide('whmGauge', gauge);
 end);
 
+-- `/dl gauge` is shared: on a main Paladin it belongs to the Paladin gauge
+-- (pldgauge/init.lua, which answers only a Paladin) when that module is
+-- mounted; this module answers every other job.
+local PLD = 7;
+local function yieldsCommand()
+    local job = nil;
+    pcall(function() job = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
+    if job ~= PLD then return false; end
+    local ok, other = pcall(function() return require('dlac\\gear\\serverpack').service('pldGauge'); end);
+    return ok and other ~= nil;
+end
+
 if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'function' then
     pcall(function()
         ashita.events.register('command', 'dlac_axi_whmgauge_cmd', function(e)
@@ -243,6 +255,7 @@ if ashita ~= nil and ashita.events ~= nil and type(ashita.events.register) == 'f
                 or raw:match('^/[dD][lL][aA][cC]%s+[gG][aA][uU][gG][eE](.*)$');
             if args == nil then return; end
             if args ~= '' and not args:match('^%s') then return; end   -- /dl gauges...: not ours
+            if yieldsCommand() then return; end                       -- the Paladin gauge's
             e.blocked = true;
             command(args);
         end);
