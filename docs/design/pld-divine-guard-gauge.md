@@ -8,6 +8,10 @@ art. The server half is on the AXI branch `claude/pld-divine-guard`
 `documentation/custom/pld-divine-guard.md`). It is not in the game until AXI merges and deploys
 it; for a playtest, the branch runs on the local shard.
 
+The same branch carries the **Divine Elements** Job helper (`jobhelpers\pld\divine-elements`,
+2026-10-25), which reads this module's `pldGauge` service for the points:
+[divine-elements.md](divine-elements.md).
+
 ## What it is
 
 ![The gauge in eight states](../img/pld-divine-guard-gauge-preview.png)
