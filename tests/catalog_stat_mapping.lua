@@ -27,6 +27,15 @@ for _, rec in pairs(ci.rawIndex()) do
   found[key] = true
  end
 end
+-- The latent rows too: a stance set plans with them (servers\ascensionxi\stances.lua).
+local latentsChecked = 0
+for id, rows in pairs(dofile('servers/ascensionxi/data/latentstats.lua')) do
+ for _, row in ipairs(rows) do
+  assert(not aliases[row.stat], 'latent of item ' .. id .. ': raw server modifier ' .. row.stat)
+  found[row.stat] = true
+  latentsChecked = latentsChecked + 1
+ end
+end
 for raw, canonical in pairs(aliases) do
  assert(sd.byKey[canonical], 'unregistered canonical stat: ' .. canonical)
  assert(sd.canon(raw) == canonical, 'stat metadata alias: ' .. raw)
@@ -45,4 +54,4 @@ assert(optim.score({Evasion=7,EvasionSkill=5}, {evasion={perUnit=2}}) == 14)
 assert(optim.score({Evasion=7,EvasionSkill=5}, {EVASION={perUnit=2}}) == 10)
 assert(optim.score({WindInstrumentSkill=5}, {WindResistance={perUnit=2}}) == 0,
  'wind instrument skill must not be conflated with elemental resistance')
-print('OK -- ' .. checked .. ' modifier aliases, catalog vocabulary, display and scoring')
+print('OK -- ' .. checked .. ' modifier aliases, ' .. latentsChecked .. ' latent rows, catalog vocabulary, display and scoring')

@@ -266,6 +266,14 @@ return {
         { stat = "Accuracy", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "Attack", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
+    [12515] = {
+        { stat = "Accuracy", add = 4, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "CoverDuration", add = 5, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "CoverMagicRanged", add = 1, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "Enmity", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "STR", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "VIT", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
     [12589] = {
         { stat = "Regen", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 3 },
     },
@@ -276,6 +284,13 @@ return {
         { stat = "Accuracy", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "Attack", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "EnfeeblingMagicSkill", add = 15, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
+    [12644] = {
+        { stat = "Accuracy", add = 6, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "STR", add = 5, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "ShieldSkill", add = 5, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "VIT", add = 4, cond = "PLD_STANCE_EXACTLY", param = 1 },
     },
     [12650] = {
         { stat = "DarkResistance", add = 20, cond = "PET_ID", param = 7 },
@@ -771,6 +786,13 @@ return {
         { stat = "Accuracy", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "EnspellDamage", add = 2, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
+    [13967] = {
+        { stat = "AGI", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "DEX", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "STR", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "VIT", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
     [13972] = {
         { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
@@ -900,6 +922,11 @@ return {
         { stat = "Accuracy", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "ConserveMP", add = 3, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
+    [14095] = {
+        { stat = "Accuracy", add = 2, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Attack", add = 2, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "ShieldSkill", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
     [14101] = {
         { stat = "MovementSpeed", add = 24, cond = "TIME_OF_DAY", param = 1 },
     },
@@ -973,6 +1000,12 @@ return {
         { stat = "Accuracy", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "Attack", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "HealingMagicSkill", add = 10, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
+    [14220] = {
+        { stat = "AGI", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "Attack", add = 6, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "DEX", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
     },
     [14226] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
@@ -1380,6 +1413,11 @@ return {
         { stat = "EnfeeblingMagicSkill", add = 15, cond = "RDM_STANCE_EXACTLY", param = 1 },
         { stat = "EnhancingMagicSkill", add = 15, cond = "RDM_STANCE_AT_LEAST", param = 2 },
     },
+    [15078] = {
+        { stat = "PaladinLightDuration", add = 15, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "RampartDuration", add = 15, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "SkillchainDamage", add = 5, cond = "PLD_STANCE_EXACTLY", param = 2 },
+    },
     [15084] = {
         { stat = "ParryingSkill", add = 10, cond = "TIME_OF_DAY", param = 1 },
     },
@@ -1390,6 +1428,10 @@ return {
         { stat = "ElementalMagicSkill", add = 10, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "HealingMagicSkill", add = 10, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
+    [15093] = {
+        { stat = "DEX", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 4, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
     [15096] = {
         { stat = "AGI", add = 8, cond = "WEAPON_DRAWN", param = 0 },
         { stat = "CHR", add = -8, cond = "WEAPON_DRAWN", param = 0 },
@@ -1399,6 +1441,13 @@ return {
         { stat = "STR", add = 8, cond = "WEAPON_DRAWN", param = 0 },
         { stat = "VIT", add = 8, cond = "WEAPON_DRAWN", param = 0 },
     },
+    [15108] = {
+        { stat = "Accuracy", add = 4, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "Haste", add = 2, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "ShieldBash", add = 10, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "VIT", add = 5, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
     [15114] = {
         { stat = "Haste", add = 4, cond = "TIME_OF_DAY", param = 1 },
         { stat = "STR", add = 12, cond = "TIME_OF_DAY", param = 1 },
@@ -1406,6 +1455,13 @@ return {
     [15121] = {
         { stat = "ElementalMagicSkill", add = 10, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "INT", add = 5, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
+    [15123] = {
+        { stat = "Accuracy", add = 5, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "STR", add = 5, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "SpellInterruptionRateDown", add = 10, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "VIT", add = 5, cond = "PLD_STANCE_EXACTLY", param = 1 },
     },
     [15126] = {
         { stat = "AGI", add = -8, cond = "WEAPON_SHEATHED", param = 0 },
@@ -1422,6 +1478,12 @@ return {
     [15136] = {
         { stat = "ConserveMP", add = 5, cond = "RDM_STANCE_EXACTLY", param = 1 },
         { stat = "MagicAttackBonus", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+    },
+    [15138] = {
+        { stat = "Accuracy", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "Enmity", add = 1, cond = "PLD_STANCE_EXACTLY", param = 1 },
+        { stat = "Haste", add = 1, cond = "PLD_STANCE_EXACTLY", param = 2 },
+        { stat = "SentinelEffect", add = 10, cond = "PLD_STANCE_EXACTLY", param = 1 },
     },
     [15139] = {
         { stat = "DEFP", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 64 },
@@ -3296,13 +3358,31 @@ return {
         { stat = "JUDGEMENT_BONUS", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
         { stat = "REGEN_BONUS", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
     },
+    [19978] = {
+        { stat = "EnhancingMagicSkill", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "EnspellDamage", add = 2, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "INT", add = 4, cond = "RDM_STANCE_EXACTLY", param = 1 },
+        { stat = "MND", add = 4, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
     [19985] = {
         { stat = "JUDGEMENT_BONUS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
         { stat = "REGEN_BONUS", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
     },
+    [19987] = {
+        { stat = "EnhancingMagicSkill", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "EnspellDamage", add = 3, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "INT", add = 5, cond = "RDM_STANCE_EXACTLY", param = 1 },
+        { stat = "MND", add = 5, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
     [19992] = {
         { stat = "JUDGEMENT_BONUS", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
         { stat = "REGEN_BONUS", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
+    },
+    [19994] = {
+        { stat = "EnhancingMagicSkill", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "EnspellDamage", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "INT", add = 6, cond = "RDM_STANCE_EXACTLY", param = 1 },
+        { stat = "MND", add = 6, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
     [20482] = {
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },
@@ -3400,7 +3480,7 @@ return {
     [22118] = {
         { stat = "ConserveTP", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
         { stat = "RangedAttack", add = 35, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
-        { stat = "SKILLCHAINBONUS", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
+        { stat = "SkillchainDamage", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 198 },
     },
     [23096] = {
         { stat = "Counter", add = 16, cond = "STATUS_EFFECT_ACTIVE", param = 354 },

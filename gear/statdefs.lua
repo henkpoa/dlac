@@ -477,6 +477,7 @@ M.list = {
     { key = 'CoverToMP', label = 'Cover->MP', section = 'Ability' },
     { key = 'CoverMagicRanged', label = 'Cover M/R', section = 'Ability' },   -- cover extends to magic/ranged
     { key = 'CoverDuration', label = 'Cover Dur.', section = 'Ability' },
+    { key = 'PaladinLightDuration', label = 'PLD Light Dur.', section = 'Ability' },   -- AXI: seconds on each Light a Divine Fury Paladin gives
     { key = 'ReprisalBlockBonus', label = 'Reprisal Block+', section = 'Ability' },
     { key = 'ReprisalSpikesBonus', label = 'Reprisal Spikes+', section = 'Ability' },
     { key = 'DivineEmblemBonus', label = 'Divine Emblem+', section = 'Ability' },

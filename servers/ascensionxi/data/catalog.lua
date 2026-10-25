@@ -15279,6 +15279,19 @@ return {
                     Delay = 215,
                 }
             },
+            ForsakenSword = {
+                Name = "Forsaken Sword",
+                Level = 10,
+                Id = 19998,
+                Model = 249,
+                Jobs = {"PLD"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 10,
+                    Delay = 240,
+                }
+            },
             Fragarach = {
                 Name = "Fragarach",
                 Level = 74,
@@ -15729,17 +15742,17 @@ return {
             },
             HonorSword = {
                 Name = "Honor Sword",
-                Level = 42,
+                Level = 40,
                 Id = 17643,
                 Model = 252,
                 Jobs = {"PLD"},
                 OneHanded = true,
                 Type = "Sword",
                 Stats = {
-                    DMG = 28,
+                    DMG = 31,
                     Delay = 240,
-                    VIT = 2,
-                    MND = 2,
+                    VIT = 3,
+                    MND = 3,
                 }
             },
             Honorbound = {
@@ -17676,8 +17689,22 @@ return {
                 Stats = {
                     DMG = 16,
                     Delay = 215,
-                    INT = 4,
-                    MND = 4,
+                }
+            },
+            RekindledSword = {
+                Name = "Rekindled Sword",
+                Level = 10,
+                Id = 20000,
+                Model = 251,
+                Jobs = {"PLD"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 18,
+                    Delay = 240,
+                    VIT = 2,
+                    Enmity = 2,
+                    ShieldSkill = 2,
                 }
             },
             RelicSword = {
@@ -17732,8 +17759,6 @@ return {
                 Stats = {
                     DMG = 21,
                     Delay = 215,
-                    INT = 5,
-                    MND = 5,
                 }
             },
             RkndlRapier_2 = {
@@ -17747,8 +17772,38 @@ return {
                 Stats = {
                     DMG = 25,
                     Delay = 215,
-                    INT = 6,
-                    MND = 6,
+                }
+            },
+            RkndlSword_1 = {
+                Name = "Rkndl. Sword +1",
+                Level = 20,
+                Id = 20002,
+                Model = 251,
+                Jobs = {"PLD"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 21,
+                    Delay = 240,
+                    VIT = 3,
+                    Enmity = 3,
+                    ShieldSkill = 3,
+                }
+            },
+            RkndlSword_2 = {
+                Name = "Rkndl. Sword +2",
+                Level = 30,
+                Id = 20004,
+                Model = 251,
+                Jobs = {"PLD"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 26,
+                    Delay = 240,
+                    VIT = 4,
+                    Enmity = 4,
+                    ShieldSkill = 4,
                 }
             },
             Ruler = {
@@ -21010,6 +21065,19 @@ return {
                     Delay = 504,
                 }
             },
+            ForsakenGtSword = {
+                Name = "Forsaken Gt.Sword",
+                Level = 10,
+                Id = 19999,
+                Model = 70,
+                Jobs = {"PLD"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 19,
+                    Delay = 444,
+                }
+            },
             Fulgurante = {
                 Name = "Fulgurante",
                 Level = 99,
@@ -22655,6 +22723,54 @@ return {
                 Stats = {
                     DMG = 1,
                     Delay = 999,
+                }
+            },
+            RkndlGtSword = {
+                Name = "Rkndl. Gt.Sword",
+                Level = 10,
+                Id = 20001,
+                Model = 68,
+                Jobs = {"PLD"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 36,
+                    Delay = 444,
+                    STR = 2,
+                    Accuracy = 2,
+                    Attack = 2,
+                }
+            },
+            RkndlGtSword_1 = {
+                Name = "Rkndl. Gt.Sword +1",
+                Level = 20,
+                Id = 20003,
+                Model = 68,
+                Jobs = {"PLD"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 43,
+                    Delay = 444,
+                    STR = 3,
+                    Accuracy = 3,
+                    Attack = 3,
+                }
+            },
+            RkndlGtSword_2 = {
+                Name = "Rkndl. Gt.Sword +2",
+                Level = 30,
+                Id = 20005,
+                Model = 68,
+                Jobs = {"PLD"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 56,
+                    Delay = 444,
+                    STR = 4,
+                    Accuracy = 4,
+                    Attack = 4,
                 }
             },
             RsvCptGrtSword = {
@@ -89429,18 +89545,14 @@ return {
         },
         GallantCoronet = {
             Name = "Gallant Coronet",
-            Level = 56,
+            Level = 50,
             Id = 12515,
             Model = 76,
             Jobs = {"PLD"},
             Type = "Head",
             Stats = {
-                DEF = 24,
-                HP = 12,
-                MND = 3,
-                Enmity = 2,
-                CoverDuration = 5,
-                CoverMagicRanged = 1,
+                DEF = 25,
+                HP = 20,
             }
         },
         GallianHelm = {
@@ -103397,11 +103509,10 @@ return {
             Jobs = {"PLD"},
             Type = "Head",
             Stats = {
-                DEF = 28,
-                HP = 18,
+                DEF = 30,
+                HP = 25,
                 Enmity = 3,
                 HealingMagicSkill = 10,
-                RampartDuration = 15,
             }
         },
         ValorousMask = {
@@ -127511,16 +127622,14 @@ return {
         },
         GallantSurcoat = {
             Name = "Gallant Surcoat",
-            Level = 60,
+            Level = 50,
             Id = 12644,
             Model = 76,
             Jobs = {"PLD"},
             Type = "Body",
             Stats = {
-                DEF = 47,
-                HP = 20,
-                VIT = 4,
-                Enmity = 2,
+                DEF = 48,
+                HP = 25,
                 DivineMagicSkill = 5,
             }
         },
@@ -142246,10 +142355,8 @@ return {
             Jobs = {"PLD"},
             Type = "Body",
             Stats = {
-                DEF = 55,
-                HP = 23,
-                DEX = 3,
-                Enmity = 4,
+                DEF = 57,
+                HP = 27,
                 CoverToMP = 20,
             }
         },
@@ -152391,17 +152498,17 @@ return {
         },
         GallantGauntlets = {
             Name = "Gallant Gauntlets",
-            Level = 54,
+            Level = 50,
             Id = 13967,
             Model = 76,
             Jobs = {"PLD"},
             Type = "Hands",
             Stats = {
-                DEF = 16,
-                HP = 11,
+                DEF = 17,
+                HP = 13,
                 DEX = 3,
+                Accuracy = 2,
                 Enmity = 2,
-                LightResistance = 10,
             }
         },
         GardenBangles = {
@@ -164974,11 +165081,8 @@ return {
             Jobs = {"PLD"},
             Type = "Hands",
             Stats = {
-                DEF = 22,
-                HP = 16,
-                VIT = 5,
-                Enmity = 3,
-                ShieldBash = 10,
+                DEF = 24,
+                HP = 18,
             }
         },
         ValorousMitts = {
@@ -192666,16 +192770,14 @@ return {
         },
         GallantBreeches = {
             Name = "Gallant Breeches",
-            Level = 58,
+            Level = 50,
             Id = 14220,
             Model = 76,
             Jobs = {"PLD"},
             Type = "Legs",
             Stats = {
-                DEF = 34,
-                HP = 15,
-                AGI = 3,
-                Enmity = 2,
+                DEF = 35,
+                HP = 17,
                 EnhancingMagicSkill = 5,
             }
         },
@@ -204953,11 +205055,8 @@ return {
             Jobs = {"PLD"},
             Type = "Legs",
             Stats = {
-                DEF = 43,
+                DEF = 45,
                 HP = 20,
-                STR = 5,
-                Enmity = 3,
-                SpellInterruptionRateDown = 10,
             }
         },
         ValorousHose = {
@@ -214676,15 +214775,15 @@ return {
         },
         GallantLeggings = {
             Name = "Gallant Leggings",
-            Level = 52,
+            Level = 50,
             Id = 14095,
             Model = 76,
             Jobs = {"PLD"},
             Type = "Feet",
             Stats = {
-                DEF = 14,
-                HP = 15,
-                CHR = 5,
+                DEF = 15,
+                HP = 16,
+                VIT = 5,
                 HolyCircleDuration = 90,
                 HolyCirclePotency = 2,
                 ShieldSkill = 10,
@@ -227356,11 +227455,9 @@ return {
             Jobs = {"PLD"},
             Type = "Feet",
             Stats = {
-                DEF = 19,
-                HP = 18,
+                DEF = 21,
+                HP = 20,
                 MND = 3,
-                Enmity = 1,
-                SentinelEffect = 10,
             }
         },
         ValorousGreaves = {
