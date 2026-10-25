@@ -549,6 +549,53 @@ aa.noteFrame(moved);
 check('AA-31 not checked', aa.report().prediction.verdict, 'not checked');
 check('AA-31 nothing marked', next(aa.report().mispredicted), nil);
 
+-- AA-37..AA-39: each hand's skill and every input's value without gear (R)
+-- are state too, so a frame the server sent because one of them moved is
+-- not checked (2026-10-23: a skill-up kept six pieces on with 182 ACC to
+-- spare). Only an R that a swapped piece's level row adds to moves with the
+-- swap: AA-29 is that case (Rajas Ring's DEX, R 88 -> 91, matched).
+local formula = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\formula');
+local function recomposed(f)
+    for _, c in ipairs(f.contexts) do
+        if c.applicability == wire.applicability.APPLICABLE then
+            local acc, _, threshold = formula.compose(f, c);
+            c.liveAcc, c.thresholdBp = acc, threshold;
+        end
+    end
+    return f;
+end
+d = released();
+wearRajas();
+local skilled = mainOnly(frameOf('TV-06'));
+for _, c in ipairs(skilled.contexts) do c.skillR, c.skillLive = c.skillR + 1, c.skillLive + 1; end
+aa.noteFrame(recomposed(skilled));
+check('AA-37 the frame itself is fine', aa.report().gearOk, true);
+check('AA-37 a skill-up first: not checked', aa.report().prediction.verdict, 'not checked');
+check('AA-37 nothing marked', next(aa.report().mispredicted), nil);
+worn[13] = { 8, 11, 14674 }; time = time + 1;
+d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+check('AA-37 the ring is still released', d.release.Ring1, 'Rajas Ring');
+
+d = released();
+wearRajas();
+local sung = mainOnly(frameOf('TV-06'));
+sung.accModR, sung.accModLive = sung.accModR + 6, sung.accModLive + 6;   -- Madrigal landed
+aa.noteFrame(recomposed(sung));
+check('AA-38 an ACC song first: not checked', aa.report().prediction.verdict, 'not checked');
+check('AA-38 nothing marked', next(aa.report().mispredicted), nil);
+
+-- AA-39: an R the swap's level rows do not explain is a non-gear change.
+-- Without Rajas Ring's rows, TV-06's DEX R (88 -> 91) reads as food landing.
+local rajasRows = DATA.levelscaling[15543];
+DATA.levelscaling[15543] = nil;
+d = released();
+check('AA-39 released', d.release.Ring1, 'Rajas Ring');
+wearRajas();
+aa.noteFrame(mainOnly(frameOf('TV-06')));
+check('AA-39 not checked', aa.report().prediction.verdict, 'not checked');
+check('AA-39 nothing marked', next(aa.report().mispredicted), nil);
+DATA.levelscaling[15543] = rajasRows;
+
 -- AA-32: the pieces go back on before the server measures: not checked.
 d = released();
 aa.MARGIN = 100;
