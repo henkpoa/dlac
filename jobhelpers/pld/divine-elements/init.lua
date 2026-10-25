@@ -21,7 +21,7 @@
     docs/design/divine-elements.md.
 
     The window shows while your main job is Paladin, Divine Fury is up and
-    the divine elements are in your Job Abilities menu (that is, learned).
+    the divine elements are in your Job Abilities menu (from level 15).
 ]]--
 
 local base  = 'dlac\\jobhelpers\\pld\\divine-elements\\';
@@ -52,7 +52,7 @@ local function propCol(ui, prop) return PROP_COL[prop] or ELEMENT_PROP_COL[prop]
 -- ---------------------------------------------------------------------------
 local client = {};
 
--- { job, buffs = { [icon] = true }, learned } or nil.
+-- { job, buffs = { [icon] = true }, listed } or nil.
 function client.read()
     local out = nil;
     pcall(function()
@@ -61,7 +61,7 @@ function client.read()
         for _, id in pairs(p:GetBuffs() or {}) do
             if type(id) == 'number' and id > 0 and id < 1024 then buffs[id] = true; end
         end
-        out = { job = p:GetMainJob(), buffs = buffs, learned = p:HasAbility(rules.FIRST_ABILITY) == true };
+        out = { job = p:GetMainJob(), buffs = buffs, listed = p:HasAbility(rules.FIRST_ABILITY) == true };
     end);
     return out;
 end
@@ -118,12 +118,12 @@ local function enabled(S, key)
     return cfg ~= nil and cfg.get(key) == true;
 end
 
--- The plan to draw, or nil and why ('job', 'stance', 'learn').
+-- The plan to draw, or nil and why ('job', 'stance', 'level').
 local function view(S, now)
     local c = client.read();
     if c == nil or c.job ~= PLD then return nil, 'job'; end
     if not c.buffs[rules.FURY_ICON] then return nil, 'stance'; end
-    if not c.learned then return nil, 'learn'; end
+    if not c.listed then return nil, 'level'; end
     local pts = points(S);
     local plan = rules.plan({
         weaponskills = weaponskills(now or 0),
@@ -204,7 +204,7 @@ end
 local WHY = {
     job    = 'Shows while your main job is Paladin.',
     stance = 'Shows while Divine Fury is up.',
-    learn  = 'Shows once you have learned the divine elements.',
+    level  = 'Shows from level 15, when the divine elements join your Job Abilities.',
 };
 
 -- ---------------------------------------------------------------------------

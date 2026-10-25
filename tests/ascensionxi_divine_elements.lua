@@ -124,7 +124,7 @@ local features = dofile('servers/ascensionxi/features.lua');
 check(features.jobhelpers['divine-elements'] == true, "the AscensionXI pack lists it");
 
 local client = helper._client;
-local state = { job = 7, buffs = { [655] = true }, learned = true };
+local state = { job = 7, buffs = { [655] = true }, listed = true };
 client.read = function() return state; end;
 client.weaponskills = function() return WS; end;
 local gaugeView = { synced = true, points = 2 };
@@ -139,16 +139,16 @@ local S = {
 };
 
 local v, why = helper._view(S, 10);
-check(v ~= nil and v.points == 2, 'in Divine Fury with the elements learned there is a plan, with the gauge points');
+check(v ~= nil and v.points == 2, 'in Divine Fury with the elements listed there is a plan, with the gauge points');
 state.buffs = {};
 helper._resetCache();
 v, why = helper._view(S, 20);
 check(v == nil and why == 'stance', 'no window outside Divine Fury');
 state.buffs = { [655] = true };
-state.learned = false;
+state.listed = false;
 v, why = helper._view(S, 30);
-check(v == nil and why == 'learn', 'none before the divine elements are learned');
-state.learned = true;
+check(v == nil and why == 'level', 'none before level 15 lists the divine elements');
+state.listed = true;
 state.job = 1;
 v, why = helper._view(S, 40);
 check(v == nil and why == 'job', 'none on another job');

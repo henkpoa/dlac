@@ -53,8 +53,8 @@ Light: Fusion meets Fragmentation. Darkness: Gravitation meets Distortion.
 
 "Your weapon skills" are the ones the client lists for the weapon in your hands. The window shows
 while your main job is Paladin, Divine Fury is up (buff 655) and the divine elements are in your
-Job Abilities menu (Divine Fire, client record 929, which the server lists only once learned and
-only in Divine Fury). It hides with the game HUD, can be dragged (its place is remembered once the
+Job Abilities menu (Divine Fire, client record 929, which the server lists from level 15 and only
+in Divine Fury; there are no quests, AscensionXI owner 2026-10-25). It hides with the game HUD, can be dragged (its place is remembered once the
 drag settles), locked, or switched off. The module never acts: no commands, no keys, no gear.
 
 ## Where the answers come from
@@ -62,7 +62,7 @@ drag settles), locked, or switched off. The module never acts: no commands, no k
 | Answer | Source |
 |---|---|
 | Stance and held elements | the client's buff list: 655 Divine Fury, 660-667 Divine Fire to Divine Dark |
-| Learned | `HasAbility(929)`: the server lists the element abilities only once learned, in Divine Fury |
+| Listed | `HasAbility(929)`: the server lists the element abilities from level 15, in Divine Fury |
 | Your weapon skills | `HasWeaponSkill(id)` over `data/weaponskills.lua`; the client resource name when it has one |
 | Each weapon skill's properties | `data/weaponskills.lua`, generated from AscensionXI's `sql/weapon_skills.sql` by that repo's `python tools/dlac-weaponskills.py <dlac checkout>` (names from its chains addon) |
 | Points | the pack's `pldGauge` service (`servers/ascensionxi/modules/pldgauge`), its `view().points` while synced; unknown when the gauge is hidden, and then nothing is dimmed |
@@ -93,7 +93,7 @@ level 50 regardless, as in the chains addon.
 - `lua tests/ascensionxi_pldgauge.lua`, `tests/ascensionxi_dncstatus.lua`,
   `tests/ascensionxi_fishing.lua` and `tests/smoke_ui.lua` still pass.
 
-Owed, in the client: the window appears in Divine Fury with the elements learned and disappears
+Owed, in the client: the window appears in Divine Fury from level 15 and disappears
 in Divine Guard; the held elements and the ready rows follow Divine Fire to Divine Dark as they
 are used; the points match the gauge; the weapon skill list follows a weapon swap.
 
