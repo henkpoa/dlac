@@ -22,6 +22,9 @@
     October 15: MaxMP (its Gear Helpers row and panel). The engine needed
     nothing new for this server; batteries are the MP pieces in your bags
     and wardrobes, so a copy left in the Gear Vault is not one.
+    October 25: Divine Elements, the Paladin's Divine Fury helper (what the
+    divine elements on the weapon give, and what each level 2 property
+    costs); read-only, like DNC Status.
 ]]--
 return {
     tabs = {
@@ -38,5 +41,5 @@ return {
     },
     -- Also controls the shared hobby bar. Add helpers as they are enabled.
     helpers = { helm = true, choco = true, autoacc = true, fish = true, maxmp = true },
-    jobhelpers = { ['dnc-status'] = true },
+    jobhelpers = { ['dnc-status'] = true, ['divine-elements'] = true },
 };

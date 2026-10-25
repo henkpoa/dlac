@@ -22,5 +22,7 @@
     `fishing` (2026-10-15) reads Fishing points and the skill in tenths (op
     0x83 in the HELM partition) and arms the catch mover
     (docs/reference/ascensionxi-fishing.md).
+    `pldgauge` (2026-10-24) draws the Paladin Divine Guard gauge, slot 2 of
+    the job gauge partition (0xD2, 0xDA) (docs/design/pld-divine-guard-gauge.md).
 ]]--
-return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus', 'fishing' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus', 'fishing', 'pldgauge' };
