@@ -20,8 +20,10 @@
     documentation/custom/pld-divine-guard.md section 8; dlac
     docs/design/divine-elements.md.
 
-    The window shows while your main job is Paladin, Divine Fury is up and
-    the divine elements are in your Job Abilities menu (from level 15).
+    The window is off until you turn it on in the Panel (AscensionXI owner,
+    2026-10-25: it popped up at login and "should not be default"). Then it
+    shows while your main job is Paladin, Divine Fury is up and the divine
+    elements are in your Job Abilities menu (from level 15).
 ]]--
 
 local base  = 'dlac\\jobhelpers\\pld\\divine-elements\\';
@@ -238,7 +240,7 @@ return {
             y      = 'number',
         },
         defaults = {
-            window = true,
+            window = false,
             locked = false,
         },
     },
@@ -251,8 +253,8 @@ return {
             local nextValue = ui.toggle('divineelements_' .. key, label, enabled(S, key), tip);
             if nextValue ~= nil and cfg ~= nil then cfg.set(key, nextValue); end
         end
-        ui.section('Window', 'A small window you can drag anywhere. It shows while Divine Fury is up.', function()
-            toggle('window', 'Show the window', 'Off: the lines appear only here.');
+        ui.section('Window', 'A small window you can drag anywhere. Once on, it shows while Divine Fury is up.', function()
+            toggle('window', 'Show the window', 'Off (the default): the lines appear only here.');
             toggle('locked', 'Lock it in place', 'Stops the window moving when dragged.');
         end);
         ui.dim('Each element adds its own level 1 property: Fire Liquefaction, Ice Induration, Wind Detonation,');

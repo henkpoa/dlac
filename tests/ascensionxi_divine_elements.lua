@@ -185,7 +185,7 @@ check(shown('  Crescent Moon + Dark', 'ok') and shown('ready'), 'a build already
 check(shown('  Any WS + Earth + Dark') and shown('1 point'), 'the two-element build costs one more point');
 check(shown('  Spinning Slash') and shown('has it'), 'a weapon skill that has it of its own says so');
 
--- The window itself: shown in Divine Fury, gone when switched off.
+-- The window itself: off until switched on, then shown in Divine Fury.
 local begins = 0;
 local imguiStub = {
     SetNextWindowPos = function() end,
@@ -194,8 +194,12 @@ local imguiStub = {
     GetWindowPos = function() return 60, 420; end,
 };
 package.loaded['dlac\\feature\\gamehud'] = { hidden = function() return false; end };
+check(helper.config.defaults.window == false, 'the window is off by default');
 helper.window({ ui = ui, S = S, imgui = imguiStub });
-check(begins == 1, 'the window opens in Divine Fury');
+check(begins == 0, 'so it does not open in Divine Fury until switched on');
+cfgVals.window = true;
+helper.window({ ui = ui, S = S, imgui = imguiStub });
+check(begins == 1, 'switched on, it opens in Divine Fury');
 cfgVals.window = false;
 helper.window({ ui = ui, S = S, imgui = imguiStub });
 check(begins == 1, 'and not when switched off');

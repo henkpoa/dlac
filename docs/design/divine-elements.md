@@ -55,7 +55,9 @@ Light: Fusion meets Fragmentation. Darkness: Gravitation meets Distortion.
 while your main job is Paladin, Divine Fury is up (buff 655) and the divine elements are in your
 Job Abilities menu (Divine Fire, client record 929, which the server lists from level 15 and only
 in Divine Fury; there are no quests, AscensionXI owner 2026-10-25). It hides with the game HUD, can be dragged (its place is remembered once the
-drag settles), locked, or switched off. The module never acts: no commands, no keys, no gear.
+drag settles), locked, or switched off. It is **off by default** (AscensionXI owner,
+2026-10-25: it popped up at login and "should not be default"): turn it on in the Panel. The
+module never acts: no commands, no keys, no gear.
 
 ## Where the answers come from
 
@@ -93,7 +95,7 @@ level 50 regardless, as in the chains addon.
 - `lua tests/ascensionxi_pldgauge.lua`, `tests/ascensionxi_dncstatus.lua`,
   `tests/ascensionxi_fishing.lua` and `tests/smoke_ui.lua` still pass.
 
-Owed, in the client: the window appears in Divine Fury from level 15 and disappears
+Owed, in the client: once switched on, the window appears in Divine Fury from level 15 and disappears
 in Divine Guard; the held elements and the ready rows follow Divine Fire to Divine Dark as they
 are used; the points match the gauge; the weapon skill list follows a weapon swap.
 
