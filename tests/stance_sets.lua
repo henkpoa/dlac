@@ -52,18 +52,21 @@ assert(not ctotals.Accuracy and not ctotals.Attack, "and not Duelist Stance's")
 assert(optim.buildBestSet(opts).slots.Head == other.Name, "Composure adds nothing to the Warlock's Chapeau")
 assert(stance.apply(duel,duel.Stats,cctx).EnfeeblingMagicSkill == 15, "Duelist's Chapeau under Composure")
 assert(optim.setSetType('stance'))
--- stances.lua is hand-kept: each RDM table must equal the pack's generated
+-- stances.lua is hand-kept: each table must equal the pack's generated
 -- latent rows, both ways. Duelist Stance = latent 30000 (RDM_STANCE_AT_LEAST)
 -- at power 2, Focus or Trance; Composure = latent 30001 (RDM_STANCE_EXACTLY)
--- at power 1.
-local rdm = dofile('servers/ascensionxi/stances.lua').RDM
+-- at power 1; Divine Guard and Divine Fury = latent 30002
+-- (PLD_STANCE_EXACTLY) at power 1 and 2.
+local packStances = dofile('servers/ascensionxi/stances.lua')
+local rdm, pld = packStances.RDM, packStances.PLD
 local latents = dofile('servers/ascensionxi/data/latentstats.lua')
+local claimed = {}
 local function parity(t, cond, power, name)
+    claimed[cond .. '@' .. power] = true
     local gen = {}
     for id, rows in pairs(latents) do
         for _, r in ipairs(rows) do
-            if r.cond == cond then
-                assert(r.param == power, ('item %d: %s at power %s; decide whether %s counts it'):format(id, cond, tostring(r.param), name))
+            if r.cond == cond and r.param == power then
                 gen[id] = gen[id] or {}
                 gen[id][r.stat] = (gen[id][r.stat] or 0) + r.add
             end
@@ -85,10 +88,58 @@ local function parity(t, cond, power, name)
 end
 parity(rdm.stance, 'RDM_STANCE_AT_LEAST', 2, 'Duelist Stance')
 parity(rdm.composure, 'RDM_STANCE_EXACTLY', 1, 'Composure')
+parity(pld.divineguard, 'PLD_STANCE_EXACTLY', 1, 'Divine Guard')
+parity(pld.divinefury, 'PLD_STANCE_EXACTLY', 2, 'Divine Fury')
+-- Every stance latent row in the pack belongs to one of those tables: a new
+-- power (Trance only, say) or a new job's stance latent needs a decision.
+for id, rows in pairs(latents) do
+    for _, r in ipairs(rows) do
+        if tostring(r.cond):find('_STANCE_', 1, true) then
+            assert(claimed[r.cond .. '@' .. r.param],
+                ('item %d: %s at power %s; decide which Set Type counts it'):format(id, r.cond, tostring(r.param)))
+        end
+    end
+end
+-- gearoptim's Set Types are Normal, 1-Hit WS and exactly stancestats' TYPES.
+local want = {normal = true, ws1 = true}
+for _, id in ipairs(stance.TYPES) do want[id] = true end
+for id in pairs(want) do assert(optim.SET_TYPES[id] == true, 'gearoptim lacks Set Type ' .. id) end
+for id in pairs(optim.SET_TYPES) do assert(want[id], 'stancestats.TYPES lacks Set Type ' .. id) end
+-- Paladin (2026-10-25): Divine Guard and Divine Fury, each with its own rows.
+optim.bindSetWeights('PLD','Tank')
+assert(optim.setSetType('divineguard'))
+local gctx = optim.stanceContext(75)
+assert(gctx.stanceSet and gctx.stanceType == 'divineguard' and gctx.job == 'PLD')
+local gallant = {}
+for slot,id in pairs({Head=12515,Body=12644,Hands=13967,Legs=14220,Feet=14095}) do
+    gallant[slot]={Id=id,Level=50,Stats={}}
+end
+local gtotals = oracle.setStats(gallant,gctx).stats
+assert(gtotals.Enmity == 8 and gtotals.VIT == 10 and gtotals.AGI == 6 and gtotals.ShieldSkill == 7
+    and gtotals.CoverDuration == 5 and gtotals.CoverMagicRanged == 1, 'Divine Guard counts the Gallant rows')
+assert(not gtotals.Accuracy and not gtotals.STR, "and not Divine Fury's")
+assert(optim.setSetType('divinefury'))
+local fctx = optim.stanceContext(75)
+assert(fctx.stanceSet and fctx.stanceType == 'divinefury')
+local ftotals = oracle.setStats(gallant,fctx).stats
+assert(ftotals.Accuracy == 12 and ftotals.STR == 11 and ftotals.DEX == 6 and ftotals.Attack == 8,
+    'Divine Fury counts the Gallant rows')
+assert(not ftotals.Enmity and not ftotals.VIT, "and not Divine Guard's")
+local valorHead = {Id=15078, Level=73, Stats={}}
+local vf = stance.apply(valorHead,valorHead.Stats,fctx)
+assert(vf.PaladinLightDuration == 15 and vf.SkillchainDamage == 5 and not vf.RampartDuration, 'Valor Coronet in Divine Fury')
+assert(stance.apply(valorHead,valorHead.Stats,gctx).RampartDuration == 15, 'Valor Coronet in Divine Guard')
+assert(stance.apply(valorHead,valorHead.Stats,{level=72,job='PLD',stanceSet=true,stanceType='divinefury'}) == valorHead.Stats,
+    'a piece above the planned level adds nothing')
+assert(stance.apply(gallant.Head,{},{level=75,job='RDM',stanceSet=true,stanceType='divineguard'}).VIT == nil,
+    'Paladin rows are Paladin only')
+optim.bindSetWeights('RDM','Melee')
 optim.bindSetWeights('RDM','WS')
 assert(optim.setSetType('ws1'))
 optim.bindSetWeights('RDM','Enfeeble')
 assert(optim.setSetType('composure'))
+optim.bindSetWeights('PLD','Guard')
+assert(optim.setSetType('divineguard'))
 optim.bindSetWeights('RDM','Melee')
 assert(optim.saveWeights())
 optim.setSetType('normal')
@@ -98,12 +149,15 @@ assert(optim.setTypeOf('RDM','WS') == 'ws1', 'and every other set\'s, read unbou
 assert(optim.setTypeOf('RDM','Enfeeble') == 'composure', 'Composure too')
 assert(optim.setTypeOf('RDM','Nowhere') == 'normal')
 assert(optim.setTypeOf('WAR','WS') == 'normal', 'types are per job')
+assert(optim.setTypeOf('PLD','Guard') == 'divineguard' and optim.setTypeOf('PLD','Tank') == 'divinefury',
+    'Divine Guard and Divine Fury too')
 -- An older dlac reads only stancePerSet: the file keeps the stance sets
 -- there too, and only them.
 local f = assert(io.open(tmp,'rb')); local text = f:read('*a'); f:close()
 local legacy = text:match('stancePerSet = (%b{})')
 assert(legacy and legacy:find('"RDM|Melee"',1,true) and not legacy:find('"RDM|WS"',1,true), 'legacy block = stance sets')
 assert(not legacy:find('"RDM|Enfeeble"',1,true), 'an older dlac must not plan a Composure set as Duelist Stance')
+assert(not legacy:find('"PLD|',1,true), 'nor a Paladin stance set as a stance set')
 optim.bindSetWeights('RDM','Idle')
 assert(optim.setType() == 'normal', 'type stays per set')
 optim.renameSetKey('RDM','Melee','Stance')
@@ -134,9 +188,14 @@ assert(labels('WAR') == 'Normal / 1-Hit WS / Berserk', 'Composure only where the
 assert(labels('BLM') == 'Normal / 1-Hit WS', 'no stance gear, no stance row')
 assert(labels('BLM','stance') == 'Normal / 1-Hit WS / Stance', 'a stance set elsewhere can be set back')
 assert(labels('BLM','composure') == 'Normal / 1-Hit WS / Composure', 'a Composure set too')
+assert(labels('PLD') == 'Normal / 1-Hit WS / Divine Guard / Divine Fury', labels('PLD'))
+assert(labels('WAR','divinefury') == 'Normal / 1-Hit WS / Berserk / Divine Fury', 'a Paladin stance set elsewhere can be set back')
 assert(stance.label('RDM','composure') == 'Composure' and stance.label('RDM') == 'Duelist Stance')
+assert(stance.label('PLD','divineguard') == 'Divine Guard' and stance.label('PLD','divinefury') == 'Divine Fury')
+assert(stance.label('PLD') == nil, 'Paladin has no plain stance table')
 sp.active = function() return 'cexi' end
 assert(stance.apply(hat,hat.Stats,ctx)==hat.Stats, 'AXI only')
 assert(stance.label('RDM') == nil and stance.label('RDM','composure') == nil, 'no stance menu row off AXI')
+assert(stance.label('PLD','divineguard') == nil, 'nor a Paladin one')
 os.remove(tmp)
-print('OK -- Set Type: stance and Composure scoring, totals, defaults, persistence, migration, rename, export/import and the menu')
+print('OK -- Set Type: stance, Composure, Divine Guard and Divine Fury scoring, totals, defaults, persistence, migration, rename, export/import and the menu')

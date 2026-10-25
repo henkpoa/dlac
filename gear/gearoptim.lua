@@ -449,7 +449,7 @@ local UNBOUND_PRIO = {};                 -- priority-list sentinel
 M._weights  = M._weights or UNBOUND_W;   -- ACTIVE points table (follows the binding)
 M._perSet   = M._perSet or {};           -- '<JOB>|<SetName>' -> weights table
 M._boundKey = nil;                       -- current binding, nil = none
-M._typePerSet = {};                      -- key -> 'ws1' | 'stance' | 'composure'; absent = 'normal' (the Set Type)
+M._typePerSet = {};                      -- key -> 'ws1' or a stance type id; absent = 'normal' (the Set Type)
 
 -- Priority-list mode (2026-07-17, the "simple" weights): an ORDERED stat list --
 -- top matters most, each entry optionally capped -- for people the pts/cap point
@@ -475,9 +475,13 @@ local activeWeights;         -- forward: the mode-resolved scoring table (points
 -- weapon skill set, where AutoAcc counts the first hit's +100 ACC; 'stance',
 -- planned with the job's stance up, so the pack's stance bonuses join Stats
 -- and weighted builds; 'composure', the same for Red Mage's support stance
--- (2026-10-22). It replaced the Stance Set checkbox, whose ticked sets load
--- as 'stance'.
-M.SET_TYPES = { normal = true, ws1 = true, stance = true, composure = true };
+-- (2026-10-22); 'divineguard' and 'divinefury', Paladin's two stances
+-- (2026-10-25). It replaced the Stance Set checkbox, whose ticked sets load
+-- as 'stance'. The stance ids equal gear\stancestats' TYPES
+-- (tests/stance_sets.lua), listed here so this file loads without it.
+local STANCE_TYPES = { stance = true, composure = true, divineguard = true, divinefury = true };
+M.SET_TYPES = { normal = true, ws1 = true };
+for id in pairs(STANCE_TYPES) do M.SET_TYPES[id] = true; end
 
 function M.setType()
     if ensureWeightsLoaded then ensureWeightsLoaded(); end
@@ -493,10 +497,11 @@ function M.setSetType(t)
 end
 
 -- The Set Type menu for a job: Normal, 1-Hit WS, and each stance the pack
--- has gear for on that job (RDM: Composure, Duelist Stance). A set already
--- typed with a stance keeps its row on a job without one, so it can be set
--- back.
-local STANCE_FALLBACK = { stance = 'Stance', composure = 'Composure' };
+-- has gear for on that job (RDM: Composure, Duelist Stance; PLD: Divine
+-- Guard, Divine Fury). A set already typed with a stance keeps its row on a
+-- job without one, so it can be set back.
+local STANCE_FALLBACK = { stance = 'Stance', composure = 'Composure',
+    divineguard = 'Divine Guard', divinefury = 'Divine Fury' };
 function M.setTypeOptions(job, current)
     local opts = {
         { id = 'normal', label = 'Normal', tip = 'Nothing special.' },
@@ -527,7 +532,7 @@ end
 
 function M.stanceContext(level, job)
     local t = M.setType();
-    local on = t == 'stance' or t == 'composure';
+    local on = STANCE_TYPES[t] == true;
     local boundJob = M._boundKey and M._boundKey:match('^([^|]+)|');
     return { level = level, job = job or boundJob,
         stanceSet = on and (job == nil or job == boundJob),

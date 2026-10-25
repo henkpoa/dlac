@@ -11493,3 +11493,43 @@ added + run the scripts."
   not the retail Berserk latents of the War. Calligae +1/+2 and Conqueror. The
   ability picker still lacks module-SQL abilities (Subjugate, Primal Font,
   Power Trip).
+
+## 2026-10-25: the October 25 AscensionXI refresh, Paladin's Set Types (`2026.10.25a`)
+
+Henrik: "go through what has been done on DLAC since last AXI deploy, as well
+as AXI PRs for new gear (paladin AF, relic, onslaught etc)", then, mid-run:
+"You need to add the new stances as well, in the set types, divine guard and
+divine fury."
+
+- **Since the last prod deploy** (10-22 20:02, DAT channel `sha-438df17c91b1`,
+  which pins `ba9b9a0`): dlac main is tree-identical to that pin. The new DLAC
+  work is #224 (AutoAcc skill-up, `2026.10.23a`), #225 (the Paladin gauge and
+  Divine Elements helper) and this refresh. 12 AXI merges since the prod
+  image. Four touch DLAC: #1061 (Paladin opens, with its Onslaught weapons and
+  Artifact/relic gear), #1054 (Divine Guard and Divine Fury), #1058 (the
+  Rekindled Rapiers' stance stats, Composure and Focus at 20) and #1059
+  (Spellchain, no gear).
+- **The pack regenerated** from AXI main `5add37d501`: 8 weapons added, 14
+  records changed, 13 latent items added. Three latent stats came out raw
+  (`PLD_LIGHT_DURATION`, `COVER_MAGIC_ON_USE`, `SKILLCHAINBONUS`). The pin PR
+  maps them in AXI's `modtable.py`, to `PaladinLightDuration` (new, "PLD Light
+  Dur."), `CoverMagicRanged` and `SkillchainDamage`. `catalog_stat_mapping`
+  only checked catalog stats, so it now refuses a raw name in the latent rows
+  too.
+- **Set Types Divine Guard and Divine Fury.** Latent 30002 is "exactly this
+  stance power", 1 Guard and 2 Fury, and both stances share one buff. They
+  replace each other, so each gets its own Set Type and table, as Composure
+  did. The stance ids live in one list, `stancestats.TYPES`, and
+  `gearoptim.SET_TYPES` and `stanceContext` now derive from it instead of
+  naming `stance` and `composure`. Paladin's menu reads Normal / 1-Hit WS /
+  Divine Guard / Divine Fury. The legacy `stancePerSet` block still lists
+  `stance` sets only.
+- **The Rekindled Rapiers** join Duelist Stance (Enhancing skill and Enspell
+  damage) and Composure (INT/MND). Without them, this pack would have planned
+  the rapiers with no stats at all.
+- `tests/stance_sets.lua`'s parity check used to assert every row of a latent
+  at one power. Paladin's latent carries two powers, so each table now claims
+  its `(cond, power)`, and every stance latent row in the pack must be claimed
+  by some table. Ten mutations went red.
+- Divine Elements' `weaponskills.lua` (#225), regenerated from AXI main with
+  `tools/dlac-weaponskills.py`, comes back identical.

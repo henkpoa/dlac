@@ -4,6 +4,54 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, October 25, 2026
+
+DLAC `2026.10.25a` regenerates the complete pack from AscensionXI main
+`5add37d501` (after #1061), with the generator mapping in the October 25 pin
+PR. The `tools/dlac-pack` tests pass (56). 15,475 records (8 added, 14
+changed, none removed), 885 latent-stat items (13 added, 1 changed), 8 new
+icons.
+
+- **Paladin's Onslaught weapons (#1061):** Forsaken Sword and Forsaken
+  Gt.Sword (Lv10), Rekindled Sword and Rkndl. Gt.Sword (Lv10), the +1s (Lv20)
+  and the +2s (Lv30), ids 19998-20005, each with its icon.
+- **Paladin's Artifact and relic gear (#1061):** Honor Sword at 40 (DMG 31).
+  The five Gallant pieces at 50 and the five Valor pieces at their retail
+  levels get new base lines. Each piece also has a Divine Guard line and a
+  Divine Fury line (latent 30002, `PLD_STANCE_EXACTLY`, power 1 and 2), so
+  Enmity, Cover, Rampart, Shield Bash and Sentinel move out of the plain
+  stats.
+- **Rekindled Rapiers (#1058):** the plain INT/MND is gone. Composure gives
+  INT/MND (latent 30001), and Focus or Trance gives Enhancing skill and
+  Enspell damage (latent 30000).
+- Venery Bow's Skillchain damage latent reads `SkillchainDamage` instead of
+  the raw `SKILLCHAINBONUS`.
+
+Three of #1061's latent stats had no DLAC name. The pin PR maps them in
+`tools/dlac-pack/modtable.py`, and `statdefs` and `modaliases` register
+them:
+
+| Server modifier | Catalog key | Label |
+|---|---|---|
+| `PLD_LIGHT_DURATION` (30017) | `PaladinLightDuration` | PLD Light Dur. (new) |
+| `COVER_MAGIC_ON_USE` (30018) | `CoverMagicRanged` | Cover M/R |
+| `SKILLCHAINBONUS` (174) | `SkillchainDamage` | SC Dmg |
+
+`catalog_stat_mapping` now also refuses a raw name in the latent rows.
+
+The hand-kept `stances.lua` follows the server. Paladin gets two Set Types,
+**Divine Guard** and **Divine Fury**, each with its ten pieces' rows. The
+Rekindled Rapiers join Duelist Stance and Composure. `tests/stance_sets.lua`
+holds each table equal to its latent rows both ways, and now fails on any
+stance latent row that no table claims.
+
+Still not in DLAC:
+
+- `abilities.lua` and `spells.lua` read stock SQL only. The Triggers browse
+  list still shows Composure at 50 (the server says 20 since #1058) and has
+  none of Paladin's new abilities (Divine Guard, Divine Fury, Palisade, the
+  divine elements and Lights). Typed action names still work.
+
 # AscensionXI catalog refresh, October 22, 2026
 
 DLAC `2026.10.22b` regenerates the complete pack from AscensionXI main
