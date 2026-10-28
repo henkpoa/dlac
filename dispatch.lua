@@ -47,7 +47,7 @@ M._loadStamp = M._loadStamp or string.format('%d:%.3f', os.time(), os.clock());
 -- against the addon-state copy and shows "Reload LAC" when LAC is running stale
 -- code. From v32 the engine self-swaps when the seeded file's version moves, so
 -- the banner should only persist when a swap FAILED (or pre-v32 code is live).
-M.VERSION = 173;  -- 173: A 1-HIT WS SET LETS AUTOACC COUNT THE FIRST HIT'S +100 (2026-10-18, AscensionXI; Henrik: "1-Hit WS though, should assume that there is a +100 ACC for the feature of auto acc"). The Sets tab's Set Type (gear\gearoptim, per job and set: Normal / 1-Hit WS / the job's stance) replaced the Stance Set checkbox. equipSetByName puts the set's name on ctx while it resolves, so each AutoAcc candidate's meta carries the set it came from; at a Weaponskill send M._autoAccApply asks M._setTypeOf for each candidate and tells the provider whether the skill is ranged (the M._ammoWs lists). The provider then releases only candidates from 1-Hit WS sets, on the weapon skill's own hits (servers\ascensionxi\modules\telemetry\autoacc.lua). Every other non-Default event still keeps every piece on, and CatsEyeXI's dormant budget is untouched. Tests AAD11*, AA-37*.  -- 172: THE PET'S ELEMENT MEETS THE DAY AND THE WEATHER (2026-10-17, Henrik: "like dayWeatherBonus, weatherMatch and dayMatch, but for pets" -- mainly Summoner). Three conditions, petDayWeatherBonus / petWeatherMatch / petDayMatch, run the three environment tests against YOUR PET's element instead of the action's, so they hold in Default (the idle perpetuation set: Summoner's Doublet is perpetuation -3 on the avatar's day, Summoner's Horn -3 in its weather) as well as in Ability and PetAction. The element is M.PET_ELEMENT off the pet's name (the server's pet_list.element: spirits and avatars carry one, jug pets / wyvern / automatons / luopans none). The day and weather reads are the SAME cached ctx.del / ctx.wel the action conditions use -- weatherMatchesAction/dayMatchesAction became weatherMatchesElement/dayMatchesElement(ctx, el) -- so nothing can disagree about the world inside one dispatch. No pet, a pet without an element, or an unreadable day/weather matches NEITHER polarity. Tier 24: one step above petStatus, under moving. ADR 0038. Tests PE*.  -- 171: THE BAGS ARE KEPT, NOT WALKED (2026-10-13, the stutter report). bagCounts answers from featureagindex (one walk at load / zone-in / size change, then only the slot an inventory packet names is read again), and the avail alias map re-keys on the index version. The fired ring is written at UNLOAD only (M.getFired hands the Trigger Monitor the live ring), and the /dlacmonev line stream (_monQ) is gone. Tests BIX*, PF*.  -- 170: AUTOACC DECIDES AT THE ONE SEND (2026-10-05, AscensionXI). A piece typed AutoAcc yields its slot to its fallback only when the server's combat telemetry proves the whole outfit still reaches the hit cap (servers\ascensionxi\modules\telemetry, the serverpack service 'autoacc'; docs/design/ascensionxi-combat-telemetry-autoacc.md). With the service present the dormant budget stands down: every typed piece is planned ON, equipResolved carries each slot's candidate (typed, fallback, removal priority) into ctx.planAcc beside ctx.planOut -- the slot's LAST writer decides, so a claim that overwrites the slot drops the candidate -- and M._autoAccApply asks the service once, at the send, on the composed outfit (Free-equip slots read as worn). Default only; locks and weapon slots never release. The provider's revision is the newest retrace leg ('|aa'), and its per-slot reasons ride /dl why. Without the service (CatsEyeXI, or telemetry off) nothing changes. Tests AA*, AAD*.  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
+M.VERSION = 174;  -- 174: A COVERED SLOT RIDES WITH ITS RESERVER (2026-10-28, Teon's RDM report; Henrik: "I believe there is an issue here with max MP when using royal cloak"). Royal Cloak is a Body piece that also covers Head. The idle set named no Head, so MaxMP banded Head alone: Warlock's Chapeau went on mid-pool as a deep plain band, the hat knocked the cloak off, the backup Faerie Tunic +1 covers Head too, and the body stayed EMPTY until the Body band fired at a full pool -- Refresh 2 gone through the whole refill for about the MP the cloak itself gave. mpLowMap now records every slot a trigger-reachable set piece covers besides its own (resv, in the world signature), and mpbands.couple folds the covered slot into the band of the slot that covers it: Chapeau + Tabard against the cloak, one band, the cloak's refresh in its rfDelta, so it floats shallowest -- on together at the top, off together first. A covered slot whose reserver slot has no battery (or whose reserver battery covers it too) gets no band, and /dl plan says why. The MaxMP row's apply never stages a covered part whose reserver part was gated off. Tests MB14*, MPL7*, ARE6*.  -- 173: A 1-HIT WS SET LETS AUTOACC COUNT THE FIRST HIT'S +100 (2026-10-18, AscensionXI; Henrik: "1-Hit WS though, should assume that there is a +100 ACC for the feature of auto acc"). The Sets tab's Set Type (gear\gearoptim, per job and set: Normal / 1-Hit WS / the job's stance) replaced the Stance Set checkbox. equipSetByName puts the set's name on ctx while it resolves, so each AutoAcc candidate's meta carries the set it came from; at a Weaponskill send M._autoAccApply asks M._setTypeOf for each candidate and tells the provider whether the skill is ranged (the M._ammoWs lists). The provider then releases only candidates from 1-Hit WS sets, on the weapon skill's own hits (servers\ascensionxi\modules\telemetry\autoacc.lua). Every other non-Default event still keeps every piece on, and CatsEyeXI's dormant budget is untouched. Tests AAD11*, AA-37*.  -- 172: THE PET'S ELEMENT MEETS THE DAY AND THE WEATHER (2026-10-17, Henrik: "like dayWeatherBonus, weatherMatch and dayMatch, but for pets" -- mainly Summoner). Three conditions, petDayWeatherBonus / petWeatherMatch / petDayMatch, run the three environment tests against YOUR PET's element instead of the action's, so they hold in Default (the idle perpetuation set: Summoner's Doublet is perpetuation -3 on the avatar's day, Summoner's Horn -3 in its weather) as well as in Ability and PetAction. The element is M.PET_ELEMENT off the pet's name (the server's pet_list.element: spirits and avatars carry one, jug pets / wyvern / automatons / luopans none). The day and weather reads are the SAME cached ctx.del / ctx.wel the action conditions use -- weatherMatchesAction/dayMatchesAction became weatherMatchesElement/dayMatchesElement(ctx, el) -- so nothing can disagree about the world inside one dispatch. No pet, a pet without an element, or an unreadable day/weather matches NEITHER polarity. Tier 24: one step above petStatus, under moving. ADR 0038. Tests PE*.  -- 171: THE BAGS ARE KEPT, NOT WALKED (2026-10-13, the stutter report). bagCounts answers from featureagindex (one walk at load / zone-in / size change, then only the slot an inventory packet names is read again), and the avail alias map re-keys on the index version. The fired ring is written at UNLOAD only (M.getFired hands the Trigger Monitor the live ring), and the /dlacmonev line stream (_monQ) is gone. Tests BIX*, PF*.  -- 170: AUTOACC DECIDES AT THE ONE SEND (2026-10-05, AscensionXI). A piece typed AutoAcc yields its slot to its fallback only when the server's combat telemetry proves the whole outfit still reaches the hit cap (servers\ascensionxi\modules\telemetry, the serverpack service 'autoacc'; docs/design/ascensionxi-combat-telemetry-autoacc.md). With the service present the dormant budget stands down: every typed piece is planned ON, equipResolved carries each slot's candidate (typed, fallback, removal priority) into ctx.planAcc beside ctx.planOut -- the slot's LAST writer decides, so a claim that overwrites the slot drops the candidate -- and M._autoAccApply asks the service once, at the send, on the composed outfit (Free-equip slots read as worn). Default only; locks and weapon slots never release. The provider's revision is the newest retrace leg ('|aa'), and its per-slot reasons ride /dl why. Without the service (CatsEyeXI, or telemetry off) nothing changes. Tests AA*, AAD*.  -- 169: THE NEXUS LOCK RIDES THE CRAFT ROW (2026-10-04, AscensionXI). Nexus names the next synth's crafts over plugin_event; feature\nexuslink picks the recipe-wide pieces (feature\craftpick, weakest craft first) and holds them until the player moves. The Craft row's ensure reads that lock first (craftRowState), claims its picks (craftRowClaim), and falls back to the manual craft pick when there is none -- same rank, same Locks and Free equip, same /dl why. Tests NX*. (Two M fields, M._craftRowState / M._craftRowClaim, not locals: the main chunk sits at Lua's 200-local ceiling.)  -- 168: select category-specific numeric gathering ladders.  -- 167: THE MODE LOCK QUEUE REACHES BOTH MONITORS (Henrik: "where do I see the queue for the mode lock?"). It was in exactly one place -- the Mode Locks window, which is the surface you are LEAST likely to be looking at while playing. The monitors both named only the winner, so a slot doing something surprising gave no hint that another active mode was waiting behind it, which is the same invisibility the loser list existed to prevent. The queue now rides the DECISION RECORD (contest.mlq, captured at ensure time via the one door M.modeLockLive, which stashes it beside the plan): the Arbiter Monitor renders stashed records -- pinned historical ones included -- and deriving the queue live there would show TODAY's answer under a decision from ten minutes ago, the same law as the ladders and the reserve verdict. It is also a SIGNATURE LEG, for the rank-order leg's reason (v152): a mode that queues moves no gear and no claim, so without it the trace and /dl why would keep saying nobody waits until something unrelated happened to move. It deliberately does NOT enter the decision fingerprint -- the ring appends on a moved OUTCOME, and a queue-only record with zero changed slots is the v163 symptom rather than a feature; a queue that forms while nothing moves reaches /dl why immediately and reaches the ring on the next real decision. Renderers: the Arbiter Monitor draws a 'q' marker on the cell in BOTH grid modes (the fall-marker precedent -- a slot with someone waiting is exactly what you would never think to hover) and names holder + waiter in the hover; the Trigger Monitor's locks line grows an '(n queued)' count with the detail on hover, its IsItemHovered taken BEFORE the suffix is drawn so the tooltip stays on the held list. Tests MDL23-MDL26b, smoke AM8a-AM8e + MLK14-MLK16.
                   -- 166: MODE LOCKS, FIRST COME FIRST SERVE (Henrik, 2026-08-03): "we will come into situations where we maybe have conflicting modes active... the one who took the slot lock first should get it, the rest stand in queue basically." v165 resolved a contested slot by sorted condition -- deterministic, but the alphabet is not fairness, and 'DT' beating a Weapon cycle that had held the slot for an hour is exactly the arbitrary answer that ruling rejects. So modes now carry an ACTIVATION CLOCK: M.modeSeq, one counter per mode NAME, stamped when its flag last CHANGED, and modeLockPlan walks conditions in that order. Stamped on CHANGE and never on re-assertion -- a macro re-asserting a mode every pull must not send it to the back of the queue -- and cleared when the mode goes off, because turning it back on is genuinely taking the slot again. A cycle VALUE change re-stamps: the lock is keyed by condition, so Weapon:Melee -> Weapon:Caster really is a different lock taking the slots. THE QUEUE NEEDS NO STATE: the plan is rebuilt every dispatch, so when the holder's mode goes off the next in line simply wins the next walk -- nothing remembers a queue, and nothing has to be re-armed. The clock rides the modestate mirror as `__seq` (loadModeState restores it, advances the counter past the highest, and sweeps any unstamped flag) because the GUI computes the same plan in the other Lua state: without it the Mode Locks window would order a contested slot alphabetically while the engine ordered it by the clock, and name the wrong winner. Every flag write now goes through the ONE seam M.modeSet so the clock cannot be forgotten at one of the six assignment sites. Ties (two flags restored from one mirror) still break alphabetically -- deterministic first, fair second. Also: gear\modeslibrary.applyStamp no longer EATS a job's mode locks (it rebuilt the definition from the plan, deleting them on Append too -- the branch that promises nothing disappears); locks belong to the job and ride a stamp untouched, and only an Overwrite killing a cycle value strips that value's. And profileexport.triggerRefs now reports `modeSets`, so the export form disables MODES (not Triggers -- a lock travels with the Modes section, Triggers need not be selected at all) when Sets is unticked. Tests MDL1-MDL22, ML44a-ML44f, PX9a-PX9g, smoke MLK1-MLK13.
                   -- 165: MODE LOCKS -- "once that mode is active, this piece MUST ALWAYS stay on" (Henrik, 2026-08-03). A very common problem when building sets: some slots must be immune to every trigger rule while a mode holds -- his caster mode swaps weapons on every pull, his melee mode must never see one move, and the only way to express that today is to teach every rule in the file to keep its hands off Main/Sub. So a mode definition now carries `locks = { ["Weapon:Melee"] = { Main = "MeleeWpn" } }`, keyed by the exact `mode` CONDITION string the rules already use -- which makes the activity test M.modeActive itself (one primitive, not a second dialect of "is this mode on") and makes the ADR 0019 cascade free, because deleting the mode or dropping a cycle value takes its locks with it: they are the same table. It arrives as an ORDINARY CLAIMANT (`ModeLock`), not a floor special case: one rank row shipping directly above External, one claim table, no new arm and no new state file. That buys the Arbiter Monitor grid, the /dl why contest, the Priority list and the fall-down-its-own-ladder behaviour with no new code in any of them -- and it means a player who wants the lock to beat their armed craft bench drags the row up instead of asking for a setting. Claims on EVERY event (Pins' and Naked's reason: a lock that let go mid-cast would not be a lock). A lock naming a set with no entry for its slot claims nothing and the floor keeps it -- the Mode Locks window flags that in red at edit time, which is the only place it can still be fixed. Two active modes naming one slot resolve by sorted condition, first keeps it, loser reported: arbitrary but STABLE, where pairs() order would land differently on two dispatches with nothing changed. Also here: the claimant sig legs take the ensure STATE as a third argument (which mode holds a slot has to retrace even when the item name does not), rows may supply an `rlabel` so a fall names the SET rather than the row, and the slot-canon map moved to its vocabulary owner (arbiter.CANON_OF) instead of a third inline copy. Tests ML1-ML22, smoke MLK1-MLK13.
                   -- 164: THE SECOND COPY IS A LIVE FACT, NOT A STAMP (Coffeepoo's field report, 2026-08-03: two Bone Knives +1, the Main took one and the Sub stayed as worn, while equipping the off-hand BY HAND worked). Dual Wield was up and the set was right; the refusal was ours. utils.subSlotAllowed's same-name off-hand case wants proof of a second copy, and the flatten offered it nothing but the record's `Count` -- a stamp renderEntry writes ONCE, at first index, and that no command can refresh: /dl sync is add-only (an already-known item is skipped) and /dl fix backfills CATALOG facts only, as it must, because "how many do you own" is not one. Acquire the twin AFTER the first was indexed and dlac could never learn about it -- there was no supported path back, only a hand edit. So the flatten reads the bags instead (M.bagCopies over the existing per-second cache, equip-eligible containers, worn pieces included), which is the 2026-08-01 Pair/RSlot ruling applied to the one fact that is genuinely per-player: read it, do not make them run a migration for it. The read only ever ADDS evidence -- subSlotAllowed takes the best of ctx.copies and Count -- so a stamped file behaves identically, an unreadable scan falls back to the stamp rather than demoting gear, and nothing that pairs today can stop pairing. Only asked when the two names actually match, so the ordinary off-hand costs no lookup. Tests LD6c-LD6h. (Shipped with the gearimport half of the same report: the base Animator is an ALL-JOBS item on this server, so the Range bucket's exact PUP-mask test dropped it from gear.lua entirely -- see gearimport.rangeCategory, tests E29*.)
@@ -2215,12 +2215,28 @@ function M.mpPlanLines(mpCtx, wornOf)
         local rtag = '';
         if (tonumber(b.rfDelta) or 0) > 0 then rtag = ' [refresh]';
         elseif (tonumber(b.rfDelta) or 0) < 0 then rtag = ' [refresh-cost]'; end
+        -- A joint band (a set piece covering two slots) prints as one row:
+        -- body+head: Warlock's Tabard + Warlock's Chapeau.
+        local slotTxt, nameTxt = b.slot, tostring(b.name);
+        for _, p in ipairs(b.parts or {}) do
+            slotTxt = slotTxt .. '+' .. tostring(p.slot);
+            nameTxt = nameTxt .. ' + ' .. tostring(p.name);
+        end
         lines[#lines + 1] = string.format('%d. %s: %s (%d->%d, diff %d)%s   off<=%d  on>=%d   -- %s',
-            i, b.slot, tostring(b.name), b.low or 0, b.high or 0, b.diff or 0,
+            i, slotTxt, nameTxt, b.low or 0, b.high or 0, b.diff or 0,
             rtag, b.offAt or 0, b.onAt or 0, state);
     end
     if #mpCtx.bands == 0 then
         lines[#lines + 1] = '(no bands: every trigger set already wears its slot\'s best battery, or no batteries are owned)';
+    end
+    for _, d in ipairs(mpCtx.dropped or {}) do
+        if d.why == 'battery-covers' then
+            lines[#lines + 1] = string.format('%s: no band -- %s\'s battery %s covers %s too, so the two can never be worn together.',
+                tostring(d.slot), tostring(d.by), tostring(d.piece), tostring(d.slot));
+        else
+            lines[#lines + 1] = string.format('%s: no band -- %s in %s covers it, and %s has no battery to swap in (one here would knock it off).',
+                tostring(d.slot), tostring(d.piece), tostring(d.by), tostring(d.by));
+        end
     end
     lines[#lines + 1] = 'Main/Sub/Range exempt (TP preservation); locked slots get no band. A state that never changes while MP moves = that piece may be unequippable (LAC drops those silently) -- check its bag.';
     return lines;
@@ -2377,7 +2393,13 @@ end
 -- Scans every rule's named sets (through the live gProfile) and inline equip
 -- tables; dlac: virtuals count their fallback piece. TTL-cached 10s -- set
 -- and trigger edits are picked up within a beat, no invalidation plumbing.
-local _mpLow = { at = 0, map = nil, rf = nil };
+-- The same scan records RESERVATIONS (2026-10-28): every slot a set piece
+-- covers besides its own (Royal Cloak in Body covers Head), so the band build
+-- can fold the covered slot into its reserver's band (mpbands.couple).
+local _mpLow = { at = 0, map = nil, rf = nil, resv = nil };
+-- Forward: the RSlot reader lives with the catalog readers further down; the
+-- LOW scan needs it for the reservations.
+local rslotOf;
 -- The maxmp WARM TRACE (v117, Henrik's debug-file rule applied to this fight):
 -- every full LOW-map compute -- boot storm, belief, steady-state expiries --
 -- appends one line to <data home>\debug-mpwarm.txt (fresh file per session,
@@ -2416,9 +2438,9 @@ M._mpWarmNote = mpWarmNote;
 
 local function mpLowMap(mpMap, rfMap)
     -- cache hits are always READY results (unready is never cached below)
-    if _mpLow.map ~= nil and os.time() < _mpLow.at then return _mpLow.map, _mpLow.rf, true; end
+    if _mpLow.map ~= nil and os.time() < _mpLow.at then return _mpLow.map, _mpLow.rf, true, _mpLow.resv; end
     _mpLow.at = os.time() + 10;
-    local low, lowRf = {}, {};
+    local low, lowRf, resv = {}, {}, {};
     local _mpLowReady = false;
     local _ruleN, _setN = 0, 0;   -- world-signature inputs (v116)
     local _rulesState, _setsState = '?', '?';   -- warm-trace attestation detail (v117)
@@ -2449,6 +2471,19 @@ local function mpLowMap(mpMap, rfMap)
                     -- tag vanished and the Hlr.-over-Clr. band sorted deep and
                     -- plain, firing at MP ~800 (field round 13).
                     if rfv > (lowRf[lslot] or 0) then lowRf[lslot] = rfv; end
+                    -- What else the piece covers. Weapons never reserve here:
+                    -- Range/Ammo is the pair law's (the arbiter's), and the
+                    -- weapon slots are exempt above.
+                    local mask = (rslotOf ~= nil) and (tonumber(rslotOf(nm)) or 0) or 0;
+                    if mask > 0 then
+                        for _, e in ipairs(ARB.RSLOT_ORDER) do
+                            local cs = string.lower(e[2]);
+                            if cs ~= lslot and MP_SLOT_CANON[cs] ~= nil and ARB.hasBit(mask, e[1]) then
+                                resv[cs] = resv[cs] or {};
+                                resv[cs][lslot] = resv[cs][lslot] or nm;
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -2525,6 +2560,9 @@ local function mpLowMap(mpMap, rfMap)
     for k, v in pairs(low) do
         sigParts[#sigParts + 1] = k .. '=' .. tostring(v) .. ':' .. tostring(lowRf[k] or 0);
     end
+    for cs, froms in pairs(resv) do
+        for sl in pairs(froms) do sigParts[#sigParts + 1] = 'r' .. cs .. '<' .. sl; end
+    end
     table.sort(sigParts);
     -- flatten counts ride the signature too (v118 belt): a store identity
     -- change (0 flats -> 20 flats) can never share a signature with its
@@ -2576,8 +2614,8 @@ local function mpLowMap(mpMap, rfMap)
     if not _mpLowReady then
         _mpLow.at = 0;   -- never cache an unbelieved answer
     end
-    _mpLow.map, _mpLow.rf = low, lowRf;
-    return low, lowRf, _mpLowReady;
+    _mpLow.map, _mpLow.rf, _mpLow.resv = low, lowRf, resv;
+    return low, lowRf, _mpLowReady, resv;
 end
 
 -- Every wearable, non-pair-vetoed rung of a slot's battery ladder (v90) --
@@ -2630,7 +2668,7 @@ function M.mpBands(ctx)
     local rfMap = (type(a.rf) == 'table') and a.rf or {};
     local cur, maxLo, full = playerMP();
     local lvl = playerLevel(ctx or {});
-    local low, lowRf, lowReady = mpLowMap(mpMap, rfMap);
+    local low, lowRf, lowReady, resv = mpLowMap(mpMap, rfMap);
     -- READINESS GATE (v114; widened v115): no ladder from a half-loaded
     -- world -- the order is a pure function of manifest + sets + rules
     -- (Henrik's spec), so until all three are attested this answers nil: the
@@ -2683,10 +2721,30 @@ function M.mpBands(ctx)
                 slots[#slots + 1] = { slot = lslot, rungs = rr,
                                       low = low[lslot] or 0,
                                       lowRf = lowRf[lslot] or 0 };
-                local w = wornItemName(lslot);
-                local wmp = (w ~= nil) and (mpMap[string.lower(w)] or 0) or 0;
-                sumHead = sumHead + math.max(0, (rungs[1].mp or 0) - wmp);
             end
+        end
+    end
+    -- Reserved slots ride with their reserver (mpbands.couple): Head joins
+    -- Body's band when a set's Body piece covers Head, or loses its band when
+    -- Body has no battery to swap in. `dropped` feeds /dl plan.
+    local dropped = nil;
+    if type(_mpb.couple) == 'function' then   -- an engine self-swap can meet an older cached module
+        slots, dropped = _mpb.couple(slots, resv, function(name, cs)
+            local m = tonumber(rslotOf(name)) or 0;
+            for _, e in ipairs(ARB.RSLOT_ORDER) do
+                if string.lower(e[2]) == cs then return ARB.hasBit(m, e[1]); end
+            end
+            return false;
+        end);
+    end
+    -- TOTAL's headroom: every battery that still has a band, joint parts too.
+    for _, s in ipairs(slots) do
+        local parts = { s };
+        for _, w in ipairs(s.with or {}) do parts[#parts + 1] = w; end
+        for _, p in ipairs(parts) do
+            local w = wornItemName(p.slot);
+            local wmp = (w ~= nil) and (mpMap[string.lower(w)] or 0) or 0;
+            sumHead = sumHead + math.max(0, ((hi[p.slot] or {}).mp or 0) - wmp);
         end
     end
     local predWorn = nil;
@@ -2722,7 +2780,7 @@ function M.mpBands(ctx)
         moving = (ctx ~= nil and ctx.player ~= nil) and (ctx.player.IsMoving == true)
                  or (gData.GetPlayer().IsMoving == true);
     end);
-    local mpc = { bands = bands, target = target, hi = hi,
+    local mpc = { bands = bands, target = target, hi = hi, dropped = dropped,
              cur = cur, total = wornMax + sumHead, tick = tick, low = low,
              resting = resting, mpMap = mpMap, mpBest = mpBest,
              moveYield = (a.mpMoveYield == true),
@@ -2774,6 +2832,12 @@ function M.mpBandFind(bands, lslot, name)
         if b.slot == lslot and b.name ~= nil and name ~= nil
            and string.lower(tostring(b.name)) == string.lower(tostring(name)) then
             return b;
+        end
+        for _, p in ipairs(b.parts or {}) do   -- a joint band's covered part
+            if p.slot == lslot and p.name ~= nil and name ~= nil
+               and string.lower(tostring(p.name)) == string.lower(tostring(name)) then
+                return b;
+            end
         end
     end
     return nil;
@@ -3197,8 +3261,9 @@ end
 -- guarded at every step -- no manifest, no catalog, no Id, or an item the crawl
 -- never saw all answer nil, which every consumer reads as "no reservation", so
 -- the engine degrades to exactly what it did before rather than misfiring.
+-- (Declared up with the maxmp LOW map, which reads it too.)
 local _gearMod = nil;
-local function rslotOf(name)
+function rslotOf(name)
     if _gearMod == nil then
         _gearMod = false;
         pcall(function() _gearMod = require('dlac\\gear') or false; end);
@@ -6898,6 +6963,27 @@ local CLAIMANTS = {
                   gnotes[#gnotes + 1] = string.format('%s: MP-SKIP %s (reserves occupied %s)',
                       tostring(sk.c.lslot), tostring(sk.c.name), tostring(sk.blocking));
               end
+          end
+          -- A joint band's covered part never goes on alone (mpbands.couple):
+          -- if a gate above kept the reserver slot's battery off, the set's
+          -- cloak stays, and a hat there would only knock it off.
+          local rideOf, staged = {}, {};
+          for _, b in ipairs(mpc.bands or {}) do
+              for _, p in ipairs(b.parts or {}) do rideOf[p.slot] = b.slot; end
+          end
+          for _, up in ipairs(eligible or {}) do staged[up.lslot] = true; end
+          if next(rideOf) ~= nil then
+              local kept = {};
+              for _, up in ipairs(eligible or {}) do
+                  local with = rideOf[up.lslot];
+                  if with ~= nil and not staged[with] then
+                      gnotes[#gnotes + 1] = string.format('%s: MP-SKIP %s (rides with %s, which stays)',
+                          tostring(up.lslot), tostring(up.name), tostring(with));
+                  else
+                      kept[#kept + 1] = up;
+                  end
+              end
+              eligible = kept;
           end
           local eq = nil;
           for _, up in ipairs(eligible or {}) do eq = eq or {}; eq[up.slot] = up.name; end

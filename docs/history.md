@@ -11533,3 +11533,40 @@ divine fury."
   by some table. Ten mutations went red.
 - Divine Elements' `weaponskills.lua` (#225), regenerated from AXI main with
   `tools/dlac-weaponskills.py`, comes back identical.
+
+## 2026-10-28: MaxMP never puts a hat on over a hooded body (`2026.10.28a`, engine v174)
+
+Henrik, with Teon's `/dl report` (RDM75, AscensionXI): "I believe there is an
+issue here with max MP when using royal cloak." Then: "Go by your
+recommendation (this should affect both CEXI and AXI behaviour)."
+
+- **What the report showed.** Teon's Idle set wears Royal Cloak (Faerie Tunic +1
+  below it), and both cover Head. The set names no Head. MaxMP banded Head on
+  its own, so Warlock's Chapeau (+25) read as a free, deep, plain band and went
+  on at about 87% MP. MaxMP outranks Triggers, so the cloak was ruled
+  INELIGIBLE ("reserves Head, which a higher claim owns"), the tunic below it
+  too, and the body stayed **empty** until the Body band put Warlock's Tabard
+  on at 100%. In the log, #22 → #23 → #30 shows 66 seconds bare, and it
+  repeated after every cast. The trade was about even on MP (25 against the
+  cloak's 20 + 1%) and cost Refresh 2 through the whole refill.
+- **The fix**, in the engine both servers share: a covered slot rides with its
+  reserver. `mpLowMap` records the slots each set piece covers, and
+  `mpbands.couple` folds Head into Body's band, so Chapeau + Tabard against
+  the cloak is one refresh-cost band. They go on together at the top and come
+  off together first. A covered slot whose reserver slot has no battery gets no
+  band at all, and `/dl plan` says why. The MaxMP row never stages the covered
+  part when the reserver part is gated off. Design: `docs/design/maxmp-mode.md`
+  "Covered slots ride with their reserver", ruling 9, museum #10.
+- **Checked end to end**: the whole addon, headless, on the AscensionXI pack.
+  It ran Teon's RDM sets and triggers verbatim (from the report) with the
+  server's slot rule (a hat strips a hooded body and the other way round), plus
+  three cycles of three Cure IVs. On the old main the Chapeau went on at 90% MP
+  and the body sat empty for 39 s every cycle. On this branch the cloak holds
+  until the pair goes on together at 95%, and it is back the moment the first
+  Cure lands.
+- Asked in the same message: "port the feature to CEXI that shows ammo in the
+  floating armor menu". There was nothing to port. The ammo count (#182,
+  2026-09-27) is shared code on main with no server gate, and the CEXI ZIP
+  packages `ui/` whole. Henrik's own CatsEyeXI client is a git checkout at
+  `2026.09.09a`, which predates #182, with uncommitted local edits. Left for
+  him to update.
