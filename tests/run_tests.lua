@@ -1315,6 +1315,24 @@ check('MPL5 dead-zone empty slot reads off',
     string.find(lines[2], '-- off', 1, true) ~= nil, true);
 check('MPL6 no context -> self-heal hint',
     string.find(dispatchM.mpPlanLines(nil)[1], 'no battery data', 1, true) ~= nil, true);
+-- MPL7: a joint band (a cloak covering Head) prints as ONE row naming both
+-- batteries, and a covered slot that lost its band says why.
+local jbands = mb.build(mb.couple({
+    { slot = 'body', low = 0, lowRf = 2, rungs = { { name = 'Warlock\'s Tabard', mp = 25, rf = 0 } } },
+    { slot = 'head', low = 0, lowRf = 0, rungs = { { name = 'Warlock\'s Chapeau', mp = 25, rf = 0 } } },
+}, { head = { body = 'Royal Cloak' } }), 1000, 15);
+local jl = dispatchM.mpPlanLines({ bands = jbands, cur = 1000, total = 1000, tick = 15,
+    target = {}, hi = {}, mpMap = {},
+    dropped = { { slot = 'legs', by = 'body', piece = 'Suit', why = 'no-band' } } }, function() return nil; end);
+check('MPL7 the joint band is one row naming both batteries',
+    string.find(jl[2], '1. body+head: Warlock\'s Tabard + Warlock\'s Chapeau (0->50, diff 50) [refresh-cost]', 1, true) ~= nil, true);
+check('MPL7b a dropped covered slot says why',
+    (function()
+        for _, l in ipairs(jl) do
+            if string.find(l, 'legs: no band -- Suit in body covers it', 1, true) ~= nil then return true; end
+        end
+        return false;
+    end)(), true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -1560,6 +1578,85 @@ check('MB13g equal-MP pick prefers the refresh copy',
     mb.build({ { slot = 'x', low = 0, lowRf = 0,
         rungs = { { name = 'Flat', mp = 30, rf = 0 },
                   { name = 'Rf Copy', mp = 30, rf = 1 } } } }, 100, 0)[1].name, 'Rf Copy');
+
+-- MB14: RESERVED SLOTS RIDE WITH THEIR RESERVER (2026-10-28, Teon's RDM
+-- report). Idle Body = Royal Cloak (MP 20, Refresh 2), which covers Head; the
+-- idle set names no Head. Banded alone, Warlock's Chapeau (+25) read as a free
+-- deep band, went on mid-pool, knocked the cloak off and left the body EMPTY
+-- until the Body band fired at the top. Coupled, Chapeau + Tabard are one band
+-- against the cloak: on together at the top, off together first.
+local teon = {
+    { slot = 'body', low = 0, lowRf = 2, rungs = { { name = 'Warlock\'s Tabard', mp = 25, rf = 0 } } },
+    { slot = 'head', low = 0, lowRf = 0, rungs = { { name = 'Warlock\'s Chapeau', mp = 25, rf = 0 } } },
+    { slot = 'feet', low = 0, lowRf = 0, rungs = { { name = 'Duelist\'s Boots', mp = 15, rf = 0 } } },
+};
+local cloak = { head = { body = 'Royal Cloak' } };
+local cs, gone = mb.couple(teon, cloak);
+check('MB14 the covered slot folds into its reserver: two entries left', #cs, 2);
+check('MB14b nothing dropped while Body has a battery', gone, nil);
+local joint = mb.build(cs, 1000, 15);
+local jb = (joint[1].slot == 'body') and joint[1] or joint[2];
+check('MB14c one band for body+head',
+    jb.slot .. '+' .. ((jb.parts or {})[1] or {}).slot .. ':' .. tostring(jb.name) .. '+' .. tostring(((jb.parts or {})[1] or {}).name),
+    'body+head:Warlock\'s Tabard+Warlock\'s Chapeau');
+check('MB14d the joint diff counts both batteries', jb.diff, 50);
+check('MB14e the cloak\'s refresh makes it a refresh-cost band', jb.rfDelta, -2);
+check('MB14f refresh-cost floats shallowest: on last, off first', joint[1].slot, 'body');
+local wearCloak = function(sl) if sl == 'body' then return 'Royal Cloak'; end return nil; end
+local wearPair = function(sl)
+    if sl == 'body' then return 'Warlock\'s Tabard'; end
+    if sl == 'head' then return 'Warlock\'s Chapeau'; end
+    return nil;
+end
+-- Below the top (the field's mid-refill hat moment): the cloak stays, no hat,
+-- while the plain feet battery below it climbs on its own. Thresholds: body
+-- joint off<=935 on>=950, feet on>=935.
+local mid = mb.target(joint, 940, wearCloak);
+check('MB14g below the top: neither goes on (the cloak keeps Head)',
+    tostring(mid.body) .. ',' .. tostring(mid.head), 'false,false');
+check('MB14h the feet battery still climbs on its own', mid.feet, 'Duelist\'s Boots');
+local top = mb.target(joint, 1000, wearCloak);
+check('MB14i at the top both go on in one swap',
+    tostring(top.body) .. ',' .. tostring(top.head), 'Warlock\'s Tabard,Warlock\'s Chapeau');
+local spend = mb.target(joint, jb.offAt, wearPair);
+check('MB14j spending: both come off together',
+    tostring(spend.body) .. ',' .. tostring(spend.head), 'false,false');
+local dz = math.floor((jb.offAt + jb.onAt) / 2);
+check('MB14k dead zone: worn pair holds',
+    tostring(mb.target(joint, dz, wearPair).head), 'Warlock\'s Chapeau');
+check('MB14l dead zone: the cloak holds (no hat)',
+    tostring(mb.target(joint, dz, wearCloak).head), 'false');
+-- No Body battery: a hat would only strip the cloak, so Head gets no band.
+local noBody, why = mb.couple({ teon[2], teon[3] }, cloak);
+check('MB14m no battery for the reserver slot: the covered slot is dropped', #noBody, 1);
+check('MB14n ...and says why',
+    why ~= nil and (why[1].slot .. '<' .. why[1].by .. ':' .. why[1].piece .. ':' .. why[1].why),
+    'head<body:Royal Cloak:no-band');
+-- The Body battery is itself a cloak: the two batteries can never be worn together.
+local selfCover, why2 = mb.couple({
+    { slot = 'body', low = 0, lowRf = 2, rungs = { { name = 'Vermillion Cloak', mp = 30, rf = 0 } } },
+    teon[2] }, cloak, function(name, s) return name == 'Vermillion Cloak' and s == 'head'; end);
+check('MB14o a reserver battery that covers the slot drops it',
+    #selfCover .. ':' .. (why2 and why2[1].why or 'nil'), '1:battery-covers');
+-- Under the reserver the covered slot is empty: its low reads 0 even when
+-- another set wears an MP hat there.
+local lowHat = mb.couple({ teon[1],
+    { slot = 'head', low = 10, lowRf = 0, rungs = { { name = 'Warlock\'s Chapeau', mp = 25, rf = 0 } } } }, cloak);
+check('MB14p the covered slot\'s low reads 0 under the reserver', lowHat[1].with[1].low, 0);
+-- A chain: Legs covers Feet, Body covers Legs, and Body has no battery --
+-- Legs goes, and with it Feet.
+local chain, why3 = mb.couple({
+    { slot = 'legs', low = 0, lowRf = 0, rungs = { { name = 'MP Slops', mp = 20, rf = 0 } } },
+    { slot = 'feet', low = 0, lowRf = 0, rungs = { { name = 'MP Boots', mp = 10, rf = 0 } } } },
+    { legs = { body = 'Suit' }, feet = { legs = 'Long Hose' } });
+check('MB14q a chain drops both covered slots', #chain .. ':' .. (why3 and #why3 or 0), '0:2');
+-- The group's band sits on the covering slot even when it sorts later.
+local hose = mb.couple({
+    { slot = 'feet', low = 0, lowRf = 0, rungs = { { name = 'MP Boots', mp = 10, rf = 0 } } },
+    { slot = 'legs', low = 0, lowRf = 0, rungs = { { name = 'MP Slops', mp = 20, rf = 0 } } } },
+    { feet = { legs = 'Long Hose' } });
+check('MB14r the covering slot heads the group', hose[1].slot .. '+' .. hose[1].with[1].slot, 'legs+feet');
+check('MB14s no reservations: the entries come back untouched', mb.couple(teon, {}), teon);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -8010,6 +8107,35 @@ end)();
                 respect = function() return true; end });
     check('ARE5 an unapplied above-claim on the sibling vetoes the duplicate battery',
         ctx5.planOut.Ring1, nil);
+
+    -- ARE6: a joint band's covered part never stages alone (2026-10-28). The
+    -- body battery is gated off (the player's Movement+ robe stays while
+    -- moving), so the hat must stay off too: on its own it would only knock
+    -- the set's cloak off the head.
+    local jointCtx = function(moving)
+        return function()
+            return { mpMap = { ['warlock\'s tabard'] = 25, ['warlock\'s chapeau'] = 25 },
+                     target = { body = 'Warlock\'s Tabard', head = 'Warlock\'s Chapeau' },
+                     bands = { { slot = 'body', name = 'Warlock\'s Tabard',
+                                 parts = { { slot = 'head', name = 'Warlock\'s Chapeau' } } } },
+                     mpBest = {}, moveYield = true, moving = moving,
+                     mvMap = { ['royal cloak'] = 0, ['swift robe'] = 12 } };
+        end;
+    end;
+    dispatchM.mpBands = jointCtx(true);
+    local ctx6 = { planOut = { Body = 'Swift Robe' } };
+    row.apply({ built = { MaxMP = { Body = 'Warlock\'s Tabard', Head = 'Warlock\'s Chapeau' } }, ctx = ctx6,
+                respect = function() return true; end });
+    check('ARE6 the gated body battery keeps the set piece',
+        ctx6.planOut.Body, 'Swift Robe');
+    check('ARE6b ...and its covered part stays off with it', ctx6.planOut.Head, nil);
+    dispatchM.mpBands = jointCtx(false);
+    local ctx7 = { planOut = { Body = 'Royal Cloak' } };
+    row.apply({ built = { MaxMP = { Body = 'Warlock\'s Tabard', Head = 'Warlock\'s Chapeau' } }, ctx = ctx7,
+                respect = function() return true; end });
+    check('ARE6c ungated, both parts land together',
+        tostring(ctx7.planOut.Body) .. '+' .. tostring(ctx7.planOut.Head),
+        'Warlock\'s Tabard+Warlock\'s Chapeau');
 
     dispatchM.modes['maxmp'] = nil;
     dispatchM.mpBands = savedBands;

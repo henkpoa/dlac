@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.25a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.28a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -450,7 +450,11 @@ addon.version = '2026.10.25a';  -- date of the last shipped change (Ashita print
                                 --  10.25a = AscensionXI October 25 refresh:
                                 --  Paladin's weapons, Artifact and relic
                                 --  gear, Set Types Divine Guard and Divine
-                                --  Fury, the Rekindled Rapiers' stance stats)
+                                --  Fury, the Rekindled Rapiers' stance stats;
+                                --  10.28a = engine v174: MaxMP never puts a
+                                --  hat on over a hooded body -- a Head
+                                --  battery goes on and off with the Body
+                                --  battery that replaces the cloak)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

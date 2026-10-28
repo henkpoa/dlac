@@ -125,6 +125,48 @@ absolutes alone; never trust `GetMPMax` at all below full).
   ladders, so a sibling claim proves a second copy. Once an MP earring or
   ring sits in a paired slot, the engine never relocates it.
 
+### Covered slots ride with their reserver (engine v174, `2026.10.28a`)
+
+Some set pieces fill two slots. Royal Cloak is a Body piece that also covers
+Head (`RSlot` 16), and on AscensionXI so does Faerie Tunic +1. Before v174
+each slot banded alone, so a Head battery read as free whenever the idle set
+named no Head. Teon's RDM report (10-28) showed what that cost. Warlock's
+Chapeau (+25) sorted as a deep plain band and went on at about 87% MP. The hat
+knocked the cloak off, and MaxMP outranks Triggers, so the cloak was ruled
+INELIGIBLE. Its backup, Faerie Tunic +1, covers Head too, so nothing could
+fall into the slot. The body stayed empty until the Body band (Warlock's
+Tabard) fired at a full pool. That was a minute or more without the cloak's
+Refresh 2 and 47 DEF, during the refill, for roughly the MP the cloak itself
+gives (20 + 1%).
+
+The rule now: **a covered slot never bands alone.**
+
+- The LOW scan (`mpLowMap`) also records each slot that a trigger-reachable set
+  piece covers besides its own (`resv`, part of the world signature). Like
+  `lowRf`, it is a potential: one set wearing the cloak is enough. Weapon
+  slots never count, because Range/Ammo belongs to the pair law.
+- `mpbands.couple` folds the covered slot into the band of the slot whose
+  piece covers it. The joint band is every part's top battery against the
+  sum of the potency points. The covered slot's low reads 0, because the
+  reserver leaves it empty. Teon's band is
+  `body+head: Warlock's Tabard + Warlock's Chapeau (0->50) [refresh-cost]`:
+  the cloak's Refresh 2 is in its `rfDelta`, so it floats shallowest. Both go
+  on together at the top and come off together first, and the body is never
+  bare in between.
+- If the reserver slot has no battery of its own, the covered slot gets no
+  band: a battery there would only strip the set piece. The same happens
+  when the reserver slot's own top battery covers the slot too, since the
+  two can never be worn together. `/dl plan` names each dropped slot and why.
+- At apply time, a covered part never stages alone. If a gate keeps the
+  reserver slot's battery off (remove, movement yield, sticky pair, MP-SKIP),
+  the covered part stays off with it (`MP-SKIP ... rides with body`).
+- `target()` turns a joint band on and off as one. Its dead-zone state reads
+  the reserver slot's piece.
+
+The Arbiter's own reservation law is unchanged. A higher claimant's cloak
+still suppresses lower claims on Head. This only stops MaxMP from creating
+the conflict itself.
+
 ### Movement yield (v96, panel setting — off by default)
 
 While MOVING, a set piece carrying Movement+ beats the battery in its slot,
@@ -241,6 +283,9 @@ bands → target loadout → per-slot chain + mp-stage pass (batch, guarded)
    loss to never rearrange the player's pair placement.
 8. The player's sets are the authority on what a slot returns to; the
    engine works around them, never through them.
+9. A slot a set piece covers goes on and off with the battery that replaces
+   that piece, as one band (2026-10-28, Teon's Royal Cloak; Henrik: *"Go by
+   your recommendation"*). A hat never strips a hooded body mid-pool.
 
 ---
 
@@ -289,6 +334,13 @@ screenshot, and each produced a pinned test.
    twice a "bug" was actually data (a set ladder resolving a different
    rung than the player assumed) — `/dl plan` + `/dl why` together settled
    every single round.
+10. **The hat over the cloak** (v174, 2026-10-28, AscensionXI RDM): each slot
+   banded alone, so a Head battery looked free under a Body piece that
+   covers Head. It went on mid-pool, stripped the idle set's Royal Cloak
+   (Refresh 2), and left the body empty until the Body band fired at the top.
+   *Lesson: a band's cost includes every slot its piece takes away, not just
+   its own. Read RSlot both ways: the battery's own reservation (v78), and
+   a set piece's reservation over the battery's slot.*
 
 ---
 
@@ -321,7 +373,9 @@ screenshot, and each produced a pinned test.
 
 ## Test map
 
-`MB*` band build/target/measurement (worked-example pins) · `MPS*` pair
+`MB*` band build/target/measurement (worked-example pins; `MB14*` the
+covered-slot coupling, Teon's cloak) · `MPL7*` the joint row and dropped-slot
+lines in `/dl plan` · `ARE6*` a covered part never stages alone · `MPS*` pair
 veto + shared resolver · `MSS*` sticky pairs · `MPL*` plan formatter ·
 `MR*/MF*` max reconciliation + exact fullness (legacy but live fallbacks) ·
 `I*/K*/MS1-8` v1-era pure rules (exported for compat) · `S169b-e` the
