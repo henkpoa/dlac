@@ -193,9 +193,22 @@ assert(labels('WAR','divinefury') == 'Normal / 1-Hit WS / Berserk / Divine Fury'
 assert(stance.label('RDM','composure') == 'Composure' and stance.label('RDM') == 'Duelist Stance')
 assert(stance.label('PLD','divineguard') == 'Divine Guard' and stance.label('PLD','divinefury') == 'Divine Fury')
 assert(stance.label('PLD') == nil, 'Paladin has no plain stance table')
+-- The hover card (2026-10-29): every stance bonus a piece has, one line per
+-- stance in menu order, whatever job, level or set is in view.
+local fmt = require('dlac\\gear\\gearfmt')
+local function lines(id) return table.concat(fmt.stanceLines({Id=id}), ' | ') end
+assert(lines(12642) == 'Composure: Enfeebling Magic Skill+15 | Duelist Stance: Accuracy+5 Attack+5', lines(12642))
+assert(lines(12644) == 'Divine Guard: VIT+4 Enmity+2 Shield Skill+5 | Divine Fury: Accuracy+6 STR+5', lines(12644))
+assert(lines(16678) == 'Berserk: Attack+10', lines(16678))
+assert(lines(19978) == 'Composure: INT+4 MND+4 | Duelist Stance: Enhancing Magic Skill+4 EnspellDamage+2'
+    or lines(19978) == 'Composure: INT+4 MND+4 | Duelist Stance: EnspellDamage+2 Enhancing Magic Skill+4', lines(19978))
+assert(lines(99999) == '', 'a piece without stance gear gets no line')
+assert(fmt.stanceLines({}) and #fmt.stanceLines({}) == 0 and #fmt.stanceLines(nil) == 0)
+assert(#stance.bonusesOf({Id=15078, Level=75}) == 2, 'Valor Coronet: both stances, read without a level')
 sp.active = function() return 'cexi' end
 assert(stance.apply(hat,hat.Stats,ctx)==hat.Stats, 'AXI only')
 assert(stance.label('RDM') == nil and stance.label('RDM','composure') == nil, 'no stance menu row off AXI')
 assert(stance.label('PLD','divineguard') == nil, 'nor a Paladin one')
+assert(lines(12644) == '' and #stance.bonusesOf({Id=12515}) == 0, 'no stance lines off AXI')
 os.remove(tmp)
-print('OK -- Set Type: stance, Composure, Divine Guard and Divine Fury scoring, totals, defaults, persistence, migration, rename, export/import and the menu')
+print('OK -- Set Type: stance, Composure, Divine Guard and Divine Fury scoring, totals, defaults, persistence, migration, rename, export/import, the menu and the hover card')

@@ -1205,6 +1205,30 @@ end)();
     check('RAC2 ...and no facts line prints the raw mask', rawMask, false);
     check('RAC3 a narrow popup cuts the job list, never the race',
         FL(rse, 75, 30)[2].text, 'Body   Hume male only   Lv.3..');
+
+    -- STN. Stance bonuses (gearfmt.stanceLines) ride in the facts like the pet
+    -- lines, one line per stance. This suite is the CEXI baseline, where no
+    -- piece has one; the AscensionXI pack is borrowed for the positive case.
+    local gallant = { Name = 'Gallant Coronet', Id = 12515, Slot = 'Head', Level = 50,
+                      Jobs = { 'PLD' }, Stats = { DEF = 25, HP = 20 } };
+    local function factsText(rec)
+        local t = {};
+        for _, ln in ipairs(FL(rec, 75, 60)) do t[#t + 1] = ln.text; end
+        return table.concat(t, '\n');
+    end
+    check('STN1 no stance line on a pack without stances',
+        factsText(gallant):find('Divine', 1, true), nil);
+    local stnPack = require('dlac\\gear\\serverpack');
+    local stnActive = stnPack.active;
+    stnPack.active = function() return 'ascensionxi'; end
+    local stnText = factsText(gallant);
+    stnPack.active = stnActive;
+    check('STN2 ...and on AscensionXI, Divine Guard gets its own line',
+        stnText:find('\nDivine Guard: VIT+3 Enmity+2', 1, true) ~= nil, true);
+    check('STN3 ...and so does Divine Fury',
+        stnText:find('\nDivine Fury: Accuracy+4 STR+3', 1, true) ~= nil, true);
+    check('STN4 ...and the pack swap back leaves no line behind',
+        factsText(gallant):find('Divine', 1, true), nil);
     check('RAC3b a piece every race wears keeps the line it had',
         FL(tallRec, 75, 60)[2].text, 'Body   Lv.75   All Jobs');
 
@@ -2810,6 +2834,9 @@ end)();
         tip ~= nil and tip:find('local race = fmt.raceText(rec);', 1, true) ~= nil, true);
     check('RAC11 ...and draws the answer escaped, in the jobs colour',
         tip ~= nil and tip:find('imgui.TextColored(COL.JOBS, fmt.esc(race));', 1, true) ~= nil, true);
+    check('STN5 the item tooltip lists the stance bonuses gearfmt names, escaped',
+        tip ~= nil and tip:find('local stl = fmt.stanceLines(rec);', 1, true) ~= nil
+            and tip:find("imgui.TextColored(COL.STATS, '  ' .. fmt.esc(ln));", 1, true) ~= nil, true);
     local panel = src:match('local function renderStatsPanel%(title, totals, setBonuses%)(.-)\nend\n');
     check('RAC12 the totals panel keeps the race mask out of Other',
         panel ~= nil and panel:find('k ~= fmt.RACE_KEY', 1, true) ~= nil, true);

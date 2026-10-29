@@ -302,6 +302,22 @@ local function fullStatList(stats)
     return table.concat(parts, ' ');
 end
 
+-- Stance bonuses, asked of gear/stancestats (the pack's stances table, the
+-- rows a stance Set Type counts): one line per stance, "Divine Fury: STR+3
+-- Accuracy+4". Kept off the item's own stat line, which never assumes a
+-- stance. Empty when the pack has none for the item (every CEXI item).
+local _sok, stances = pcall(require, 'dlac\\gear\\stancestats');
+if not _sok or type(stances) ~= 'table' then stances = nil; end
+local function stanceLines(rec)
+    if stances == nil or type(stances.bonusesOf) ~= 'function' then return {}; end
+    local lines = {};
+    for _, b in ipairs(stances.bonusesOf(rec)) do
+        local s = fullStatList(b.stats);
+        if s ~= '' then lines[#lines + 1] = tostring(b.label) .. ': ' .. s; end
+    end
+    return lines;
+end
+
 -- "xN" owned tag (only when we own two or more -- the interesting case for DW /
 -- paired slots). Empty otherwise. Contains no '%'. An augment-pinned record
 -- (AugKey) counts ITS roll only (deps.augCounts) -- "x2" on both halves of a
@@ -436,6 +452,7 @@ M.fullStatList = fullStatList;
 M.raceText     = raceText;
 M.RACE_KEY     = RACE_KEY;
 M.petLines     = petLines;
+M.stanceLines  = stanceLines;
 M.qtyTag       = qtyTag;
 M.augTag       = augTag;
 M.modeSections = modeSections;

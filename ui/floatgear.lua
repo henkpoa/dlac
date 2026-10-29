@@ -629,6 +629,11 @@ local function factsLines(rec, level, wrapN)
         end
     end);
     pcall(function()
+        for _, sl in ipairs(fmt.stanceLines(rec) or {}) do
+            for _, ln in ipairs(wrapTo(sl, wrapN)) do add(COL.STATS, ln); end
+        end
+    end);
+    pcall(function()
         if type(rec.AugText) == 'string' and rec.AugText ~= '' then
             -- augment-split roll: this record IS one specific copy
             add(COL.SCORE, fmt.truncate('Aug: ' .. rec.AugText, wrapN));
