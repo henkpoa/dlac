@@ -122,6 +122,10 @@ _Avoid_: weather match / day match (the two one-sided equalities above — the n
 The three environment tests above, asked about YOUR PET's element instead of the action's (engine v172, ADR 0038). `petDayMatch` asks whether today's day element is the pet's, `petWeatherMatch` whether the current weather element is (single or double, the player's own storm counted), and `petDayWeatherBonus` takes the favourability net over the pet's element. The pet's element is its server `pet_list.element`. Avatars and elemental spirits carry one and every other pet carries none. A pet without one, like no pet at all, matches neither polarity. This is what the Summoner's day/weather perpetuation gear keys on (Summoner's Doublet on the avatar's day, Summoner's Horn in its weather).
 _Avoid_: day match / weather match / favourability for these (those test the ACTION's element: a Fire spell cast on Firesday with Shiva out is a day match, while Shiva is not)
 
+**Rage type**:
+What an avatar's Blood Pact: Rage deals — Physical, Magic, Hybrid (physical AND magic damage: Burning Strike, Flaming Crush) or Breath (Nether Blast) — the PetAction `rageType` condition (engine v175). The server's pact scripts are the source (`dispatch.RAGE_TYPE`); neither LAC nor the client carries it. A rage that deals no damage has none.
+_Avoid_: Rage vs Ward (that is the pact's *kind* — `abilityType = Blood Pact: Rage` — not what it deals; Meteor Strike and Predator Claws are both Rage); element (a pact's element says nothing about physical or magic)
+
 **Claim**:
 A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.
 _Avoid_: pin (the floatgear feature — one claimant among many), override, hijack
