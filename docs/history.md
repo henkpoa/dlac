@@ -11605,3 +11605,29 @@ Breath", and "Flaming Crush is hybrid."
   TB50-TB57 (smoke_ui: the real menu opened and clicked, each entry saved and
   loaded by the engine, the edit path). TB43 now reads the Pet parameters
   through `CASCADES`.
+
+## 2026-10-29: the hover card lists stance bonuses (`2026.10.29b`)
+
+Henrik: "DLAC doesn't seem to show stance stats, such as warlock's set and
+gallant for pld when hovering over the tooltip. The set type seems to be
+working when checking stats ... Do we have to rebuild the catalogue script to
+include the stance stats as well?" Then: "Can you make the fix."
+
+- **No catalog rebuild.** The stance rows already ship: `stances.lua` (what a
+  stance Set Type counts) and the generated `latentstats.lua` rows it is held
+  to (`RDM_STANCE_*`, `PLD_STANCE_EXACTLY`). They stay out of the catalog on
+  purpose, because they are conditional.
+- **The gap was the card.** `renderItemTooltip` asked `gearOracle.stats` with
+  only a level, and only a stance Set Type puts the stance in the context. It
+  had no line for stance bonuses at all.
+- **The fix**: `stancestats.bonusesOf(rec)` lists every stance the pack gives a
+  piece (jobs in name order, stances in menu order), and `gearfmt.stanceLines`
+  words it, "Divine Fury: Accuracy+4 STR+3". The hover card shows a "Stance
+  bonus:" block under the job line. The floating gear pin popup adds the same
+  lines under the stats, as it does pet lines. The piece's own stat line never
+  includes a stance, so the card reads the same in every set. CEXI ships no
+  `stances.lua`, so nothing changes there.
+- Tests: `tests/stance_sets.lua` (the real AXI rows for Warlock's Tabard,
+  Gallant Surcoat, Razor Axe and the Rekindled Rapier; none off AXI),
+  `tests/smoke_ui.lua` STN1-STN5 (the pin popup on both packs, the card's
+  source). Emptying `bonusesOf` turns both red.

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.29a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.29b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -459,7 +459,10 @@ addon.version = '2026.10.29a';  -- date of the last shipped change (Ashita print
                                 --  Avatar-Rage cascade -- Rage: Physical,
                                 --  Magic, Hybrid or Breath, what the
                                 --  avatar's Blood Pact: Rage deals, so one
-                                --  rule gears every pact of a kind)
+                                --  rule gears every pact of a kind;
+                                --  10.29b = the hover card and the pin
+                                --  popup list a piece's stance bonuses,
+                                --  one line per stance)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

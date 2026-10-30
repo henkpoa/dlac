@@ -1225,6 +1225,17 @@ local function renderItemTooltip(rec, note)
         local jt = fmt.jobsText(rec.Jobs);
         if jt == 'All' then jt = 'All Jobs'; end
         imgui.TextColored(COL.JOBS, string.format('Lv.%s %s', tostring(rec.Level or 0), jt));
+        -- Stance bonuses: what the piece adds while a stance is up (Divine Guard,
+        -- Duelist Stance). The stat line above stays the piece's own; a set whose
+        -- Set Type is that stance is where these count.
+        local stl = fmt.stanceLines(rec);
+        if #stl > 0 then
+            imgui.Separator();
+            imgui.TextColored(COL.SCORE, 'Stance bonus:');
+            for _, ln in ipairs(stl) do
+                imgui.TextColored(COL.STATS, '  ' .. fmt.esc(ln));
+            end
+        end
         -- Gear-set membership: the bonus tier ladder + the partner pieces, so an
         -- item's set potential reads off the item itself. * marks pieces you own
         -- (anywhere). Multi-set items show one block per set.
