@@ -6568,6 +6568,133 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- RT. What a Blood Pact: Rage deals (engine v175): rageType = Physical / Magic /
+--     Hybrid / Breath, off dispatch.RAGE_TYPE by the pet action's name. Ability
+--     actions only (dispatch.rageTypeOf); an unlisted pact matches none. Tier 30.
+-- ---------------------------------------------------------------------------
+(function()
+    local mm, rt = dispatchM._matchers, dispatchM.rageTypeOf;
+    local function pact(name) return { action = { ActionType = 'Ability', Name = name, Type = 'Blood Pact: Rage' } }; end
+    -- The SERVER's answer, pact by pact: every rage in AscensionXI
+    -- sql/pet_skills.sql (SKILLFLAG_BLOODPACT_RAGE) whose script in
+    -- scripts/actions/abilities/pets deals damage, typed by the xi.attackType
+    -- it deals (both PHYSICAL and MAGICAL = Hybrid). main 8d1117e, 2026-10-28.
+    -- Names as the client spells them. Pinned row by row, so the code's table
+    -- answers to the source and not to itself.
+    local SERVER_ROWS = {
+        { 'Poison Nails', 'Physical' }, { 'Meteorite', 'Magic' }, { 'Searing Light', 'Magic' },
+        { 'Holy Mist', 'Magic' }, { 'Regal Scratch', 'Physical' }, { 'Level ? Holy', 'Magic' },
+        { 'Moonlit Charge', 'Physical' }, { 'Crescent Fang', 'Physical' },
+        { 'Eclipse Bite', 'Physical' }, { 'Howling Moon', 'Magic' }, { 'Punch', 'Physical' },
+        { 'Fire II', 'Magic' }, { 'Burning Strike', 'Hybrid' }, { 'Double Punch', 'Physical' },
+        { 'Fire IV', 'Magic' }, { 'Flaming Crush', 'Hybrid' }, { 'Meteor Strike', 'Magic' },
+        { 'Inferno', 'Magic' }, { 'Rock Throw', 'Physical' }, { 'Stone II', 'Magic' },
+        { 'Rock Buster', 'Physical' }, { 'Megalith Throw', 'Physical' }, { 'Stone IV', 'Magic' },
+        { 'Mountain Buster', 'Physical' }, { 'Geocrush', 'Magic' }, { 'Earthen Fury', 'Magic' },
+        { 'Barracuda Dive', 'Physical' }, { 'Water II', 'Magic' }, { 'Tail Whip', 'Physical' },
+        { 'Water IV', 'Magic' }, { 'Spinning Dive', 'Physical' }, { 'Grand Fall', 'Magic' },
+        { 'Tidal Wave', 'Magic' }, { 'Claw', 'Physical' }, { 'Aero II', 'Magic' },
+        { 'Aero IV', 'Magic' }, { 'Predator Claws', 'Physical' }, { 'Wind Blade', 'Magic' },
+        { 'Aerial Blast', 'Magic' }, { 'Axe Kick', 'Physical' }, { 'Blizzard II', 'Magic' },
+        { 'Double Slap', 'Physical' }, { 'Blizzard IV', 'Magic' }, { 'Rush', 'Physical' },
+        { 'Heavenly Strike', 'Magic' }, { 'Diamond Dust', 'Magic' },
+        { 'Shock Strike', 'Physical' }, { 'Thunder II', 'Magic' }, { 'Thunderspark', 'Magic' },
+        { 'Thunder IV', 'Magic' }, { 'Chaotic Strike', 'Physical' }, { 'Thunderstorm', 'Magic' },
+        { 'Judgment Bolt', 'Magic' }, { 'Camisado', 'Physical' }, { 'Nether Blast', 'Breath' },
+        { 'Blindside', 'Physical' }, { 'Clarsach Call', 'Magic' }, { 'Welt', 'Physical' },
+        { 'Roundhouse', 'Physical' }, { 'Sonic Buffet', 'Magic' }, { 'Tornado II', 'Magic' },
+        { 'Hysteric Assault', 'Physical' },
+    };
+    local wrong, per = {}, {};
+    for _, row in ipairs(SERVER_ROWS) do
+        local got = rt(pact(row[1]));
+        if got ~= row[2] then wrong[#wrong + 1] = row[1] .. '=' .. tostring(got); end
+        per[row[2]] = (per[row[2]] or 0) + 1;
+    end
+    check('RT1 every damage-dealing rage reads the server\'s type', table.concat(wrong, ', '), '');
+    check('RT2 ...26 physical, 33 magic, 2 hybrid, 1 breath',
+        string.format('%d/%d/%d/%d', per.Physical or 0, per.Magic or 0, per.Hybrid or 0, per.Breath or 0), '26/33/2/1');
+    local n = 0;
+    for _ in pairs(dispatchM.RAGE_TYPE) do n = n + 1; end
+    check('RT3 ...and the table holds those rows plus the server\'s Level X Holy spelling', n, #SERVER_ROWS + 1);
+    check('RT4 the server\'s spelling of Level ? Holy lands on the same answer', rt(pact('Level X Holy')), 'Magic');
+    check('RT5 case and spacing do not matter', rt(pact('FLAMING  crush')), 'Hybrid');
+
+    -- No answer, never a guess.
+    check('RT6 a rage that deals no damage is unlisted', rt(pact('Deconstruction')), nil);
+    check('RT7 a pact neither server scripts is unlisted', rt(pact('Volt Strike')), nil);
+    check('RT8 a ward is not a rage', rt({ action = { ActionType = 'Ability', Name = 'Hastega', Type = 'Blood Pact: Ward' } }), nil);
+    check('RT9 a jug pet\'s Ready move (a MobSkill) never matches, even on a pact\'s name',
+        rt({ action = { ActionType = 'MobSkill', Name = 'Tail Whip' } }), nil);
+    check('RT10 a pet spell never matches', rt({ action = { ActionType = 'Spell', Name = 'Fire II' } }), nil);
+    check('RT11 no action (Default): nil', rt({ player = { Status = 'Idle' } }), nil);
+    check('RT12 an action without a name: nil', rt({ action = { ActionType = 'Ability' } }), nil);
+
+    -- The matcher: one value, compared case-blind like every other.
+    check('RT13 rageType = Physical fires on Predator Claws', mm.ragetype('Physical', pact('Predator Claws')), true);
+    check('RT14 ...not on a magic pact',                      mm.ragetype('Physical', pact('Inferno')), false);
+    check('RT15 Hybrid is its own type: Flaming Crush is not Physical',
+        mm.ragetype('Physical', pact('Flaming Crush')) == false and mm.ragetype('Hybrid', pact('Flaming Crush')) == true, true);
+    check('RT16 Breath fires on Nether Blast', mm.ragetype('Breath', pact('Nether Blast')), true);
+    check('RT17 a hand-written lowercase value still matches', mm.ragetype('magic', pact('Meteor Strike')), true);
+    check('RT18 an unlisted pact matches none of the four (no false)',
+        mm.ragetype('Physical', pact('Deconstruction')) or mm.ragetype('Magic', pact('Deconstruction'))
+            or mm.ragetype('Hybrid', pact('Deconstruction')) or mm.ragetype('Breath', pact('Deconstruction')), false);
+
+    -- Tier 30, beside magicType: a pact's own name rule overrides it.
+    local dp = dispatchM.defaultPriority;
+    check('RT19 rageType sits at 30', dp({ rageType = 'Physical' }), 30);
+    check('RT20 a name rule (50) outranks it', dp({ name = 'Predator Claws' }) > dp({ rageType = 'Physical' }), true);
+
+    -- Through matches(): an OR over two types -- the Physical + Hybrid attack set.
+    local mt = dispatchM._matches;
+    local atk = { when = {}, whenAny = { { ragetype = 'Physical' }, { ragetype = 'Hybrid' } } };
+    check('RT21 matches(): Physical | Hybrid fires on Flaming Crush', mt(atk, pact('Flaming Crush')), true);
+    check('RT22 ...and on Rock Buster',                                 mt(atk, pact('Rock Buster')), true);
+    check('RT23 ...and stays quiet on Meteor Strike',                   mt(atk, pact('Meteor Strike')), false);
+
+    -- First-class vocabulary: PRETTY-case serialize, byte-stable round trip,
+    -- and _normalize keeps the rules (TIER is mandatory) at prio 30.
+    local text = dispatchM.serializeTriggers({
+        PetAction = {
+            { when = { rageType = 'Physical' }, set = 'BP_Physical' },
+            { when = { rageType = 'Magic' },    set = 'BP_Magic' },
+        },
+    });
+    check('RT24 rageType serializes PRETTY-case', text:find('rageType = "Physical"', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('RT25 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm, warns = dispatchM._normalize(t2);
+    check('RT26 normalize keeps both rules, warns nothing',
+        #(norm.PetAction or {}) == 2 and #(warns or {}) == 0, true);
+    check('RT27 normalized prio = 30', norm.PetAction[1].prio, 30);
+
+    -- The LIVE shape: the native engine's own GetPetAction, off the pet's
+    -- action state the 0x028 stream writes (an avatar's pact = an Ability
+    -- resource; a jug pet's move = a MobSkill), is what the matcher reads.
+    -- A fresh engine of its own (the EQE block loads the suite's later), put
+    -- back the way it was found once done.
+    local savedEngMod = package.loaded['dlac\\feature\\equipengine'];
+    local eng = dofile('feature/equipengine.lua');
+    package.loaded['dlac\\feature\\equipengine'] = eng;
+    local nd = dofile('feature/nativedata.lua');
+    package.loaded['dlac\\feature\\equipengine'] = savedEngMod;
+    local savedPa, savedGetPet = eng.state.petAction, nd.GetPet;
+    nd.GetPet = function() return { Name = 'Ifrit', Status = 'Engaged' }; end;
+    eng.state.petAction = { Type = 'Ability', Completion = math.huge,
+        Resource = { Name = { 'Flaming Crush' }, Id = 550 + 0x200, RecastTimerId = 173 } };
+    local live = nd.GetPetAction();
+    check('RT28 live: the avatar\'s pact reads Flaming Crush as a Blood Pact: Rage Ability',
+        string.format('%s/%s/%s', tostring(live and live.ActionType), tostring(live and live.Name), tostring(live and live.Type)),
+        'Ability/Flaming Crush/Blood Pact: Rage');
+    check('RT29 ...and rageType = Hybrid fires on it', mm.ragetype('Hybrid', { action = live }), true);
+    eng.state.petAction = { Type = 'MobSkill', Id = 300, Name = 'Tail Whip', Completion = math.huge };
+    check('RT30 live: a jug pet\'s Tail Whip is a MobSkill and matches nothing',
+        mm.ragetype('Physical', { action = nd.GetPetAction() }), false);
+    eng.state.petAction, nd.GetPet = savedPa, savedGetPet;
+end)();
+
+-- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +

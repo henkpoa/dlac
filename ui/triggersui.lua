@@ -201,6 +201,8 @@ local COND_DEFS = {
         { key = 'contains', kind = 'text', hint = 'pet action name contains this text, e.g. "Predator" for\nPredator Claws' },
         { key = 'name',     kind = 'text', hint = 'exact pet action name, e.g. Volt Strike' },
         { key = 'element',  kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
+        -- engine v175: a cascade of its own, PetAction only (RAGE_PARAMS below)
+        { key = 'rageType', kind = 'rage', label = 'Avatar-Rage' },
         MODE_COND,
         { key = 'any',      kind = 'flag' },
     },
@@ -250,6 +252,30 @@ local PET_PARAMS = {
       hint = 'the CURRENT weather is your pet\'s element (single or double; your own\nstorm counts) -- Summoner\'s Horn: perpetuation -3 in the avatar\'s weather.\nNo day, no opposition. Never matches without an avatar or spirit out.' },
     { key = 'petDayMatch',        label = 'PetDayMatch',        kind = 'fixed', value = true,
       hint = 'TODAY is your pet\'s element day -- Ifrit on Firesday -- Summoner\'s\nDoublet: perpetuation -3 on the avatar\'s day. No weather, no opposition.\nNever matches without an avatar or spirit out.' },
+};
+
+-- The Avatar-Rage cascade (engine v175), PetAction only: what the avatar's
+-- Blood Pact: Rage deals, off dispatch.RAGE_TYPE (the server's pact scripts).
+-- ONE key, four 'fixed' values -- the HasPet/NoPet shape, so the parameter IS
+-- the value.
+local RAGE_PARAMS = {
+    { key = 'rageType', label = 'Rage: Physical', kind = 'fixed', value = 'Physical',
+      hint = 'your avatar\'s Blood Pact: Rage deals PHYSICAL damage -- Predator Claws,\nRock Buster, Spinning Dive and the rest. Fires as the avatar readies it.' },
+    { key = 'rageType', label = 'Rage: Magic',    kind = 'fixed', value = 'Magic',
+      hint = 'the Blood Pact: Rage deals MAGIC damage -- the II / IV nukes, Inferno,\nMeteor Strike and the rest. Fires as the avatar readies it.' },
+    { key = 'rageType', label = 'Rage: Hybrid',   kind = 'fixed', value = 'Hybrid',
+      hint = 'the Blood Pact: Rage deals physical AND magic damage -- Burning Strike,\nFlaming Crush. Fires as the avatar readies it.' },
+    { key = 'rageType', label = 'Rage: Breath',   kind = 'fixed', value = 'Breath',
+      hint = 'the Blood Pact: Rage deals BREATH damage -- Nether Blast.\nFires as the avatar readies it.' },
+};
+
+-- The cascading rows of the condition chooser: def kind -> its menu title, its
+-- parameters and the trig field holding the picked one. Player and Pet ride
+-- every handler (appended below); Avatar-Rage is PetAction's own.
+local CASCADES = {
+    player = { title = 'Player',      params = PLAYER_PARAMS, slot = '_addPlayer' },
+    pet    = { title = 'Pet',         params = PET_PARAMS,    slot = '_addPet' },
+    rage   = { title = 'Avatar-Rage', params = RAGE_PARAMS,   slot = '_addRage' },
 };
 do
     -- Append the shared player/pet pickers once per defs table.
@@ -348,8 +374,9 @@ local trig = {
     status = '', statusErr = false,
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil, _addPlayer = 1,
     _addPet = 1,          -- the Pet cascade's picked parameter (engine v63)
+    _addRage = 1,         -- the Avatar-Rage cascade's (engine v175)
     _condDrill = false,   -- no-BeginMenu fallback: which drill-down is open --
-                          -- false closed, 'player' or 'pet' (truthy = open)
+                          -- false closed, else its CASCADES kind (truthy = open)
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
     addNote = nil, addSwap = nil,   -- "the & leg replaced X with Y" + the swap behind it,
                                     -- so the replace is never silent (see pushCond)
@@ -1844,6 +1871,7 @@ local COND_COLORS = {
     mode = { 0.80, 0.60, 1.00, 1.0 },
     skill = { 0.55, 0.85, 0.55, 1.0 },
     magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
+    ragetype = { 0.45, 0.80, 0.75, 1.0 },   -- a class of pact (v175), abilityType's colour
     element = { 0.95, 0.70, 0.45, 1.0 },  songtype = { 0.80, 0.85, 0.50, 1.0 },
     dayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
     weathermatch = { 0.55, 0.80, 0.95, 1.0 },
@@ -2818,8 +2846,8 @@ local function renderTrigAddPopup()
     -- the row out, so a small tweak never means retype-from-scratch (Henrik).
     -- Re-add with + & or + | -- moving a condition between legs is the same
     -- motion. v53 alias spellings edit into their canonical percent params.
-    local PARAM_OF = nil;
-    local PET_OF = nil;
+    local KEY_ALIAS = { hpbelow = 'playerhppercentbelow', hpabove = 'playerhppercentabove',
+                        mpbelow = 'playermppercentbelow', mpabove = 'playermppercentabove' };
     -- editCond/condRowButtons/renderCondList take the target `conds` list so the
     -- body AND every case reuse the IDENTICAL flow (issue #127): the picker is
     -- shared, the +&/+| buttons and the pending-row edit/x route to whichever
@@ -2828,36 +2856,33 @@ local function renderTrigAddPopup()
         local c = conds[ci];
         if c == nil or type(c.value) == 'table' then return; end   -- list values: delete + re-add
         local key = string.lower(tostring(c.key));
-        if PARAM_OF == nil then
-            PARAM_OF = {};
-            for pi, p in ipairs(PLAYER_PARAMS) do PARAM_OF[string.lower(p.key)] = pi; end
-            PARAM_OF.hpbelow = PARAM_OF.playerhppercentbelow;
-            PARAM_OF.hpabove = PARAM_OF.playerhppercentabove;
-            PARAM_OF.mpbelow = PARAM_OF.playermppercentbelow;
-            PARAM_OF.mpabove = PARAM_OF.playermppercentabove;
-            -- Pet cascade (v63): 'pet' appears twice (HasPet/NoPet -- one key,
-            -- two values); membership here, the entry resolves by VALUE below.
-            PET_OF = {};
-            for pi, p in ipairs(PET_PARAMS) do PET_OF[string.lower(p.key)] = pi; end
+        key = KEY_ALIAS[key] or key;
+        -- A cascade parameter: find the cascade carrying this key. A key can
+        -- repeat inside one (HasPet/NoPet are ONE key, pet = true/false; the
+        -- four Rage entries are ONE key, rageType), so a 'fixed' entry whose
+        -- VALUE matches beats the first entry with the key (case-blind, as the
+        -- engine compares: a hand-written 'magic' is Rage: Magic).
+        local function sameVal(a, b)
+            if type(a) == 'string' and type(b) == 'string' then return string.lower(a) == string.lower(b); end
+            return a == b;
+        end
+        local cKind, cIdx = nil, nil;
+        for k, cs in pairs(CASCADES) do
+            for pi, p in ipairs(cs.params) do
+                if string.lower(p.key) == key
+                   and (cIdx == nil or (p.kind == 'fixed' and sameVal(p.value, c.value))) then
+                    cKind, cIdx = k, pi;
+                end
+            end
         end
         local defIdx, kind = nil, nil;
-        if PARAM_OF[key] ~= nil then
+        if cKind ~= nil then
             for di, d in ipairs(defs) do
-                if d.kind == 'player' then defIdx = di; break; end
+                if d.kind == cKind then defIdx = di; break; end
             end
             if defIdx ~= nil then
-                trig._addPlayer = PARAM_OF[key];
-                kind = PLAYER_PARAMS[PARAM_OF[key]].kind;
-            end
-        elseif PET_OF[key] ~= nil then
-            for di, d in ipairs(defs) do
-                if d.kind == 'pet' then defIdx = di; break; end
-            end
-            if defIdx ~= nil then
-                local pi = PET_OF[key];
-                if key == 'pet' then pi = (c.value == false) and 2 or 1; end   -- NoPet vs HasPet
-                trig._addPet = pi;
-                kind = PET_PARAMS[pi].kind;
+                trig[CASCADES[cKind].slot] = cIdx;
+                kind = CASCADES[cKind].params[cIdx].kind;
             end
         else
             for di, d in ipairs(defs) do
@@ -2940,11 +2965,9 @@ local function renderTrigAddPopup()
     -- so the value widget follows the button directly. Menu labels are raw,
     -- never esc'd (they are not format strings -- the floatgear rule).
     local curLabel;
-    if cur ~= nil and cur.kind == 'player' then
-        local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
-        curLabel = pp.label or pp.key;
-    elseif cur ~= nil and cur.kind == 'pet' then
-        local pp = PET_PARAMS[trig._addPet] or PET_PARAMS[1];
+    local curCs = (cur ~= nil) and CASCADES[cur.kind] or nil;
+    if curCs ~= nil then
+        local pp = curCs.params[trig[curCs.slot]] or curCs.params[1];
         curLabel = pp.label or pp.key;
     else
         curLabel = (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?';
@@ -2955,7 +2978,7 @@ local function renderTrigAddPopup()
         imgui.OpenPopup('##trgcondmenu');
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name /\nthe pet\'s element against the day and weather).');
+        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals.');
     end
     if imgui.BeginPopup('##trgcondmenu') then
         local function pickDef(di)
@@ -2963,20 +2986,20 @@ local function renderTrigAddPopup()
         end
         if trig._condDrill and not hasMenu then
             -- Drill-down fallback: the parameter list in place, with a way
-            -- back. _condDrill names the cascade ('player' or 'pet', v63).
-            local isPet = (trig._condDrill == 'pet');
-            local params = isPet and PET_PARAMS or PLAYER_PARAMS;
-            imgui.TextColored(COL_HEADER, isPet and 'Pet' or 'Player');
+            -- back. _condDrill names the cascade (its CASCADES kind).
+            local dk = CASCADES[trig._condDrill] and trig._condDrill or 'player';
+            local cs = CASCADES[dk];
+            imgui.TextColored(COL_HEADER, cs.title);
             if imgui.Selectable('< back##trgcback') then
                 trig._condDrill = false;
             else
                 imgui.Separator();
-                for pi, p in ipairs(params) do
+                for pi, p in ipairs(cs.params) do
                     if imgui.Selectable((p.label or p.key) .. '##trgcpp' .. pi) then
                         for di, d in ipairs(defs) do
-                            if d.kind == (isPet and 'pet' or 'player') then pickDef(di); break; end
+                            if d.kind == dk then pickDef(di); break; end
                         end
-                        if isPet then trig._addPet = pi; else trig._addPlayer = pi; end
+                        trig[cs.slot] = pi;
                         trig._condDrill = false;
                         imgui.CloseCurrentPopup();
                     end
@@ -2985,18 +3008,16 @@ local function renderTrigAddPopup()
             end
         else
             for di, d in ipairs(defs) do
-                if d.kind == 'player' or d.kind == 'pet' then
-                    -- Both cascades share one shape; only the parameter list
-                    -- and the picked-index slot differ (v63).
-                    local isPet = (d.kind == 'pet');
-                    local params = isPet and PET_PARAMS or PLAYER_PARAMS;
-                    local title = isPet and 'Pet' or 'Player';
+                local cs = CASCADES[d.kind];
+                if cs ~= nil then
+                    -- Every cascade shares one shape; only the parameter list
+                    -- and the picked-index slot differ (v63, v175).
                     if hasMenu then
-                        if imgui.BeginMenu(title .. '##trgc' .. d.kind) then
-                            for pi, p in ipairs(params) do
+                        if imgui.BeginMenu(cs.title .. '##trgc' .. d.kind) then
+                            for pi, p in ipairs(cs.params) do
                                 if imgui.MenuItem((p.label or p.key) .. '##trgc' .. d.kind .. pi) then
                                     pickDef(di);
-                                    if isPet then trig._addPet = pi; else trig._addPlayer = pi; end
+                                    trig[cs.slot] = pi;
                                     pcall(function() imgui.CloseCurrentPopup(); end);
                                 end
                                 if p.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(p.hint); end
@@ -3004,7 +3025,7 @@ local function renderTrigAddPopup()
                             imgui.EndMenu();
                         end
                     else
-                        if imgui.Selectable(title .. '  >##trgc' .. d.kind) then trig._condDrill = d.kind; end
+                        if imgui.Selectable(cs.title .. '  >##trgc' .. d.kind) then trig._condDrill = d.kind; end
                     end
                 else
                     local disp = d.label or trigPrettyKey(string.lower(d.key));
@@ -3070,24 +3091,22 @@ local function renderTrigAddPopup()
             elseif cur.hint ~= nil and imgui.IsItemHovered() then
                 imgui.SetTooltip(cur.hint);
             end
-        elseif cur.kind == 'player' then
+        elseif CASCADES[cur.kind] ~= nil then
             -- Value widget ONLY: the parameter itself was picked in the
             -- cascading condition menu (one box, not two -- Henrik's revision).
-            local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
+            -- 'fixed' parameters (HasPet/NoPet, the four Rage entries) carry
+            -- their value -- nothing to type.
+            local cs = CASCADES[cur.kind];
+            local pp = cs.params[trig[cs.slot]] or cs.params[1];
             if pp.kind == 'buff' then
                 local pick = buffPickCombo('##trgcondbuff', trig._addValSel or '(pick effect)');
                 if pick ~= nil then trig._addValSel = pick; end
-            else
+            elseif pp.kind == 'number' then
                 imgui.PushItemWidth(90);
                 imgui.InputInt('##trgcondnum', trig.addValNum, 0);
                 imgui.PopItemWidth();
                 if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
-            end
-        elseif cur.kind == 'pet' then
-            -- The Pet cascade's value widget (v63): 'fixed' parameters
-            -- (HasPet/NoPet) carry their value -- nothing to type.
-            local pp = PET_PARAMS[trig._addPet] or PET_PARAMS[1];
-            if pp.kind == 'list' then
+            elseif pp.kind == 'list' then
                 imgui.PushItemWidth(170);
                 if imgui.BeginCombo('##trgcondval', trig._addValSel or '(pick)') then
                     for vi, it in ipairs(pp.items) do
@@ -3103,7 +3122,9 @@ local function renderTrigAddPopup()
                 imgui.PopItemWidth();
                 if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
             else
-                imgui.TextColored(COL_DIM, '(flag)');
+                -- 'fixed': true/false reads as a flag; a Rage entry's value is
+                -- already on the condition button.
+                imgui.TextColored(COL_DIM, (type(pp.value) == 'boolean') and '(flag)' or '(fixed)');
                 if pp.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(pp.hint); end
             end
         elseif cur.kind == 'number' then
@@ -3123,8 +3144,8 @@ local function renderTrigAddPopup()
         else
             imgui.TextColored(COL_DIM, '(flag)');
         end
-        -- Capture the current widget's key + value; the Player cascade resolves
-        -- to the SELECTED parameter's key and widget kind. `conds` is the target
+        -- Capture the current widget's key + value; a cascade resolves to the
+        -- SELECTED parameter's key and widget kind. `conds` is the target
         -- leg (the body's or a case's) and `applyNote(note, swap)` stores the
         -- replace report on that same container -- the picker is shared, the
         -- destination is not (issue #127).
@@ -3132,11 +3153,9 @@ local function renderTrigAddPopup()
             if cur == nil then return; end
             local ckey, ck = cur.key, cur.kind;
             local fixedVal = nil;
-            if ck == 'player' then
-                local pp = PLAYER_PARAMS[trig._addPlayer] or PLAYER_PARAMS[1];
-                ckey, ck = pp.key, pp.kind;
-            elseif ck == 'pet' then
-                local pp = PET_PARAMS[trig._addPet] or PET_PARAMS[1];
+            local cs = CASCADES[ck];
+            if cs ~= nil then
+                local pp = cs.params[trig[cs.slot]] or cs.params[1];
                 ckey, ck = pp.key, pp.kind;
                 fixedVal = pp.value;   -- only the 'fixed' parameters carry one
             end
@@ -3997,7 +4016,7 @@ local function bpEdit(index)
     trig.addPrio[1] = e.rule.priority or 0;
     trig.addSwap = nil;
     trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
-    trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
+    trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
     trig._openAdd = true;
 end
 
@@ -5596,14 +5615,14 @@ function M.render(job, level)
             trig.addPrio[1] = r.priority or 0;
             trig.addSwap = nil;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
-            trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
+            trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
             trig.addFor = h; trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig._addDef = 1;
             trig.addNote, trig.addSwap = nil, nil;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
-            trig._addPlayer = 1; trig._addPet = 1; trig.addValNum[1] = 0;
+            trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
             trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;   -- fresh add, not an edit
             trig._openAdd = true;
         end
