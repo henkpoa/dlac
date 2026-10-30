@@ -455,6 +455,11 @@ addon.version = '2026.10.29b';  -- date of the last shipped change (Ashita print
                                 --  hat on over a hooded body -- a Head
                                 --  battery goes on and off with the Body
                                 --  battery that replaces the cloak;
+                                --  10.29a = engine v175: PetAction's
+                                --  Avatar-Rage cascade -- Rage: Physical,
+                                --  Magic, Hybrid or Breath, what the
+                                --  avatar's Blood Pact: Rage deals, so one
+                                --  rule gears every pact of a kind;
                                 --  10.29b = the hover card and the pin
                                 --  popup list a piece's stance bonuses,
                                 --  one line per stance)

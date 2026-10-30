@@ -11571,6 +11571,41 @@ recommendation (this should affect both CEXI and AXI behaviour)."
   `2026.09.09a`, which predates #182, with uncommitted local edits. Left for
   him to update.
 
+## 2026-10-29: Avatar-Rage, what a Blood Pact: Rage deals (`2026.10.29a`, engine v175)
+
+Henrik asked whether LAC can tell a physical Blood Pact from a magical one.
+It can't: LAC (and the client) knows a pact's name, its id and "Blood Pact:
+Rage" vs "Ward" off the recast timer, nothing more, and Rage covers Predator
+Claws and Meteor Strike alike. The ecosystem answers it with hand-typed name
+lists (Kinematics' `magicalRagePacts`). The choice belongs in PetAction, not
+Ability: damage is computed when the avatar's move lands, ~2 s after it
+readies (pet_skills.sql activation 2000), and Ability gear is back to Default
+by then. Then: "Can we add this to a cascading menu in PetAction ... for
+Avatar-Rage, then have Rage: Physical and Rage: Magic, Rage: Hybrid, Rage:
+Breath", and "Flaming Crush is hybrid."
+
+- **The condition**, engine v175: `rageType` = Physical / Magic / Hybrid /
+  Breath, off `dispatch.RAGE_TYPE` by the action's name (lowercase, letters
+  only, the PET_ELEMENT keying). Only an Ability action can match, so a jug
+  pet's Ready move (a MobSkill) never does. Tier 30 beside `magicType`.
+- **The table is the server's.** Every rage in AscensionXI's
+  `sql/pet_skills.sql` (main 8d1117e), typed by the `xi.attackType` its script
+  deals: 26 Physical, 33 Magic, 2 Hybrid, 1 Breath. Burning Strike and Flaming
+  Crush deal both, which matches Henrik's ruling. Nether Blast deals breath.
+  Left out: Deconstruction (no damage) and seven 99-era pacts no server
+  scripts. CatsEyeXI's older scripts differ on three: Burning Strike and
+  Flaming Crush deal physical only there, Nether Blast magic. The shared table
+  follows AscensionXI.
+- **The menu**: a third cascade, Avatar-Rage, on PetAction only. Player, Pet
+  and Avatar-Rage now share one `CASCADES` table in `ui/triggersui.lua`
+  (title, parameters, picked slot) instead of a Player/Pet branch at every
+  site. Editing a pending Rage row loads the right entry back by its value.
+- Tests RT1-RT30 (run_tests: the table pinned row by row against the server,
+  the matcher, tier, round trip, and the native GetPetAction shape) and
+  TB50-TB57 (smoke_ui: the real menu opened and clicked, each entry saved and
+  loaded by the engine, the edit path). TB43 now reads the Pet parameters
+  through `CASCADES`.
+
 ## 2026-10-29: the hover card lists stance bonuses (`2026.10.29b`)
 
 Henrik: "DLAC doesn't seem to show stance stats, such as warlock's set and

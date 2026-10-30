@@ -4561,7 +4561,10 @@ end)();
                 if n == nil then break; end
                 PUP[n] = v;
             end
-            local PET, DEFS = PUP.PET_PARAMS, PUP.COND_DEFS;
+            -- The cascades live in one table since engine v175 (Player, Pet,
+            -- Avatar-Rage): kind -> { title, params, slot }.
+            local CAS, DEFS = PUP.CASCADES, PUP.COND_DEFS;
+            local PET = (type(CAS) == 'table' and type(CAS.pet) == 'table') and CAS.pet.params or nil;
             check('TB43 the Pet parameters and handler defs are reachable',
                 type(PET) == 'table' and type(DEFS) == 'table', true);
             if type(PET) == 'table' and type(DEFS) == 'table' then
@@ -4597,6 +4600,88 @@ end)();
                     check(string.format('TB%d %s: ...and the engine loads it', 46 + hi, h), table.concat(dropped, ','), '');
                 end
                 check('TB49 the pet element popup stayed balanced', depth.popup, 0);
+            end
+
+            -- TB50-56. The Avatar-Rage cascade (engine v175), PetAction only:
+            -- the REAL condition menu opened, the cascade entered, a Rage entry
+            -- clicked; then saved, loaded by the engine, and edited back.
+            local RAGE = (type(CAS) == 'table' and type(CAS.rage) == 'table') and CAS.rage.params or nil;
+            if type(RAGE) == 'table' and type(DEFS) == 'table' then
+                local D = require('dlac\\dispatch');
+                local function rageDef(h)
+                    for i, d in ipairs(DEFS[h] or {}) do if d.kind == 'rage' then return i; end end
+                    return nil;
+                end
+                local elsewhere = {};
+                for h, _ in pairs(DEFS) do
+                    if h ~= 'PetAction' and rageDef(h) ~= nil then elsewhere[#elsewhere + 1] = h; end
+                end
+                check('TB50 PetAction offers Avatar-Rage, no other handler does',
+                    tostring(rageDef('PetAction') ~= nil) .. '/' .. table.concat(elsewhere, ','), 'true/');
+
+                -- Open the chooser and the cascade; record the menu items.
+                local savedBP, savedBM, savedMI = IM.BeginPopup, IM.BeginMenu, IM.MenuItem;
+                IM.BeginPopup = function(id)
+                    local s = tostring(id);
+                    if s == '##dlac_trigadd' or s == '##trgcondmenu' then depth.popup = depth.popup + 1; return true; end
+                    return false;
+                end
+                IM.BeginMenu = function(l) REC[#REC + 1] = 'menu:' .. tostring(l); return tostring(l) == 'Avatar-Rage##trgcrage'; end
+                IM.MenuItem  = function(l) REC[#REC + 1] = 'item:' .. tostring(l); return tostring(l) == CLICK; end
+                trig.data = {};
+                trig.addFor, trig.addConds, trig._addDef = 'PetAction', {}, 1;
+                trig._addValSel = nil; trig.addValText[1] = ''; trig.addSet = 'BP_Hybrid';
+                trig.addNote, trig.addSwap = nil, nil;
+                trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+                frame('Rage: Hybrid##trgcrage3');
+                local items = {};
+                for _, l in ipairs(REC) do
+                    local it = l:match('^item:(Rage: [^#]+)##trgcrage');
+                    if it then items[#items + 1] = it; end
+                end
+                check('TB51 the cascade lists the four, in order', table.concat(items, ','),
+                    'Rage: Physical,Rage: Magic,Rage: Hybrid,Rage: Breath');
+                local cur = DEFS.PetAction[trig._addDef];
+                check('TB52 clicking Rage: Hybrid lands the cascade and the entry',
+                    tostring(cur and cur.kind) .. '/' .. tostring(trig._addRage), 'rage/3');
+                IM.BeginPopup, IM.BeginMenu, IM.MenuItem = savedBP, savedBM, savedMI;
+                frame(nil);
+                local btn = false;
+                for _, l in ipairs(REC) do if l == 'Rage: Hybrid###trgcondbtn' then btn = true; end end
+                check('TB53 ...and the condition button names it', btn, true);
+
+                -- Each entry saves as rageType = <its value>, and the engine loads it.
+                local bad, dropped = {}, {};
+                for ri, p in ipairs(RAGE) do
+                    trig.data = {};
+                    trig.addFor, trig.addConds, trig._addDef = 'PetAction', {}, rageDef('PetAction');
+                    trig._addRage = ri;
+                    trig._addValSel = nil; trig.addSet = 'BP';
+                    trig.addNote, trig.addSwap = nil, nil;
+                    frame('+ & condition##trgac');
+                    frame('Add rule###trgaddgo');
+                    local r = trig.data.PetAction and trig.data.PetAction[1];
+                    local got = (type(r) == 'table') and (r.when or {}).ragetype or nil;
+                    if got ~= p.value then bad[#bad + 1] = tostring(p.value) .. '=' .. tostring(got); end
+                    local norm, warns = D._normalize({ PetAction = { r } });
+                    if #((norm or {}).PetAction or {}) ~= 1 or #(warns or {}) ~= 0 then dropped[#dropped + 1] = tostring(p.value); end
+                end
+                check('TB54 each Rage entry saves as rageType = its value', table.concat(bad, ','), '');
+                check('TB55 ...and the engine loads every one', table.concat(dropped, ','), '');
+
+                -- 'e' on a pending Rage row loads the RIGHT entry back (one key,
+                -- four values: the value picks it, the NoPet lesson).
+                trig.data = {};
+                trig.addFor, trig._addDef, trig._addRage = 'PetAction', 1, 1;
+                trig.addConds = { { key = 'ragetype', value = 'Breath' } };
+                trig.addNote, trig.addSwap = nil, nil;
+                frame('e##trgce1');
+                cur = DEFS.PetAction[trig._addDef];
+                check('TB56 editing rageType = Breath reloads Rage: Breath',
+                    tostring(cur and cur.kind) .. '/' .. tostring(trig._addRage) .. '/' .. tostring(#trig.addConds), 'rage/4/0');
+                check('TB57 the Avatar-Rage popups stayed balanced', depth.popup, 0);
+            else
+                check('TB50 the Avatar-Rage parameters are reachable', type(RAGE), 'table');
             end
         end
     end
