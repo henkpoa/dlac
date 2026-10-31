@@ -11632,6 +11632,27 @@ include the stance stats as well?" Then: "Can you make the fix."
   `tests/smoke_ui.lua` STN1-STN5 (the pin popup on both packs, the card's
   source). Emptying `bonusesOf` turns both red.
 
+## 2026-10-31: the Paladin gauge forgets its points at a zone-out (`2026.10.31a`)
+
+Henrik: "Seems like fury pld and guard pld charges are remembered through
+zoning, job changes and everything, except log off? Sounds wrong, it
+shouldn't."
+
+- **The server held them.** AscensionXI kept the points in a per-character
+  table that only a fresh login cleared. AscensionXI PR #1099 ties them to the
+  stance: a swap between Divine Guard and Divine Fury keeps them, and death,
+  zoning, a job change, logout or the 2 hours running out clears them.
+- **The gauge's part**: `zoneOut` kept the last state drawn until the new
+  zone's subscribe was answered, about 3 s after the zone-in. A Paladin who put
+  a stance back up in that window saw the old points. `zoneOut` now drops the
+  state, so nothing is drawn until the server answers. Death, a job change and
+  the stance running out need nothing here: the server pushes the cleared
+  points.
+- Tests: `tests/ascensionxi_pldgauge.lua` (nothing drawn after a zone-out or
+  before the new zone answers, the new zone's points drawn, a point gained
+  after the zone bursts). Against the old `zoneOut` it fails at "zone-out
+  forgets the last state".
+
 ## 2026-10-31: "Mog Wardrobe is full" while wardrobe slots sit empty (`2026.10.31b`)
 
 henkpoa/dlac#230, handed over from the AscensionXI side: a player saw "Mog

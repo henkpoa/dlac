@@ -463,6 +463,9 @@ addon.version = '2026.10.31b';  -- date of the last shipped change (Ashita print
                                 --  10.29b = the hover card and the pin
                                 --  popup list a piece's stance bonuses,
                                 --  one line per stance;
+                                --  10.31a = the Paladin gauge forgets its
+                                --  points at a zone-out, as the server
+                                --  clears them at every zone-in;
                                 --  10.31b = the Gear Vault says when the
                                 --  LAYOUT is full, not the wardrobe, and
                                 --  names the bag pieces holding empty
