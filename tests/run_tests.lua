@@ -28953,6 +28953,23 @@ end)();
         }, {}, { [1] = true, [2] = true });
         return #rk.unpinned == 1 and rk.unpinned[1].itemId == 3 and #rk.pinned == 0;
     end)(), true);
+    -- #230: an entry for a copy in your BAGS ranks first -- even set-wanted
+    -- and freshly worn -- since removing it moves nothing and frees its
+    -- empty slot at once. Worn does not hide it: it is not on the shelf.
+    check('USG11c a bag copy ranks first, worn or not, assigned or not', (function()
+        local rk = ug.rankEvictions({
+            { itemId = 1, identity = vc.ZERO24, count = 1, pinned = false, name = 'Old Unassigned' },
+            { itemId = 5, identity = vc.ZERO24, count = 1, pinned = false, name = 'Bag Boots',
+              instanceId = 50, kind = 0, state = 2, location = 0 },
+            { itemId = 6, identity = vc.ZERO24, count = 1, pinned = false, name = 'Bag Ring',
+              instanceId = 60, kind = 0, state = 2, location = 17 },
+            { itemId = 7, identity = vc.ZERO24, count = 1, pinned = false, name = 'Shelf Worn',
+              instanceId = 70, kind = 0, state = 1 },
+        }, { [5] = true }, { [5] = true, [7] = true });
+        return #rk.unpinned == 3 and rk.unpinned[1].itemId == 6 and rk.unpinned[2].itemId == 5
+           and rk.unpinned[3].itemId == 1 and rk.unpinned[1].bagHeld == true
+           and rk.unpinned[1].location == 17 and rk.unpinned[3].bagHeld == false;
+    end)(), true);
 
     -- additions 'off' gates the push
     vc._reset(); rc._reset(); T, sent, msgs = 1000, {}, {};
