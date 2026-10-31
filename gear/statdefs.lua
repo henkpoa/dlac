@@ -631,6 +631,8 @@ M.list = {
     { key = 'PerpetuationCarbuncle', label = 'Carby Perp-', section = 'Pet' },   -- halves carbuncle perpetuation
     { key = 'PerpetuationDay', label = 'Day Perp-', section = 'Pet' },
     { key = 'PerpetuationWeather', label = 'Weather Perp-', section = 'Pet' },
+    { key = 'WardTPKept', label = 'Ward TP Kept', section = 'Pet', percent = true },   -- AXI: the avatar keeps this % of the TP a Blood Pact: Ward used
+    { key = 'NoDepartureThreat', label = 'No Departure Threat', section = 'Pet' },   -- AXI flag: an avatar summoned in it passes no threat when it leaves
     { key = 'AutomatonLevel', label = 'Automaton Lv.+', section = 'Pet' },
     { key = 'AutoMeleeSkill', label = 'Auto Melee', section = 'Pet' },   -- automaton skills
     { key = 'AutoRangedSkill', label = 'Auto Ranged', section = 'Pet' },

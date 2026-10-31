@@ -11703,3 +11703,31 @@ there: a Warden withdrawal never edits a layout.
   GVI10b, GVI29-GVI31 (the words, the counter, the pre-ticks, the Remove
   button, the new action). Each of 19 guards was broken once and each break
   turned a suite red.
+
+## 2026-10-31: the November 1 AscensionXI refresh, Summoner's gear (`2026.10.31c`)
+
+Henrik: "We are deploying to prod tomorrow for AXI. Can you do the
+re-cataloging steps we do before every deployment?"
+
+- The pack regenerated from AscensionXI main `4d773d1371` (after #1110):
+  15,480 records (5 added, 11 changed, none removed), 884 latent-stat items
+  (1 added, 2 removed), 5 icons, 27 dig zones. Summoner's Artifact, relic
+  and Onslaught staves come from #1088. Carbuncle Mitts, Grand Aketon and
+  Caedarva Mire digging come from #1083. The Gwora-Throne Room zone flags
+  come from #1076. Details are in
+  `docs/reference/ascensionxi-catalog-refresh.md`.
+- Two new modifiers arrived under raw server names. The pin PR maps them in
+  AXI `tools/dlac-pack/modtable.py`, and `statdefs`/`modaliases` register
+  them in the Pet section: `WARD_TP_KEPT` -> `WardTPKept` "Ward TP Kept"
+  (percent; the Summoner's Horn's 25) and `NO_AVATAR_DEPARTURE_THREAT` ->
+  `NoDepartureThreat` "No Departure Threat" (a flag on Carbuncle Mitts). The
+  labels follow AXI's own patch-note wording and still need Henrik's
+  approval.
+- Hand-kept tables checked against the server: `stances.lua` (no stance
+  latent changed), and the Avatar-Rage table (no pet ability script changed
+  since `8d1117e`). `tests/ascensionxi_digging_ui.lua` DU26 counts 27 zones,
+  and the new DU26c checks Caedarva's Burrow and Bore.
+- Not done: the AscensionXI generator reads no `item_mods_pet`, so avatar
+  stats such as the Summoner's Horn's Magic Accuracy+10 stay out of the
+  catalog. The stock-only spell and ability pickers still lack Summoner's
+  Avatar Wards and Siphons.

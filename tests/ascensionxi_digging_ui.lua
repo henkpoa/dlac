@@ -119,7 +119,10 @@ sp.init();
 package.loaded['dlac\\feature\\digcalc'] = nil;
 local dc = require('dlac\\feature\\digcalc');
 local db = dc.db();
-check('DU26 AXI table loads', type(db) == 'table' and #dc.zones(), 26);
+check('DU26 AXI table loads', type(db) == 'table' and #dc.zones(), 27);
+-- Caedarva Mire (79) digs since AXI #1083: logs from a Burrow, ore from a Bore.
+check('DU26c Caedarva Mire digs', db.zones[79] ~= nil and db.zones[79].pools.Burrow ~= nil
+    and db.zones[79].pools.Bore ~= nil, true);
 local listed = false;
 for _, name in ipairs(sp.modules() or {}) do if name == 'digging' then listed = true; end end
 check('DU26b the pack lists its digging module', listed, true);
