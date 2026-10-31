@@ -25,7 +25,8 @@ Shield Bash that interrupts a monster's spell or TP move gives a whole one. With
 each full bar restores MP instead (15 MP at level 75), so blocking never fills nothing. The
 Divine Guard abilities spend the points; Palisade spends every point held, +1% block rate each
 (up to +5% a use, 30% at most), for 5 minutes. The points carry over a stance swap (owner,
-2026-10-24).
+2026-10-24). Anything else that ends the stance clears them: death, zoning, a job change,
+logout or the 2 hours running out (AscensionXI PR #1099).
 
 The owner asked for the White Mage gauge's frame with new icons, so this is that frame,
 widened for five points:
@@ -86,7 +87,9 @@ Divine Guard, 655 Divine Fury, which the server sends) and the Palisade buff (47
 sends only the points, the charge and the stack count.
 
 - **One request per zone,** only while the main job is Paladin, 3 s after zone-in. The server
-  keeps the subscription in a local variable, so a zone-out ends it.
+  keeps the subscription in a local variable, so a zone-out ends it. The server also clears
+  the points at every zone-in, so a zone-out drops the client's last state and nothing is
+  drawn until the new zone's request is answered.
 - **Pushes only on a change,** coalesced by the server to one within 250 ms. A block changes
   the charge, so a tank who is being hit gets a push about every block, MP-blue bar included.
 - **Unknown or old servers cost almost nothing:** `BAD_OP` or `UNAVAILABLE` silences it for

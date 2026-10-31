@@ -229,18 +229,26 @@ push(st({ points = 1, maxPoints = 0, rev = 18 }));
 check(gauge.view().maxPoints == 3, 'a server before the five-point gauge draws three slots');
 
 -- Zoning: the subscription dies with the zone; exactly one more request.
+-- The server clears the points at every zone-in, so the old state goes too.
+check(gauge.view().points == 1, 'a point held before the zone');
 zoneOut();
+check(gauge.view() == nil, 'zone-out forgets the last state: nothing drawn');
 time = time + 30; mod.pump();
 check(sent == 1, 'nothing asked between zone-out and zone-in');
 zoneIn();
-check(gauge.view() ~= nil, 'the last state stays drawn across the zone line');
+check(gauge.view() == nil, 'a stance up again before the new zone answers: still nothing drawn');
 time = time + 2; mod.pump();
 check(sent == 1, 'nothing while the new zone settles');
 time = time + 2; mod.pump(); mod.pump();
 check(sent == 2, 'one subscribe per zone');
 local seq2 = last[6];
 check(seq2 ~= seq1, 'with a fresh seq');
-reply(seq2, 0, st1);
+reply(seq2, 0, st({ points = 0, rev = 2 }));
+v = gauge.view();
+check(v ~= nil and v.points == 0 and v.maxPoints == 5, 'the new zone draws the server points, not the old ones');
+push(st({ points = 1, rev = 3 }));
+v = gauge.view();
+check(v.points == 1 and v.burst[1] ~= nil, 'a point gained after the zone shows and bursts');
 
 -- Unload: stop goes straight to the packet manager.
 gauge.unload();
