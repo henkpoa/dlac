@@ -4,6 +4,53 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, November 1, 2026
+
+DLAC `2026.10.31c` regenerates the complete pack from AscensionXI main
+`4d773d1371` (after #1110), with the generator mapping in the November 1 pin
+PR. The `tools/dlac-pack` tests pass (58). 15,480 records (5 added, 11
+changed, none removed), 884 latent-stat items (1 added, 2 removed), 5 new
+icons, 27 dig zones.
+
+- **Summoner's Artifact and relic gear (#1088):** Kukulcan's Staff at 40
+  (DMG 24, Perp. Cost 1), the five Evoker's pieces at 50 and the Summoner's
+  pieces at their levels, with new lines. The Evoker's Doublet loses its
+  per-avatar elemental resistances (latent `PET_ID`).
+- **Summoner's Onslaught staves (#1088):** Forsaken Staff and Rekindled Staff
+  (Lv10), Rkndl. Staff +1 (Lv20) and +2 (Lv30), ids 20006-20009, each with
+  its icon.
+- **Carbuncle Mitts (#1083):** Carby Perp- 3 instead of the retail halving,
+  plus No Departure Threat. An obsolete Carbuncle latent worth 0 is gone.
+- **Grand Aketon (#1083):** id 26581, a level-1 body for every job, DEF 1,
+  with Movement Speed +12 as a `ZONE` latent in the city zones 230-246. Its
+  icon is new.
+- **Digging (#1083):** Caedarva Mire (79) has a Burrow and a Bore pool.
+- **Zones (#1076):** Gwora-Throne Room allows pets and Trusts (`m = 2176`).
+
+Two of the new stats had no DLAC name. The pin PR maps them in
+`tools/dlac-pack/modtable.py`, and `statdefs` and `modaliases` register
+them:
+
+| Server modifier | Catalog key | Label |
+|---|---|---|
+| `WARD_TP_KEPT` (30021) | `WardTPKept` | Ward TP Kept (%, new) |
+| `NO_AVATAR_DEPARTURE_THREAT` (30020) | `NoDepartureThreat` | No Departure Threat (new) |
+
+`tests/ascensionxi_digging_ui.lua` expects 27 zones and checks Caedarva's
+pools. Every other generated file comes back identical apart from line
+endings.
+
+Still not in DLAC:
+
+- The AscensionXI generator doesn't read `item_mods_pet`, so avatar-side
+  stats (the Summoner's Horn's "Avatar: Magic Accuracy+10") aren't in the
+  catalog.
+- `abilities.lua` and `spells.lua` read stock SQL only. Summoner's Avatar
+  Wards and the new Siphons are missing from the Triggers browse list, like
+  Paladin's kit. Typed names still work.
+
+---
+
 # AscensionXI catalog refresh, October 25, 2026
 
 DLAC `2026.10.25a` regenerates the complete pack from AscensionXI main

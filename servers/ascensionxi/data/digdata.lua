@@ -170,6 +170,27 @@ zones = {
       { id = 739, n = "Orichalcum Ore", w = 1, rank = 6 },
     },
   } },
+  [79] = { n = "Caedarva Mire", pools = {
+    Burrow = {
+      { id = 688, n = "Arrowwood Log", w = 240, rank = 0 },
+      { id = 727, n = "Dogwood Log", w = 240, rank = 0 },
+      { id = 696, n = "Yew Log", w = 150, rank = 0 },
+      { id = 1464, n = "Lancewood Log", w = 100, rank = 1 },
+      { id = 918, n = "Mistletoe", w = 50, rank = 2 },
+      { id = 701, n = "Rosewood Log", w = 10, rank = 3 },
+      { id = 702, n = "Ebony Log", w = 5, rank = 5 },
+      { id = 720, n = "Ancient Lumber", w = 1, rank = 6 },
+    },
+    Bore = {
+      { id = 768, n = "Flint Stone", w = 240, rank = 0 },
+      { id = 678, n = "Aluminum Ore", w = 100, rank = 1 },
+      { id = 737, n = "Gold Ore", w = 50, rank = 2 },
+      { id = 645, n = "Darksteel Ore", w = 10, rank = 3 },
+      { id = 2475, n = "Kaolin", w = 10, rank = 3 },
+      { id = 738, n = "Platinum Ore", w = 5, rank = 5 },
+      { id = 739, n = "Orichalcum Ore", w = 1, rank = 6 },
+    },
+  } },
   [100] = { n = "West Ronfaure", pools = {
     Treasure = {
       { id = 3509, n = "Heavy Metal", w = 5, rank = 8 },

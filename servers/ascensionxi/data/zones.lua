@@ -303,5 +303,5 @@ return {
     [296] = { n = "Dynamis-Windurst [D]", t = 128, m = 6544 },
     [297] = { n = "Dynamis-Jeuno [D]", t = 128, m = 6544 },
     [298] = { n = "Walk of Echoes [P1]", t = 0, m = 2176 },
-    [299] = { n = "Gwora-Throne Room", t = 0, m = 0 },
+    [299] = { n = "Gwora-Throne Room", t = 0, m = 2176 },
 };

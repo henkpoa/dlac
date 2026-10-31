@@ -53432,6 +53432,19 @@ return {
                     MagicAttackBonus = 9,
                 }
             },
+            ForsakenStaff = {
+                Name = "Forsaken Staff",
+                Level = 10,
+                Id = 20006,
+                Model = 294,
+                Jobs = {"SMN"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 10,
+                    Delay = 366,
+                }
+            },
             FourthStaff = {
                 Name = "Fourth Staff",
                 Level = 1,
@@ -54397,16 +54410,17 @@ return {
             },
             KukulcansStaff = {
                 Name = "Kukulcan's Staff",
-                Level = 41,
+                Level = 40,
                 Id = 17532,
                 Model = 293,
                 Jobs = {"SMN"},
                 OneHanded = false,
                 Type = "Staff",
                 Stats = {
-                    DMG = 22,
+                    DMG = 24,
                     Delay = 366,
                     MP = 20,
+                    PerpetuationCost = 1,
                 }
             },
             Laevateinn = {
@@ -56247,6 +56261,20 @@ return {
                     WindResistance = 20,
                 }
             },
+            RekindledStaff = {
+                Name = "Rekindled Staff",
+                Level = 10,
+                Id = 20007,
+                Model = 625,
+                Jobs = {"SMN"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 20,
+                    Delay = 366,
+                    SummoningMagicSkill = 2,
+                }
+            },
             RelicStaff = {
                 Name = "Relic Staff",
                 Level = 75,
@@ -56302,6 +56330,34 @@ return {
                     Delay = 366,
                     HP = 9,
                     MP = 9,
+                }
+            },
+            RkndlStaff_1 = {
+                Name = "Rkndl. Staff +1",
+                Level = 20,
+                Id = 20008,
+                Model = 625,
+                Jobs = {"SMN"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 28,
+                    Delay = 366,
+                    SummoningMagicSkill = 3,
+                }
+            },
+            RkndlStaff_2 = {
+                Name = "Rkndl. Staff +2",
+                Level = 30,
+                Id = 20009,
+                Model = 625,
+                Jobs = {"SMN"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 36,
+                    Delay = 366,
+                    SummoningMagicSkill = 4,
                 }
             },
             Rockmasher = {
@@ -88335,16 +88391,16 @@ return {
         },
         EvokersHorn = {
             Name = "Evoker's Horn",
-            Level = 60,
+            Level = 50,
             Id = 12520,
             Model = 92,
             Jobs = {"SMN"},
             Type = "Head",
             Stats = {
-                DEF = 15,
+                DEF = 16,
                 MP = 20,
-                INT = 3,
-                SummoningMagicSkill = 5,
+                MND = 3,
+                PerpetuationCost = 2,
             }
         },
         Eyepatch = {
@@ -102077,11 +102133,11 @@ return {
             Jobs = {"SMN"},
             Type = "Head",
             Stats = {
-                DEF = 18,
+                DEF = 19,
                 MP = 25,
-                INT = 3,
+                MND = 4,
                 BloodPactDelay = 3,
-                WeatherDamageReduction = 3,
+                WardTPKept = 25,
             }
         },
         SuperRibbon = {
@@ -126272,15 +126328,16 @@ return {
         },
         EvokersDoublet = {
             Name = "Evoker's Doublet",
-            Level = 58,
+            Level = 50,
             Id = 12650,
             Model = 92,
             Jobs = {"SMN"},
             Type = "Body",
             Stats = {
-                DEF = 35,
+                DEF = 36,
                 MP = 15,
                 MND = 3,
+                PerpetuationCost = 1,
             }
         },
         FacioBliaut = {
@@ -128353,6 +128410,17 @@ return {
             Jobs = {"RNG", "SAM", "DRG", "COR"},
             Type = "Body",
             Stats = {
+            }
+        },
+        GrandAketon = {
+            Name = "Grand Aketon",
+            Level = 1,
+            Id = 26581,
+            Model = 504,
+            Jobs = {"All"},
+            Type = "Body",
+            Stats = {
+                DEF = 1,
             }
         },
         GrandoynesMail = {
@@ -140740,10 +140808,10 @@ return {
             Jobs = {"SMN"},
             Type = "Body",
             Stats = {
-                DEF = 38,
+                DEF = 39,
                 MP = 20,
-                BloodPactDelay = 3,
-                DayDamageReduction = 3,
+                BloodPactDelay = 2,
+                ElementalSiphonBonus = 25,
             }
         },
         SupayWeskit = {
@@ -148568,7 +148636,8 @@ return {
             Stats = {
                 DEF = 5,
                 MP = 14,
-                PerpetuationCarbuncle = 1,
+                NoDepartureThreat = 1,
+                PerpetuationCarbuncle = 3,
             }
         },
         CarbunclesCuffs = {
@@ -151478,15 +151547,16 @@ return {
         },
         EvokersBracers = {
             Name = "Evoker's Bracers",
-            Level = 54,
+            Level = 50,
             Id = 13975,
             Model = 92,
             Jobs = {"SMN"},
             Type = "Hands",
             Stats = {
-                DEF = 11,
+                DEF = 12,
                 MP = 15,
                 VIT = 4,
+                SummoningMagicSkill = 10,
             }
         },
         EvokersGages = {
@@ -163611,7 +163681,7 @@ return {
                 DEF = 15,
                 MP = 25,
                 BloodPactDelay = 2,
-                SummoningMagicSkill = 10,
+                PerpetuationCost = 1,
             }
         },
         SusurrusGauntlets = {
@@ -191735,15 +191805,16 @@ return {
         },
         EvokersSpats = {
             Name = "Evoker's Spats",
-            Level = 52,
+            Level = 50,
             Id = 14228,
             Model = 92,
             Jobs = {"SMN"},
             Type = "Legs",
             Stats = {
-                DEF = 25,
+                DEF = 26,
                 MP = 15,
-                EvasionSkill = 10,
+                Regen = 1,
+                PerpetuationCost = 1,
             }
         },
         ExorcistHose = {
@@ -203677,9 +203748,8 @@ return {
             Stats = {
                 DEF = 29,
                 MP = 20,
-                MND = 3,
                 BloodPactDelay = 2,
-                SpiritCastReduction = 5,
+                SummoningMagicSkill = 5,
             }
         },
         SurgeSubligar = {
@@ -213783,15 +213853,15 @@ return {
         },
         EvokersPigaches = {
             Name = "Evoker's Pigaches",
-            Level = 56,
+            Level = 50,
             Id = 14103,
             Model = 92,
             Jobs = {"SMN"},
             Type = "Feet",
             Stats = {
-                DEF = 10,
+                DEF = 11,
+                HP = 15,
                 MP = 15,
-                AGI = 5,
             }
         },
         FacioGaloshes = {
