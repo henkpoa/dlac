@@ -15,7 +15,8 @@
 
     Unlike the White Mage's flowers, the points carry over a stance swap
     (owner, 2026-10-24), so the server's points are drawn under either
-    stance: there is no trust rule to wait out. Palisade is the exception
+    stance: there is no trust rule to wait out. Anything else that ends the
+    stance clears them, zoning included, so a zone-out drops the last state. Palisade is the exception
     the client can check for itself: its stacks count only while the client
     still sees the Palisade buff, so a Palisade that ran out, or was lost to
     death, empties the big shield at once without waiting for the server.
@@ -82,12 +83,14 @@ function M.zoneIn()
     due = M._clock() + M.SETTLE;
 end
 
--- A zone-out (0x00B): the server drops the subscription; ask nothing until
--- the next zone-in. The last state stays drawn until then.
+-- A zone-out (0x00B): the server drops the subscription and clears the
+-- points at the zone-in, so forget the last state and ask nothing until the
+-- next zone-in. Nothing is drawn until its subscribe is answered.
 function M.zoneOut()
     if sub == 'pending' and pendingSeq ~= nil then pcall(M._abandon, wire.op.SUBSCRIBE, pendingSeq); end
     if not dormant then sub = nil; end
     pendingSeq, pendingAt, due = nil, nil, nil;
+    state, stateAt, gainedAt, lastPoints = nil, nil, {}, 0;
 end
 
 local function apply(s)
