@@ -24,9 +24,12 @@
 
     EVICTION RANKING (GV3 Full mode, and the 'ask' list's order): UNPINNED
     only -- a pinned entry never auto-ranks, it is presented for explicit
-    permission instead; UNASSIGNED first (nothing in the current derivation
-    wants it), then oldest last-used first; name as the stable tie-break.
+    permission instead; entries for copies in your BAGS first (#230), then
+    UNASSIGNED (nothing in the current derivation wants it), then oldest
+    last-used first; name as the stable tie-break.
 ]]--
+
+local layoutcounts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutcounts');
 
 local M = {};
 
@@ -332,26 +335,33 @@ end
 -- 2026-08-27 field round): the apply cannot move an equipped piece off the
 -- shelf, so evicting its entry only desyncs the layout from the shelf and
 -- sets the moogle chasing an immovable item.
+--
+-- An entry for a copy in your BAGS ranks first, worn or not (#230): it holds
+-- a wardrobe slot that stays empty, and removing it moves nothing, so it
+-- frees that slot at once and never desyncs anything.
 -- ---------------------------------------------------------------------------
 function M.rankEvictions(entries, assignedIds, wornIds)
     assignedIds = assignedIds or {};
     wornIds = wornIds or {};
     local unpinned, pinned = {}, {};
     for _, e in ipairs(entries or {}) do
-        if (e.count or 1) > 0 and e.kind ~= 2 and not wornIds[e.itemId]
-            and not wornIds['i:' .. tostring(e.instanceId)] then
+        local bag = layoutcounts.isBagHeld(e);
+        if (e.count or 1) > 0 and e.kind ~= 2 and (bag or (not wornIds[e.itemId]
+            and not wornIds['i:' .. tostring(e.instanceId)])) then
             local c = {
                 itemId = e.itemId, identity = e.identity, count = e.count or 1,
                 pinned = e.pinned == true, name = e.name or tostring(e.itemId),
                 key = M.keyOf(e.itemId, e.identity, e.instanceId),
                 instanceId = e.instanceId, ordinal = e.ordinal,
                 assigned = assignedIds[e.itemId] == true,
+                bagHeld = bag, location = e.location,
             };
             c.last = st.stamps[c.key] or 0;
             if c.pinned then pinned[#pinned + 1] = c; else unpinned[#unpinned + 1] = c; end
         end
     end
     local function order(a, b)
+        if a.bagHeld ~= b.bagHeld then return a.bagHeld; end           -- bag-held first
         if a.assigned ~= b.assigned then return not a.assigned; end   -- unassigned first
         if a.last ~= b.last then return a.last < b.last; end          -- oldest first
         return a.name < b.name;

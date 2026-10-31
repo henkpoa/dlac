@@ -8360,6 +8360,25 @@ end)();
         vui.render(1, 75);
         check('GVU27 ...and stops saying it once answered',
             table.concat(texts, '|'):find('Storing...', 1, true), nil);
+        -- #230: Remove refuses a WORN copy on the wardrobe (the apply cannot
+        -- move it), but not a worn copy in your BAGS: only its entry goes.
+        local recMod = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
+        local oldWorn, oldLimits = recMod.wornNow, vc.limits;
+        recMod.wornNow = function() return { [300] = true }; end;
+        vc.limits = { instances = true };
+        vc.layoutCache.entries = { { ordinal = 1, itemId = 300, instanceId = 31, count = 1, kind = 0,
+            state = 1, location = 8, pinned = false, identity = vc.ZERO24 } };
+        vc.layoutCache.fresh = true; vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
+        vc._st().layoutSetQ = {};
+        pressLabel = 'Remove##gvr'; vui.render(1, 75); pressLabel = nil;
+        check('GVU28 a worn copy on the wardrobe is not removed', #vc._st().layoutSetQ == 0
+            and vui._lastResult().text == 'Item300 is equipped right now -- unequip it first, then remove', true);
+        vc.layoutCache.entries[1].state, vc.layoutCache.entries[1].location = 2, 0;
+        vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
+        pressLabel = 'Remove##gvr'; vui.render(1, 75); pressLabel = nil;
+        check('GVU28a a worn copy in the bags is: its entry goes', #vc._st().layoutSetQ, 1);
+        vc._st().layoutSetQ = {};
+        recMod.wornNow, vc.limits = oldWorn, oldLimits;
         vc.layoutCache.entries = oldEntries;
         vc.layoutCache.stamp = vc.layoutCache.stamp + 1;
     end
@@ -8517,6 +8536,119 @@ end)();
         local all = (blob .. '|' .. table.concat(headers, '|') .. '|' .. table.concat(smallHits, '|')):lower();
         return all:find('shelf', 1, true) == nil;
     end)(), true);
+    check('GVU14b the advice no longer says to keep using withdrawn gear from your bags',
+          blob:find('keep using it from your bags', 1, true), nil);
+    check('GVU14c ...it says a withdrawal alone frees no slot, and names the one-click way',
+          blob:find('does not free its slot', 1, true) ~= nil
+          and blob:find('Remove from layout and withdraw', 1, true) ~= nil, true);
+
+    -- henkpoa/dlac#230, the reported shape: THF, Wardrobes 1-4 sized 29, 13,
+    -- 17 and 6 holding 62, a 65-entry layout of which 3 are copies in the
+    -- bags, and 2 set pieces waiting in the vault. "Mog Wardrobe is full"
+    -- over "62/65" read as a lie: the words now say the LAYOUT is full and
+    -- name the bag pieces; "full" stays only when the wardrobes really are.
+    local NM = { [101] = 'Traveler\'s Mantle +1', [102] = 'Leaping Boots +1', [103] = 'Bastokan Ring' };
+    local function nm(id) return NM[id] or ('Item' .. id); end
+    local function bagEntry(i, id, loc)
+        return { ordinal = 900 + i, itemId = id, instanceId = 6000 + i, count = 1,
+                 kind = 0, state = 2, location = loc or 0, identity = string.rep('\0', 24) };
+    end
+    local liftBag = { bagEntry(1, 101), bagEntry(2, 102), bagEntry(3, 103) };
+    check('GVU15 the reported case: the layout is full, the bag pieces are named',
+          vui2.pressureWords({ over = 0, waiting = 2, units = 65, capacity = 65, bagHeld = liftBag }, 'THF', 3, nm),
+          'Your THF layout fills all 65 wardrobe slots. 3 slots are kept for gear in your bags: '
+          .. 'Traveler\'s Mantle +1, Leaping Boots +1, Bastokan Ring. '
+          .. 'Remove those or other pieces from the layout to make room for 2 more from your sets.');
+    check('GVU15b wardrobes physically full, nothing in the bags: "full" is the truth',
+          vui2.pressureWords({ over = 0, waiting = 2, units = 65, capacity = 65, bagHeld = {} }, 'THF', 0, nm),
+          'Mog Wardrobe is full: 2 equipment pieces cannot fit in.');
+    check('GVU15c free slots and nothing in the bags: never "full"',
+          vui2.pressureWords({ over = 0, waiting = 2, units = 65, capacity = 65, bagHeld = {} }, 'THF', 3, nm),
+          'Your THF layout fills all 65 wardrobe slots. Remove pieces from the layout to make room for 2 more from your sets.');
+    check('GVU15d wardrobes unreadable and nothing in the bags: the old words',
+          vui2.pressureWords({ over = 0, waiting = 1, units = 65, capacity = 65 }, 'THF', nil, nm),
+          'Mog Wardrobe is full: 1 equipment piece cannot fit in.');
+    check('GVU15e the WAR "over" case: bag pieces named even with the wardrobes full',
+          vui2.pressureWords({ over = 4, waiting = 0, units = 69, capacity = 65, bagHeld = liftBag }, 'WAR', 0, nm),
+          'Your WAR layout holds 69 pieces for 65 wardrobe slots. 3 slots are kept for gear in your bags: '
+          .. 'Traveler\'s Mantle +1, Leaping Boots +1, Bastokan Ring. '
+          .. 'Remove 4 of those or other pieces from the layout to make it fit.');
+    check('GVU15f singulars, the Recycle Bin, waiting on top of over, and no job name',
+          vui2.pressureWords({ over = 1, waiting = 1, units = 66, capacity = 65, bagHeld = { bagEntry(1, 103, 17) } }, nil, 0, nm),
+          'This job\'s layout holds 66 pieces for 65 wardrobe slots. 1 slot is kept for gear in your bags: '
+          .. 'Bastokan Ring (Recycle Bin). Remove 1 of those or other pieces from the layout to make it fit. '
+          .. '1 more from your sets is waiting for room.');
+    check('GVU15g a long list names five and counts the rest', (function()
+        local many = {};
+        for i = 1, 7 do many[i] = bagEntry(i, 200 + i); end
+        local w = vui2.pressureWords({ over = 0, waiting = 1, units = 64, capacity = 65, bagHeld = many }, 'THF', 1, nm);
+        return w:find('fills 64 of your 65 wardrobe slots. 7 slots are kept for gear in your bags: '
+            .. 'Item201, Item202, Item203, Item204, Item205 and 2 more.', 1, true) ~= nil;
+    end)(), true);
+
+    -- ...and the same in the tab: a readable wardrobe count (62/65), the THF
+    -- layout on hand with its 3 bag entries, and the Lift-shaped verdict.
+    local savedCore = AshitaCore;
+    local function wardrobes(used)
+        local max = { [8] = 29, [10] = 13, [11] = 17, [12] = 6 };
+        AshitaCore = { GetMemoryManager = function() return {
+            GetInventory = function() return {
+                GetContainerCountMax = function(_, cid) return max[cid] or 0; end,
+                GetContainerCount = function(_, cid) return used[cid] or 0; end,
+            }; end,
+        }; end };
+    end
+    local function bagCand(i, id) return { key = 'b' .. i, itemId = id, count = 1, assigned = true,
+        bagHeld = true, location = 0, identity = string.rep('\0', 24) }; end
+    local function shelfCand(i) return { key = 'w' .. i, itemId = 300 + i, count = 1, assigned = false,
+        identity = string.rep('\0', 24) }; end
+    local liftPressure = { over = 0, waiting = 2, units = 65, capacity = 65, bagHeld = liftBag,
+        waitingItems = { { itemId = 104, need = 1 }, { itemId = 105, need = 1 } }, mode = 'ask',
+        candidates = { bagCand(1, 101), bagCand(2, 102), bagCand(3, 103), shelfCand(1), shelfCand(2) },
+        pinned = {} };
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile'].pressure = function() return liftPressure; end;
+    vc.noteJob(6);
+    vc.layoutCache = { job = 6, fresh = true, stamp = 901, entries = {
+        { ordinal = 1, itemId = 300, instanceId = 5001, count = 1, kind = 0, state = 1, identity = string.rep('\0', 24) },
+        liftBag[1], liftBag[2], liftBag[3] } };
+    wardrobes({ [8] = 29, [10] = 13, [11] = 17, [12] = 3 });
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui'] = nil;
+    local vui3 = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui');
+    local ticks = {};
+    IM.Checkbox = function(label, buf) ticks[label] = buf[1]; return false; end;
+    texts, smallHits, headers = {}, {}, {};
+    pressLabel = 'Choose what to remove';
+    check('GVU16 renders the reported case', pcall(vui3.render, 'THF', 75), true);
+    pressLabel = nil;
+    blob = table.concat(texts, '|');
+    check('GVU16a the counter says what the empty slots are kept for',
+          blob:find('Wardrobes 1-8: 62/65 -- 3 kept for gear in your bags', 1, true) ~= nil, true);
+    check('GVU16b the banner names the bag pieces under THF', blob:find('Your THF layout fills all 65 wardrobe slots. '
+          .. '3 slots are kept for gear in your bags: Item101, Item102, Item103.', 1, true) ~= nil, true);
+    check('GVU16c ...and never says the wardrobe is full', blob:find('Mog Wardrobe is full', 1, true), nil);
+    check('GVU16d the dialog pre-ticks the bag pieces first, and only what is needed', (function()
+        local m = vui3._marks or {};
+        return m.b1 and m.b1[1] == true and m.b2 and m.b2[1] == true and m.b3 and m.b3[1] == false
+           and m.w1 and m.w1[1] == false and m.w2 and m.w2[1] == false;
+    end)(), true);
+    check('GVU16e the dialog tags a bag piece [In bags]', blob:find('Item101  [In bags]', 1, true) ~= nil, true);
+    check('GVU16f ...and a wardrobe piece carries no tag', blob:find('Item301  [', 1, true), nil);
+    vui3._evictOpen, vui3._marks = false, {};
+    -- the wardrobes really full and nothing in the bags: "full" is the truth
+    liftPressure.bagHeld = {};
+    vc.layoutCache.entries = { vc.layoutCache.entries[1] };
+    vc.layoutCache.stamp = 902;
+    wardrobes({ [8] = 29, [10] = 13, [11] = 17, [12] = 6 });
+    package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui'] = nil;
+    vui3 = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultui');
+    texts = {};
+    check('GVU17 renders the physically full case', pcall(vui3.render, 'THF', 75), true);
+    blob = table.concat(texts, '|');
+    check('GVU17a no suffix on the counter without bag pieces', blob:find('Wardrobes 1-8: 65/65|', 1, true) ~= nil, true);
+    check('GVU17b "full" when the wardrobes are', blob:find('Mog Wardrobe is full: 2 equipment pieces cannot fit in.', 1, true) ~= nil, true);
+    IM.Checkbox = nil;
+    AshitaCore = savedCore;
+    vc.noteJob(1);
     package.loaded['dlac\\gear\\gearfmt'] = savedFmt;
     package.loaded['dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile'] = savedRec;
 
@@ -8558,6 +8690,11 @@ end)();
     vui.render(1, 75);
     check('GVI9 outside layout copy is marked In bags', table.concat(texts, '|'):find('[In bags]', 1, true) ~= nil, true);
     check('GVI10 outside hover explains recovery', table.concat(warnings, '|'):find('Store this copy at a Void Storage Warden', 1, true) ~= nil, true);
+    check('GVI10b ...and that it keeps an empty slot until the entry goes (#230)', (function()
+        local w = table.concat(warnings, '|');
+        return w:find('keeps a wardrobe slot, which stays', 1, true) ~= nil
+           and w:find('Remove the entry to free its slot', 1, true) ~= nil;
+    end)(), true);
     vc.layoutCache.entries[1].location = 17; vc.layoutCache.stamp = 56.5;
     texts, warnings = {}, {}; vui.render(1, 75);
     check('GVI discarded recoverable copy is marked Recycle Bin', table.concat(texts, '|'):find('[Recycle Bin]', 1, true) ~= nil, true);
@@ -8695,6 +8832,65 @@ end)();
     entry.state = 0; vc.layoutCache.stamp = 60; asked = {};
     vui.render(1, 75);
     check('GVI28b a copy in the vault asks nothing', #asked, 0);
+    -- Remove from layout and withdraw (#230): the sets keep the piece, only
+    -- this job's entry goes. A copy already in the bags moves nothing: no
+    -- lookup, no strip (worn from the bags or not), no withdraw.
+    local reasons, withdrawn3 = {}, nil;
+    vc.requestLayoutSet = function(e, cb)
+        sequence[#sequence + 1] = 'remove:' .. tostring(e.instanceId);
+        reasons[#reasons + 1] = e.reason;
+        cb(vc.code.OK); return true;
+    end;
+    vc.requestWithdraw = function(rows) withdrawn3 = rows; return true; end;
+    local oldDerived = rec.derivedIds;
+    rec.derivedIds = function() return { [100] = true }; end;
+    local usgMod = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
+    usgMod.unexclude(usgMod.keyOf(100, nil));
+    local strips = 0;
+    package.loaded['dlac\\dispatch'].stripSlot = function() strips = strips + 1; return 'Head'; end;
+    entry.state, entry.location, entry.slot = 2, 0, 4;
+    vui._wornOverride = { [4] = { equip = 4, label = 'Head' } };   -- worn, from the bags
+    known, asked, sequence = nil, {}, {};
+    vc.layoutCache.fresh = true;
+    vui.retireLayoutEntry(entry, true, true);
+    check('GVI29 a bag copy, sets kept: only its entry goes, at once', table.concat(sequence, ','), 'remove:55');
+    check('GVI29a ...with no lookup, no strip and no withdraw',
+        #asked == 0 and strips == 0 and withdrawn3 == nil and vui._pendingWithdraw == nil, true);
+    check('GVI29b ...sent as a layout removal', reasons[1], 'remove-from-layout');
+    check('GVI29c ...tombstoned, since the sets still name it', usgMod.isExcluded(usgMod.keyOf(100, nil)), true);
+    check('GVI29d ...and said plainly', vui._lastResult().text,
+        'Item100 removed from the layout; it stays in your bags and its slot is free');
+    -- a copy in the wardrobe: the entry goes, then the vault hands it over
+    usgMod.unexclude(usgMod.keyOf(100, nil));
+    local setsEdits = 0;
+    svc.removeGearFromSets = function() setsEdits = setsEdits + 1; return true; end;
+    entry.state, entry.location, entry.slot = 1, 8, 3;
+    vui._wornOverride = {};
+    known, sequence, reasons = { instanceId = 55 }, {}, {};
+    vui.retireLayoutEntry(entry, true, true);
+    check('GVI30 a wardrobe copy, sets kept: no set edit, the entry goes',
+        setsEdits == 0 and table.concat(sequence, ','), 'remove:55');
+    check('GVI30a ...then the withdraw waits for the vault', vui._pendingWithdraw ~= nil and withdrawn3 == nil, true);
+    check('GVI30b ...in words', vui._lastResult().text, 'Item100 removed from the layout; waiting for the vault before withdrawing');
+    local oldRows2, oldFresh2 = vc.mirror.rows, vc.mirror.fresh;
+    vc.mirror.rows = { { instanceId = 55, itemId = 100, rowId = 801, qty = 1 } };
+    vc.mirror.fresh = true;
+    vui.pumpPending();
+    check('GVI30c ...and withdraws that exact copy', withdrawn3 and withdrawn3[1].rowId, 801);
+    vc.mirror.rows, vc.mirror.fresh = oldRows2, oldFresh2;
+    vui._pendingWithdraw = nil;
+    -- the menu offers it, and it keeps the sets
+    usgMod.unexclude(usgMod.keyOf(100, nil));
+    entry.state, entry.location, entry.slot = 2, 0, 4;
+    IM.Selectable = function(label) return label == 'Remove from layout and withdraw'; end;
+    sequence, reasons = {}, {}; vc.layoutCache.stamp = 61;
+    vui.render(1, 75);
+    check('GVI31 the menu\'s Remove from layout and withdraw keeps the sets',
+        setsEdits == 0 and reasons[1], 'remove-from-layout');
+    IM.Selectable = function() return false; end;
+    usgMod.unexclude(usgMod.keyOf(100, nil));
+    rec.derivedIds = oldDerived;
+    vc.requestWithdraw = oldWithdraw;
     vc.requestLayout = oldRelay;
     vui._wornOverride, vui._clientViewOverride = nil, nil;
     package.loaded['dlac\\dispatch'] = oldDispatch;

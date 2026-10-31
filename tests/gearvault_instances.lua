@@ -199,6 +199,12 @@ assert(rc.retireBlocked(200) and not rc.retireBlocked(700), 'direct triggers blo
 triggers = { Default = { { equip = { Body = 'Named trigger gear' } } } };
 deps.resolve = function() return { id = 700 }; end;
 assert(rc.retireBlocked(700), 'resolved trigger strings block retirement too');
+-- #230: Remove from layout and withdraw keeps the sets, so what the triggers
+-- name never blocks it; the city rule still does.
+assert(rc.retireBlocked(700, true) == nil, 'a layout-only removal ignores trigger references');
+town = false;
+assert(rc.retireBlocked(700, true) == 'return to a city first', 'a layout-only removal still needs a city');
+town = true;
 print('OK -- pre-HELLO layout refresh and unused-gear safeguards');
 
 local sm = require('dlac\\gear\\setmanager');

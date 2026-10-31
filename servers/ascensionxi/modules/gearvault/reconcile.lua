@@ -105,7 +105,9 @@ end
 -- The live shelf-pressure verdict for the tab: nil when the layout fits,
 -- else { over = units past the shelf, mode = the removals setting,
 -- candidates = ranked unpinned evictees, pinned = the pinned ones (which
--- ALWAYS take explicit permission, every mode) }.
+-- ALWAYS take explicit permission, every mode), units / capacity = the
+-- layout's size against the wardrobes', bagHeld = the entries for copies in
+-- your bags, each holding a slot that stays empty (#230) }.
 function R.pressure() return st.pressure; end
 
 -- Free shelf slots as the engine counts them (capacity minus layout units,
@@ -130,10 +132,13 @@ function R.wornNow()
     return {};
 end
 
-function R.retireBlocked(itemId)
+-- layoutOnly: the sets stay as they are (Remove from layout and withdraw),
+-- so only the place matters, never what the triggers name.
+function R.retireBlocked(itemId, layoutOnly)
     if D == nil then return 'layout service is not ready'; end
     if type(D.browsing) == 'function' and D.browsing() then return 'return to your current job first'; end
     if type(D.inTown) ~= 'function' or D.inTown() ~= true then return 'return to a city first'; end
+    if layoutOnly then return nil; end
     local d = D.derive.derive({}, D.triggers(), D.resolve);
     if not d.cleanupSafe then return 'resolve trigger names or dynamic gear helpers before sending this piece away'; end
     if d.referencedIds[itemId] then return 'this item is used directly by a trigger; remove that trigger reference first'; end
@@ -492,6 +497,7 @@ function R.tick()
         -- player decides what makes room (or Auto does, unpinned only).
         local over = layoutUnits - capacity;
         if over > 0 or waiting > 0 then
+            local bagHeld = counts.bagHeld(layout);
             local assigned = {};
             for _, it in ipairs(d.items) do assigned[it.itemId] = true; end
             local worn = (type(D.worn) == 'function') and D.worn() or {};
@@ -528,12 +534,17 @@ function R.tick()
                         over, evicted, (evicted == 1) and 'y' or 'ies'));
                 end
                 if freed < over then
+                    -- every unpinned candidate went: only pinned bag pieces remain
+                    local kept = {};
+                    for _, e in ipairs(bagHeld) do if e.pinned then kept[#kept + 1] = e; end end
                     st.pressure = { over = over - freed, waiting = waiting, waitingItems = waitingItems,
-                                    mode = mode, candidates = {}, pinned = ranked.pinned };
+                                    mode = mode, candidates = {}, pinned = ranked.pinned,
+                                    units = layoutUnits - freed, capacity = capacity, bagHeld = kept };
                 end
             elseif (not town) or mode ~= 'auto' or over <= 0 then
                 st.pressure = { over = math.max(0, over), waiting = waiting, waitingItems = waitingItems,
-                                mode = mode, candidates = ranked.unpinned, pinned = ranked.pinned };
+                                mode = mode, candidates = ranked.unpinned, pinned = ranked.pinned,
+                                units = layoutUnits, capacity = capacity, bagHeld = bagHeld };
             end
         end
     end

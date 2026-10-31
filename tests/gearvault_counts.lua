@@ -127,3 +127,87 @@ vc.mirror.fresh = true; time = time + rc.BEAT + 1; rc.tick();
 assert(#queue == 1 and queue[1].e.count == 1, 'fresh stock can supply the missing copy');
 
 print('OK -- gear vault additive edits and inflated layout recovery');
+
+-- henkpoa/dlac#230, the reported shape: 65 wardrobe slots, a 65-entry THF
+-- layout of which 3 are copies in the bags (kind 0, state 2), and 2 set
+-- pieces waiting in the vault. The bag entries keep their slots (nothing is
+-- added), the verdict names them, and they rank first for removal. The WAR
+-- shape (65 on the wardrobes + 3 in the bags + 1 in the vault = 69) is the
+-- "over" case of the same verdict, and Removals: Auto takes the bag entries
+-- first.
+local ZERO = wire.ZERO24;
+local function inst(i, itemId, state, loc)
+    return { ordinal = i, itemId = itemId, instanceId = 5000 + i, count = 1, kind = 0,
+             state = state, location = loc, identity = ZERO };
+end
+local liftItems = { { itemId = 3001, count = 1 }, { itemId = 3002, count = 1 } };
+for i = 1, 3 do liftItems[#liftItems + 1] = { itemId = 2000 + i, count = 1 }; end   -- the sets still name them
+local ivc = { ZERO24 = ZERO, verb = wire.verb, code = wire.code,
+    instanceMode = function() return true; end,
+    state = function() return 'fresh'; end,
+    mirror = { fresh = true, stamp = 1, counts = {}, rows = {
+        { rowId = 1, itemId = 3001, instanceId = 7001, qty = 1, identity = ZERO },
+        { rowId = 2, itemId = 3002, instanceId = 7002, qty = 1, identity = ZERO } } },
+    requestLayoutSet = function(e, done) queue[#queue + 1] = { e = e, done = done }; return true; end,
+    requestLayout = function() end,
+    layoutBusy = function() return false; end,
+};
+local removals = 'ask';
+local function liftTick(entries)
+    rc._reset(); usage._reset(); queue = {}; time = time + 100;
+    ivc.layoutCache = { job = 6, fresh = true, stamp = time, entries = entries };
+    rc.configure({ vc = ivc, clock = function() return time; end, mainJob = function() return 6; end,
+        setsRoot = function() return {}; end, triggers = function() return {}; end,
+        derive = { derive = function() return { items = liftItems, hash = 'lift' }; end },
+        lookupById = function() return nil; end,
+        capacity = function() return 65; end, usage = usage,
+        settings = function() return { additions = 'auto', removals = removals }; end,
+        inTown = function() return true; end,
+        worn = function() return { [2002] = true }; end,   -- one bag piece is worn from the bags
+    });
+    return rc.tick();
+end
+
+local lift = {};
+for i = 1, 62 do lift[i] = inst(i, 1000 + i, 1, 8); end
+for i = 1, 3 do lift[62 + i] = inst(62 + i, 2000 + i, 2, 0); end
+liftTick(lift);
+local p = rc.pressure();
+assert(#queue == 0, 'the bag entries keep their slots: nothing is added');
+assert(p ~= nil and p.over == 0 and p.waiting == 2, 'two set pieces wait for room');
+assert(p.units == 65 and p.capacity == 65, 'the verdict carries the layout size and the capacity');
+assert(#p.bagHeld == 3 and p.bagHeld[1].itemId == 2001 and p.bagHeld[3].itemId == 2003,
+    'the verdict names the three bag entries');
+for i = 1, 3 do
+    assert(p.candidates[i].bagHeld and p.candidates[i].itemId > 2000 and p.candidates[i].itemId < 2004,
+        'the bag entries rank first for removal, the worn one included');
+end
+assert(not p.candidates[4].bagHeld and p.candidates[4].itemId < 2000, 'then the wardrobe entries');
+
+local war = {};
+for i = 1, 65 do war[i] = inst(i, 1000 + i, 1, 8); end
+for i = 1, 3 do war[65 + i] = inst(65 + i, 2000 + i, 2, 0); end
+war[69] = inst(69, 3001, 0, 0); war[69].instanceId = 7001;   -- in the layout, still in the vault
+liftTick(war);
+p = rc.pressure();
+assert(p ~= nil and p.over == 4 and p.units == 69 and #p.bagHeld == 3, 'WAR: 69 for 65, three of them in the bags');
+removals = 'auto';
+liftTick(war);
+assert(#queue == 4, 'Removals: Auto frees exactly the overflow');
+for i = 1, 3 do
+    assert(queue[i].e.verb == wire.verb.REMOVE and queue[i].e.instanceId == 5065 + i,
+        'Removals: Auto takes the bag entries first');
+end
+assert(queue[4].e.instanceId < 5066, '...then a wardrobe entry');
+assert(usage.isExcluded(usage.keyOf(2001, nil)), 'an evicted set-wanted bag entry is benched');
+-- everything on the wardrobes pinned and one bag piece pinned: Auto takes the
+-- two it may, and the verdict names only the bag piece still holding a slot
+for i = 1, 65 do war[i].pinned = true; end
+war[68].pinned = true; war[69].pinned = true;
+liftTick(war);
+p = rc.pressure();
+assert(#queue == 2 and p ~= nil and p.over == 2 and p.units == 67, 'Auto frees what it may');
+assert(#p.bagHeld == 1 and p.bagHeld[1].itemId == 2003, 'only the pinned bag entry is still named');
+removals = 'ask';
+
+print('OK -- bag copies keep their slots, are named, and go first (#230)');

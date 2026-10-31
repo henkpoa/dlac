@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.10.31a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.10.31b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -465,7 +465,12 @@ addon.version = '2026.10.31a';  -- date of the last shipped change (Ashita print
                                 --  one line per stance;
                                 --  10.31a = the Paladin gauge forgets its
                                 --  points at a zone-out, as the server
-                                --  clears them at every zone-in)
+                                --  clears them at every zone-in;
+                                --  10.31b = the Gear Vault says when the
+                                --  LAYOUT is full, not the wardrobe, and
+                                --  names the bag pieces holding empty
+                                --  slots; they go first in Choose what to
+                                --  remove; Remove from layout and withdraw)
 addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
