@@ -241,6 +241,24 @@ in-game verification remains with the owner. No server change is needed.
 Rollback the addon changes and reload; startup gear-file writes keep a
 timestamped backup. Layout corrections persist on the server.
 
+## Bag copies keep their slots, and the tab says so (2026-10-31, #230)
+
+Field report: "Mog Wardrobe is full: 2 equipment pieces cannot fit in." under
+`Wardrobes 1-8: 62/65`. Three of the THF layout's 65 entries were copies in
+the bags (wire kind 0, state 2). Each still counts one unit, so it keeps a
+wardrobe slot, and the server's apply pulls nothing for it, so the slot stays
+physically empty. The banner's advice, to withdraw gear and keep using it from
+the bags, made it worse: a Warden withdrawal never edits a layout.
+
+Keeping the slot stays: it is how a stored copy finds its way back. The client
+now says so. "Mog Wardrobe is full" is kept for wardrobes that are really
+full with no bag entry. Otherwise the banner says the layout is full and names
+the bag pieces, and the counter adds "-- N kept for gear in your bags".
+`usage.rankEvictions` ranks bag entries first, worn or not: removing one moves
+nothing. Auto removal follows the same order. The layout's right-click menu
+gains Remove from layout and withdraw, which keeps the sets. Counting bag
+entries as free space is an owner decision on #230 and is not done.
+
 
 ## Persistent instances: client implementation (2026-09-18)
 

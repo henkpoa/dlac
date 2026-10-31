@@ -11631,3 +11631,54 @@ include the stance stats as well?" Then: "Can you make the fix."
   Gallant Surcoat, Razor Axe and the Rekindled Rapier; none off AXI),
   `tests/smoke_ui.lua` STN1-STN5 (the pin popup on both packs, the card's
   source). Emptying `bonusesOf` turns both red.
+
+## 2026-10-31: "Mog Wardrobe is full" while wardrobe slots sit empty (`2026.10.31b`)
+
+henkpoa/dlac#230, handed over from the AscensionXI side: a player saw "Mog
+Wardrobe is full: 2 equipment pieces cannot fit in." right under
+`Wardrobes 1-8: 62/65`, and reported that dlac would not fill Mog Wardrobe 4.
+Nothing was locked. The THF layout had 65 entries for 65 slots, and 3 were
+copies in the player's bags. Each kept its slot, which the server's apply
+leaves empty, so the two vault pieces waiting had no room. The banner's advice
+("withdraw gear ... and keep using it from your bags") is how the player got
+there: a Warden withdrawal never edits a layout.
+
+- **A bag copy still keeps its slot.** That is deliberate: it is the copy's
+  way back. What changed is what the tab says. `layoutcounts.isBagHeld` and
+  `bagHeld` name an instance entry in state 2 (outside, the Recycle Bin
+  included), and the engine's pressure verdict now carries `units`,
+  `capacity` and `bagHeld`.
+- **The banner** (`vaultui.pressureWords`, pure) says "Mog Wardrobe is full"
+  only when no entry is held for a bag copy and the wardrobes show no free
+  slot, or cannot be read. Otherwise the layout is what is full: "Your THF
+  layout fills all 65 wardrobe slots. 3 slots are kept for gear in your bags:
+  Traveler's Mantle +1, Leaping Boots +1, Bastokan Ring. Remove those or other
+  pieces from the layout to make room for 2 more from your sets." The over
+  case reads "Your WAR layout holds 69 pieces for 65 wardrobe slots. ...
+  Remove 4 of those or other pieces from the layout to make it fit."
+- **The counter** reads `Wardrobes 1-8: 62/65 -- 3 kept for gear in your
+  bags`, and its hover says why those slots are empty.
+- **Choose what to remove** ranks bag copies first (`usage.rankEvictions`),
+  worn or not, because removing one moves nothing and frees its slot at once.
+  They carry an `[In bags]` tag. Removals: Auto takes them first too. The
+  Remove button no longer refuses a worn copy in the bags: the equipped-piece
+  guard is about the wardrobe.
+- **The advice** now says a withdrawal alone frees no slot, and points at a
+  new right-click action, **Remove from layout and withdraw**. The copy
+  leaves this job's layout and goes to Inventory, and the sets keep it, so
+  dlac still equips it from the bags. It rides the existing remove-then-
+  withdraw path. A copy already in the bags only loses its entry: nothing is
+  looked up, taken off or moved.
+- A removed set-wanted entry is benched, as with every removal, so a copy
+  stored again later stays out of the layout until Restore.
+- The bag row's hover no longer says "you do not need to remove it from the
+  layout" without saying the slot stays empty.
+- Not done: counting bag copies as free space. That is the owner's call on
+  #230.
+- Tests: `tests/gearvault_counts.lua` (the reported shape and the WAR over
+  case through the real engine, Removals: Auto, a pinned bag copy),
+  `tests/run_tests.lua` USG11c (the ranking), `tests/gearvault_instances.lua`
+  (`retireBlocked` layout-only), `tests/smoke_ui.lua` GVU14b-GVU17b, GVU28,
+  GVI10b, GVI29-GVI31 (the words, the counter, the pre-ticks, the Remove
+  button, the new action). Each of 19 guards was broken once and each break
+  turned a suite red.

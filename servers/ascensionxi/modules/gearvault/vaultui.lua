@@ -160,6 +160,75 @@ local function shelfOccupancy()
     return _occ;
 end
 
+-- The active job's layout entries for copies in your bags: each keeps a
+-- wardrobe slot that stays empty (#230). Empty while the layout on hand is
+-- another job's or not read yet.
+local function bagHeldNow()
+    local lc = vc.layoutCache;
+    local cur = vc.currentJob();
+    if lc.stamp == nil or lc.job == nil or (cur ~= nil and lc.job ~= cur) then return {}; end
+    return counts.bagHeld(lc.entries);
+end
+
+local function jobAbbr(id)
+    local ok, jg = pcall(require, 'dlac\\gear\\jobgate');
+    return (ok and type(jg) == 'table' and type(jg.JOBS) == 'table') and jg.JOBS[id] or nil;
+end
+
+-- THE PRESSURE BANNER'S WORDS (henkpoa/dlac#230). A player saw "Mog Wardrobe
+-- is full" right under "Wardrobes 1-8: 62/65": three layout entries were for
+-- pieces in their bags, and each kept its slot. "Full" now stays for the one
+-- case where it is true: no entry is held for a bag copy and the wardrobes
+-- show no free slot (or cannot be read). Otherwise the LAYOUT is what is
+-- full, and the words name what holds the gap. Pure, so the suite reads it.
+--   pr      the reconcile verdict ({ over, waiting, units, capacity, bagHeld })
+--   job     the active job's abbreviation, or nil
+--   free    wardrobe slots physically free (nil = unknown)
+--   name    itemId -> display name
+M.BAG_NAMES_MAX = 5;
+function M.pressureWords(pr, job, free, name)
+    local over, waiting = pr.over or 0, pr.waiting or 0;
+    local want = over + waiting;
+    local bag = pr.bagHeld or {};
+    local function s(n) return (n == 1) and '' or 's'; end
+    if #bag == 0 and (free == nil or free <= 0) then
+        return string.format('Mog Wardrobe is full: %d equipment piece%s cannot fit in.', want, s(want));
+    end
+    local whose = (job ~= nil) and ('Your ' .. job .. ' layout') or 'This job\'s layout';
+    local units, cap = pr.units or 0, pr.capacity or 0;
+    local out = {};
+    if over > 0 then
+        out[#out + 1] = string.format('%s holds %d pieces for %d wardrobe slots.', whose, units, cap);
+    elseif units >= cap then
+        out[#out + 1] = string.format('%s fills all %d wardrobe slots.', whose, cap);
+    else
+        out[#out + 1] = string.format('%s fills %d of your %d wardrobe slots.', whose, units, cap);
+    end
+    if #bag > 0 then
+        local names = {};
+        for i = 1, math.min(#bag, M.BAG_NAMES_MAX) do
+            names[i] = name(bag[i].itemId) .. ((bag[i].location == 17) and ' (Recycle Bin)' or '');
+        end
+        local list = table.concat(names, ', ');
+        if #bag > M.BAG_NAMES_MAX then list = list .. string.format(' and %d more', #bag - M.BAG_NAMES_MAX); end
+        out[#out + 1] = string.format('%d slot%s %s kept for gear in your bags: %s.',
+            #bag, s(#bag), (#bag == 1) and 'is' or 'are', list);
+    end
+    if over > 0 then
+        out[#out + 1] = (#bag > 0)
+            and string.format('Remove %d of those or other pieces from the layout to make it fit.', over)
+            or string.format('Remove %d piece%s from the layout to make it fit.', over, s(over));
+        if waiting > 0 then
+            out[#out + 1] = string.format('%d more from your sets %s waiting for room.',
+                waiting, (waiting == 1) and 'is' or 'are');
+        end
+    else
+        out[#out + 1] = string.format('Remove %s from the layout to make room for %d more from your sets.',
+            (#bag > 0) and 'those or other pieces' or 'pieces', waiting);
+    end
+    return table.concat(out, ' ');
+end
+
 -- ---------------------------------------------------------------------------
 -- Withdraw feedback -- one remembered line under the panes, plus chat (the
 -- field is where withdraws happen to fail, and the tab may be closed by then).
@@ -871,7 +940,7 @@ end
 -- The first click used to ask for them and refuse; it now waits here and
 -- carries on by itself once they are in. The menu asks for the slot as it
 -- opens, so the wait is usually over before the pick.
-M._pendingRetire = nil;    -- { selected, withdraw, at, job, profile }
+M._pendingRetire = nil;    -- { selected, withdraw, keepSets, at, job, profile }
 M.RETIRE_WAIT = 10;        -- seconds before that wait gives up
 local retirePass;          -- defined with retireLayoutEntry below
 
@@ -890,7 +959,7 @@ function M.pumpPending(now)
             noteResult('job, profile or zone changed; gear move cancelled', true);
         elseif os.clock() - r.at > M.RETIRE_WAIT then
             noteResult('no answer from the vault; nothing moved -- try again', true);
-        elseif M._pendingStore or M._pendingWithdraw or vc.layoutBusy() or retirePass(r.selected, r.withdraw) then
+        elseif M._pendingStore or M._pendingWithdraw or vc.layoutBusy() or retirePass(r.selected, r.withdraw, r.keepSets) then
             M._pendingRetire = r;   -- another gear move first, or still waiting
         end
     end
@@ -977,10 +1046,14 @@ local function unequipAndStore(e, worn, after)
     M._pendingStore = { e = e, worn = worn, at = os.clock(), seenAt = nil, after = after };
 end
 
-function M.retireLayoutEntry(selected, withdraw)
+-- keepSets (with withdraw): Remove from layout and withdraw (#230) -- the
+-- copy leaves this job's layout and lands in your bags, and your sets keep
+-- naming it, so dlac still equips it from there. A Warden withdrawal alone
+-- leaves the entry, and its slot, in place.
+function M.retireLayoutEntry(selected, withdraw, keepSets)
     if M._pendingStore or M._pendingWithdraw or M._pendingRetire or vc.layoutBusy() then return noteResult('wait for the current gear move to finish', true); end
-    if retirePass(selected, withdraw) then
-        M._pendingRetire = { selected = selected, withdraw = withdraw, at = os.clock(),
+    if retirePass(selected, withdraw, keepSets) then
+        M._pendingRetire = { selected = selected, withdraw = withdraw, keepSets = keepSets, at = os.clock(),
             job = vc.currentJob(), profile = activeProfile() };
         _lastMsg = { text = 'checking where this copy is...', err = false };   -- the tab only: the result follows
     end
@@ -989,7 +1062,7 @@ end
 -- One go at moving the selected copy out of this job's layout. Returns true
 -- while an answer it needs is still on its way (the pump runs it again);
 -- otherwise it has acted, or said why not.
-function retirePass(selected, withdraw)
+function retirePass(selected, withdraw, keepSets)
     if not (vc.layoutCache.fresh and vc.currentJob() == vc.layoutCache.job) then
         vc.requestLayout(0); return true;
     end
@@ -1000,11 +1073,15 @@ function retirePass(selected, withdraw)
     if not e or (e.instanceId or 0) == 0 then
         vc.requestLayout(0); noteResult('refreshing this copy; try again once the layout is fresh', true); return false;
     end
-    local blocked = recon.retireBlocked(e.itemId);
+    keepSets = keepSets == true and withdraw == true;
+    local blocked = recon.retireBlocked(e.itemId, keepSets);
     if blocked then noteResult(blocked, true); return false; end
     local name = nameOf(e.itemId);
     local bag = { itemId = e.itemId, name = name, container = e.location, slot = e.slot };
-    if e.state ~= 0 then
+    -- A copy already in your bags, sets kept: only its entry goes, so there
+    -- is nothing to find, take off or move.
+    local entryOnly = keepSets and e.state == 2;
+    if e.state ~= 0 and not entryOnly then
         local mapping = vc.instanceAt(e.location, e.slot, e.itemId);
         if not mapping then return true; end   -- the slot's lookup is out
         if mapping.instanceId ~= e.instanceId then
@@ -1014,16 +1091,19 @@ function retirePass(selected, withdraw)
             noteResult('move this copy to Inventory before sending it to the Gear Vault', true); return false;
         end
     end
-    local worn = e.state ~= 0 and wornAtSlot()[e.location * 256 + e.slot] or nil;
+    local worn = e.state ~= 0 and not entryOnly and wornAtSlot()[e.location * 256 + e.slot] or nil;
     if worn then
         local disp = dispatchMod();
         local why = disp and disp.stripBlocked and disp.stripBlocked(worn.label);
         if why then return noteResult('release the ' .. worn.label .. ' slot lock / Free equip first', true); end
     end
-    local edit = services().removeGearFromSets;
-    if not edit then return noteResult('set editor is unavailable', true); end
-    local ok, err = edit(e.itemId, e.identity);
-    if not ok then return noteResult(err or 'could not update sets', true); end
+    if not keepSets then
+        local edit = services().removeGearFromSets;
+        if not edit then return noteResult('set editor is unavailable', true); end
+        local ok, err = edit(e.itemId, e.identity);
+        if not ok then return noteResult(err or 'could not update sets', true); end
+    end
+    local setsNote = keepSets and '' or 'sets updated; ';
     local job = vc.currentJob();
     if usg and usg.clearManual then usg.clearManual(job, e); end
     local profile = require('dlac\\profiles');
@@ -1036,22 +1116,32 @@ function retirePass(selected, withdraw)
     local function move(done)
         done = done or function() end;
         if not sameContext() then done(); return noteResult('job or profile changed; gear move cancelled', true); end
+        -- the sets still name it: tombstone it, or the engine adds the copy
+        -- straight back while it waits in the vault for the withdraw (the
+        -- Remove button's rule)
+        if keepSets and usg ~= nil and recon ~= nil and type(recon.derivedIds) == 'function'
+            and recon.derivedIds()[e.itemId] then
+            pcall(usg.exclude, { usg.keyOf(e.itemId, nil) });
+        end
         local queued = vc.requestLayoutSet({ job = job, verb = vc.verb.REMOVE,
             itemId = e.itemId, instanceId = e.instanceId, ordinal = e.ordinal, count = 0,
-            reason = 'remove-from-sets' }, function(code, why)
+            reason = keepSets and 'remove-from-layout' or 'remove-from-sets' }, function(code, why)
                 if code ~= vc.code.OK then
-                    done(); return noteResult('sets updated; vault move failed: ' .. tostring(why or code), true);
+                    done(); return noteResult(setsNote .. 'vault move failed: ' .. tostring(why or code), true);
                 end
                 vc.requestLayout(0);
                 if withdraw then
                     done();
                     if e.state == 2 then
-                        noteResult(name .. ' removed from sets and layout; already in Inventory');
+                        noteResult(keepSets and (name .. ' removed from the layout; it stays in your bags and its slot is free')
+                            or (name .. ' removed from sets and layout; already in Inventory'));
                     elseif sameContext() then
                         M._pendingWithdraw = { instanceId = e.instanceId, job = job, at = os.clock(), sameContext = sameContext };
                         vc.markStale(0, 'withdraw retired copy');
-                        noteResult(name .. ' removed from sets; waiting for the vault before withdrawing');
-                    else noteResult('sets and layout updated; job or profile changed, withdrawal cancelled', true); end
+                        noteResult(name .. (keepSets and ' removed from the layout' or ' removed from sets')
+                            .. '; waiting for the vault before withdrawing');
+                    else noteResult((keepSets and 'layout' or 'sets and layout')
+                        .. ' updated; job or profile changed, withdrawal cancelled', true); end
                 elseif e.state == 2 then
                     local lookup = vc.requestLookup({ { container = bag.container, slot = bag.slot } }, function(rows)
                         local at = rows and rows[1];
@@ -1066,7 +1156,7 @@ function retirePass(selected, withdraw)
                     done(); noteResult(name .. ' removed from sets and returned to Gear Vault');
                 end
             end);
-        if not queued then done(); noteResult('sets updated; could not queue the vault move', true); end
+        if not queued then done(); noteResult(setsNote .. 'could not queue the vault move', true); end
     end
     if worn then unequipAndStore(bag, worn, move); else move(); end
 end
@@ -1137,9 +1227,15 @@ function M.render(job, level)
     end
     local occ = shelfOccupancy();
     if occ.max > 0 then
-        imgui.TextColored(cDIM, string.format('Wardrobes 1-8: %d/%d', occ.used, occ.max));
+        -- the layout's slots for copies in your bags stay empty (#230): say
+        -- so beside the count, or 62/65 reads as three slots free to fill
+        local bagN = #bagHeldNow();
+        imgui.TextColored(cDIM, string.format('Wardrobes 1-8: %d/%d', occ.used, occ.max)
+            .. ((bagN > 0) and string.format(' -- %d kept for gear in your bags', bagN) or ''));
         if imgui.IsItemHovered() then
-            imgui.SetTooltip('The wardrobes are the vault\'s CACHE on this server: the active job\'s\nworking set, swapped automatically at job change. dlac never writes them.');
+            imgui.SetTooltip('The wardrobes are the vault\'s CACHE on this server: the active job\'s\nworking set, swapped automatically at job change. dlac never writes them.'
+                .. ((bagN > 0) and string.format('\n\n%d of this job\'s layout piece%s %s in your bags. Each keeps its wardrobe slot,\nand the slot stays empty: the vault cannot fetch from your bags.\nStore the piece at a Void Storage Warden, or remove it from the layout.',
+                    bagN, (bagN == 1) and '' or 's', (bagN == 1) and 'is' or 'are') or ''));
         end
         imgui.SameLine(0, 12);
     end
@@ -1318,17 +1414,18 @@ function M.render(job, level)
         -- don't know what shelf means").
         local wrapped = (fmt ~= nil and type(fmt.textWrapped) == 'function')
             and fmt.textWrapped or function(col, s) imgui.TextColored(col, s); end;
-        local words = string.format('Mog Wardrobe is full: %d equipment piece%s cannot fit in.',
-            prWant, (prWant == 1) and '' or 's');
+        local free = (occ.max > 0) and (occ.max - occ.used) or nil;
+        local words = esc(M.pressureWords(pr, jobAbbr(vc.currentJob()), free, nameOf));
         if pr.mode == 'off' then
             wrapped(cERR, words);
             wrapped(cDIM, 'Removals are Off -- trim the layout with the Remove buttons below.');
         else
             if imgui.SmallButton((M._evictOpen and 'Hide' or 'Choose what to remove') .. '###gvevb') then
                 if not M._evictOpen then
-                    -- pre-tick greedily: least-used unpinned until BOTH the
-                    -- overflow and the waiting derived pieces have room;
-                    -- pinned entries are NEVER pre-ticked
+                    -- pre-tick greedily in the ranking's order (copies in
+                    -- your bags first: removing one moves nothing, #230),
+                    -- until BOTH the overflow and the waiting derived pieces
+                    -- have room; pinned entries are NEVER pre-ticked
                     M._marks = {};
                     local freed = 0;
                     local target = (pr.over or 0) + (pr.waiting or 0);
@@ -1343,7 +1440,10 @@ function M.render(job, level)
             end
             wrapped(cERR, words);
         end
-        wrapped(cDIM, 'If you don\'t have enough wardrobe space, the recommended action is to\nwithdraw gear into your inventory: stand close to a Void Storage Warden\nto withdraw equipment there and keep using it from your bags.');
+        -- The old advice here ("withdraw gear ... and keep using it from your
+        -- bags") is what filled the reporter's layout with bag copies (#230):
+        -- a Warden withdrawal never edits a layout, so the piece keeps its slot.
+        wrapped(cDIM, 'Withdrawing a piece at a Void Storage Warden does not free its slot while\nthis layout still names it. To use a piece from your bags instead, right-click\nit below and choose Remove from layout and withdraw.');
         if M._evictOpen and pr.mode ~= 'off' then
             local marked, frees = 0, 0;
             local function evictRow(c, isPinned)
@@ -1352,10 +1452,12 @@ function M.render(job, level)
                 imgui.Checkbox('##gvem' .. c.key, buf);
                 imgui.SameLine(0, 6);
                 imgui.TextColored(isPinned and cGOLD or (COL.USABLE or { 1, 1, 1, 1 }),
-                    esc(nameOf(c.itemId)) .. (isPinned and '  [pin]' or ''));
+                    esc(nameOf(c.itemId)) .. (isPinned and '  [pin]' or '')
+                    .. (c.bagHeld and ((c.location == 17) and '  [Recycle Bin]' or '  [In bags]') or ''));
                 if imgui.IsItemHovered() then
                     local age = (usg ~= nil and usg.lastUsed(c.key)) or nil;
-                    imgui.SetTooltip((c.assigned and 'Your sets still name this piece.\n' or 'Nothing in your sets names this piece.\n')
+                    imgui.SetTooltip((c.bagHeld and 'This copy is in your bags, so its wardrobe slot sits empty.\nRemoving the entry moves nothing and frees that slot at once.\n' or '')
+                        .. (c.assigned and 'Your sets still name this piece.\n' or 'Nothing in your sets names this piece.\n')
                         .. (age ~= nil and os.date('Last seen worn: %Y-%m-%d', age) or 'Never seen worn.')
                         .. (isPinned and '\nPINNED: only you may remove it -- ticking it here is that permission.' or ''));
                 end
@@ -1475,9 +1577,11 @@ function M.render(job, level)
                     .. 'Recover it to Inventory, then Store it at a Void Storage Warden to use it again.\n'
                     .. 'Remove the layout entry if you no longer want it assigned.')
                     or outside and ('This copy is in your bags, outside the Gear Vault and Mog Wardrobes.\n'
-                    .. 'It is still assigned to this job\'s layout, but the vault cannot fetch it from your bags.\n'
-                    .. 'Store this copy at a Void Storage Warden to make it available again.\n'
-                    .. 'You do not need to remove it from the layout or add it again.') or nil,
+                    .. 'It is still assigned to this job\'s layout and keeps a wardrobe slot, which stays\n'
+                    .. 'empty: the vault cannot fetch it from your bags.\n'
+                    .. 'Store this copy at a Void Storage Warden to make it available again;\n'
+                    .. 'you do not need to add it again.\n'
+                    .. 'To keep using it from your bags instead, Remove the entry to free its slot.') or nil,
                 augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
                 tags = function()
                     local count = counts.count(e, e.rec);
@@ -1515,10 +1619,13 @@ function M.render(job, level)
                     if armed then imgui.PushStyleColor(ImGuiCol_Button, { 0.75, 0.25, 0.20, 1.0 }); end
                     if imgui.SmallButton((armed and 'Sure?' or 'Remove') .. '##gvr' .. tostring(e.sortKey)) then
                         local wornNow = (recon ~= nil and type(recon.wornNow) == 'function') and recon.wornNow() or {};
-                        if wornNow[e.itemId] or wornNow['i:' .. tostring(e.instanceId)] then
+                        if not counts.isBagHeld(e)
+                            and (wornNow[e.itemId] or wornNow['i:' .. tostring(e.instanceId)]) then
                             -- an equipped piece cannot leave the shelf: the
                             -- apply skips ITEM_LOCKED, so removing its entry
-                            -- only desyncs the layout (Henrik's field round)
+                            -- only desyncs the layout (Henrik's field round).
+                            -- A copy in your bags is not on it: its entry
+                            -- goes, worn or not, and nothing moves (#230).
                             noteResult(e.name .. ' is equipped right now -- unequip it first, then remove', true);
                         elseif e.pinned and not armed then
                             _confirm = { key = rkey, at = os.clock() };
@@ -1900,6 +2007,13 @@ function M.render(job, level)
         imgui.OpenPopup('##gv-layout-actions');
     end
     if imgui.BeginPopup('##gv-layout-actions') then
+        if imgui.Selectable('Remove from layout and withdraw') and _layoutMenu then
+            M.retireLayoutEntry(_layoutMenu, true, true);
+            imgui.CloseCurrentPopup();
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Take this copy out of this job\'s layout and withdraw it to Inventory, which\nfrees its wardrobe slot. Your sets keep it, so dlac still equips it from your bags.\nStand at a Gear Vault. Other jobs\' layouts still name it and keep a slot for it.');
+        end
         if imgui.Selectable('Remove from sets and withdraw from gear vault') and _layoutMenu then
             M.retireLayoutEntry(_layoutMenu, true);
             imgui.CloseCurrentPopup();
