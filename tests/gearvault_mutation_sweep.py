@@ -730,6 +730,9 @@ M = [
     ('X83', 'a character switch keeps the question', IN,
      "                pcall(function() require(base .. 'sharedvault')._reset(); end);\n",
      ''),
+    ('X84', 'the wardrobe list hides augments', UI,
+     '                            if isAugmented(p.identity) then',
+     '                            if false then'),
 ]
 
 # Mutants that survive for a stated reason (equivalent, or not a defect).

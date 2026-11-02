@@ -818,6 +818,7 @@ local function wardrobeShareable()
                     local rec = recOf(entry.Id);
                     if rec ~= nil and not M.keptOutOfVault(rec) then
                         out[#out + 1] = { container = cid, slot = idx, itemId = entry.Id, qty = 1,
+                            identity = entry.Extra,   -- the raw exdata: its augments read as a vault row's
                             rec = rec, name = rec.Name or nameOf(entry.Id), sortKey = cid * 256 + idx };
                     end
                 end
@@ -2143,6 +2144,14 @@ function M.render(job, level)
                 for _, p in ipairs(wd) do
                     renderRow(p, level, COL, {
                         key = 'W' .. tostring(p.sortKey),
+                        -- two copies of one piece can differ: say which one this is
+                        augOf = function() return isAugmented(p.identity) and augTextOf(p.identity) or nil; end,
+                        tags = function()
+                            if isAugmented(p.identity) then
+                                imgui.SameLine(0, 8);
+                                imgui.TextColored(cGOLD, '[aug]');
+                            end
+                        end,
                         buttons = function(hot, b1, b2)
                             imgui.SameLine(b2);
                             if svm.isSharingSlot(p.container, p.slot) then

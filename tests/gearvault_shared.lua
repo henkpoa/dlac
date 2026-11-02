@@ -982,10 +982,11 @@ check('SU15 clicking away closes it as a no: nothing sent', svm.pendingConfirm()
 -- the wardrobe share list
 boot({});
 vui._wardrobeOverride = { { container = 10, slot = 33, itemId = 300, qty = 1, sortKey = 10 * 256 + 33,
-    rec = { Id = 300, Name = 'Item300', Slot = 'Body', Level = 20 }, name = 'Item300' } };
+    identity = id24, rec = { Id = 300, Name = 'Item300', Slot = 'Body', Level = 20 }, name = 'Item300' } };
 frameUI();
 check('SU16 unworn wardrobe gear is listed for sharing', has(headers, 'Share from your Mog Wardrobes (1)'), true);
 check('SU16a ...each with a Share button', has(smallHits, 'Share##gvsw' .. tostring(10 * 256 + 33)), true);
+check('SU16b ...and an augmented copy says so, as a vault row does', hasExact(texts, '[aug]'), true);
 press.small = 'Share##gvsw';
 frameUI();
 press.small = nil;
