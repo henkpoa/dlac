@@ -186,6 +186,7 @@ pcall(function()
                 pcall(vc.resetCharacter);
                 pcall(rec._reset);
                 pcall(usg.resetCharacter);
+                pcall(function() require(base .. 'sharedvault')._reset(); end);
             end
             if id ~= nil then _charId = id; end
             vc.noteZoneIn();
@@ -286,6 +287,11 @@ pcall(function()
             -- the evidence line: last send, last reply, the client's verdict,
             -- next try -- so "stale" never has to be guessed at again
             pcall(function() vc._say(vc.traceLine()); end);
+            -- Group Ironman's Shared Vault, when this server offers one
+            pcall(function()
+                local line = vc.shelfStatusLine();
+                if line ~= nil then vc._say(line); end
+            end);
         end
     end);
 end);
