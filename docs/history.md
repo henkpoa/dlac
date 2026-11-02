@@ -11731,3 +11731,44 @@ re-cataloging steps we do before every deployment?"
   stats such as the Summoner's Horn's Magic Accuracy+10 stay out of the
   catalog. The stock-only spell and ability pickers still lack Summoner's
   Avatar Wards and Siphons.
+
+## 2026-11-02: the Shared Vault tab for Group Ironman (`2026.11.02a`)
+
+AscensionXI's Group Ironman (server branch `claude/group-ironman`) lets up to
+six characters share a shelf of gear beside each member's own Gear Vault. The
+server speaks ops 0x60-0x6F in the vault band; this is the client half. The
+design and the wire are in `docs/design/gear-vault-integration.md`, "The
+Shared Vault".
+
+- **A third tab, Shared Vault**, after Vault and Inventory. It shows only when
+  the vault HELLO advertises capability 32 and the character is in a group
+  (HELLO's GroupId, or the latest SV_CHANGED's InGroup). Older servers and
+  characters outside a group never see it, and InGroup 0 takes it away.
+- It lists the shelf like the Vault tab lists the vault, each piece with who
+  shared it (SV_MEMBERS, read when the tab opens), with **Take**. Sharing is
+  **Share with your group** in the Vault tab's right-click menu, or **Share**
+  in the tab's list of unworn wardrobe gear. One piece per click.
+- A piece in your job layouts, and every wardrobe piece, gets a question
+  first (NEEDS_CONFIRM): a popup names the layouts, and only Share anyway
+  sends the share again with the confirm flag.
+- The HELLO request sets bit 1 (value 2), so the server pushes SV_CHANGED.
+  The shelf is read on open and when a pushed, HELLO-told or answered Rev
+  differs from the last read's, only while the tab is open, never on a timer.
+- The vault's own write laws hold for SV_PUT and SV_TAKE (`isWrite`, the same
+  seq, WRITE_DEADLINE, outcome unknown and re-read, never re-sent). A shelf
+  answer never sends the vault dormant, un-attuned or into its backoff. After
+  a share the vault row leaves the mirror at once; after a take the vault is
+  read again.
+- The first mutation sweep left three survivors. One was an equivalent. One
+  was a missing case: a push could not be shown to stay out on a server
+  without the shelf. One was a real flaw: a Rev announced while a read was on
+  the wire queued a second read even when the read already showed it. That
+  announcement now waits for the read's answer.
+- Making every check fail once found four weak tests (SR26, SV13, SV28a, and a
+  harness that stopped at its first broken step). All are fixed, and the
+  breaks live on in the sweep as X01-X83.
+- Tests: `tests/gearvault_shared.lua` (221 checks, in CI). The sweep is 267
+  mutants: 263 killed, 4 accepted, none open. R22's pattern was re-anchored;
+  it had matched twice since the manual layout actions.
+- Owed: the field round (the checklist in the design doc), on a local shard
+  with the server branch.
