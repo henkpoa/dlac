@@ -50,7 +50,7 @@ local function tick(dt)
     if tab.open then vc.noteShelfView(); end
     vc.pump(true);
 end
-local function last() return sent[#sent] and sent[#sent].p; end
+local function last() return sent[#sent] and sent[#sent].p or {}; end
 local function sends(op, after)
     local n = 0;
     for _, s in ipairs(sent) do
@@ -63,9 +63,18 @@ local function anyShelfSent()
     for _, s in ipairs(sent) do if s.p[5] >= 0x60 and s.p[5] <= 0x6F then return true; end end
     return false;
 end
-local function u32At(p, i) return p[i] + p[i + 1] * 256 + p[i + 2] * 65536 + p[i + 3] * 16777216; end
+local function u32At(p, i)
+    return (p[i] or 0) + (p[i + 1] or 0) * 256 + (p[i + 2] or 0) * 65536 + (p[i + 3] or 0) * 16777216;
+end
+-- The answer to whatever is on the wire. Nothing on the wire is a failure
+-- of its own, recorded, and the suite goes on (a broken build shows every
+-- check it breaks, not just the first).
 local function frame(status, flags, payload)
-    local p = assert(vc._st().pending, 'expected a pending request');
+    local p = vc._st().pending;
+    if p == nil then
+        check('HARNESS a request was on the wire to answer', 'none', 'one');
+        return false;
+    end
     return vc.onFrame({ op = p.op, seq = p.seq, status = status or 0, flags = flags or 0, payload = payload or '' });
 end
 local function reply(payload, flags)
@@ -166,17 +175,17 @@ local function boot(o)
             shelf = {}, members = GROUP };
     if o.noTail then srv.group = nil; end
     vc.noteJob(1); vc.refresh(); tick();
-    assert(last()[5] == vc.op.HELLO, 'boot opens with HELLO');
+    if last()[5] ~= vc.op.HELLO then check('HARNESS boot opens with HELLO', last()[5], vc.op.HELLO); end
     settle(20);
-    assert(vc.mirror.fresh and vc._st().pending == nil, 'boot ends fresh and idle');
+    if not (vc.mirror.fresh and vc._st().pending == nil) then check('HARNESS boot ends fresh and idle', false, true); end
     vc.requestLayout(0); settle(10);
-    assert(vc.layoutCache.fresh and vc._st().pending == nil, 'boot reads the layout');
+    if not (vc.layoutCache.fresh and vc._st().pending == nil) then check('HARNESS boot reads the layout', false, true); end
 end
 
 -- ===========================================================================
 -- SC: the codecs (group_ironman_vault.lua's byte layouts)
 -- ===========================================================================
-local h = vc.parseHello(hello(FULL, 3, 10, 7, 42, 5));
+local h = vc.parseHello(hello(FULL, 3, 10, 7, 42, 5)) or {};
 check('SC1 HELLO with SHELF and its 12-byte tail offers the shelf', h.shelf, true);
 check('SC2 ...GroupId', h.groupId, 7);
 check('SC3 ...the shelf\'s Rev', h.shelfRev, 42);
@@ -186,7 +195,7 @@ check('SC5 ...and the vault\'s own fields read as before',
 local short = vc.parseHello(hello(FULL, 3, 10));
 check('SC6 SHELF without its tail offers no shelf', short ~= nil and short.shelf, false);
 check('SC7 ...and never costs the vault its HELLO', short ~= nil and short.instances and short.push, true);
-check('SC8 a tail without the SHELF bit offers no shelf', vc.parseHello(hello(1 + 4 + 8, 3, 10, 7, 42, 5)).shelf, false);
+check('SC8 a tail without the SHELF bit offers no shelf', (vc.parseHello(hello(1 + 4 + 8, 3, 10, 7, 42, 5)) or {}).shelf, false);
 
 local id24 = string.char(2, 3, 0x22) .. string.rep('\0', 21);
 local sl = vc.parseShelfList(shelfList({ shelfRow(31, 12345, 900, 11, id24), shelfRow(32, 23456, 901, 12) }, 77));
@@ -200,7 +209,8 @@ check('SC13 a truncated SV_LIST frame is refused whole',
 local tooMany = {};
 for i = 1, 13 do tooMany[i] = shelfRow(i, 100 + i); end
 check('SC14 more than 12 rows in one frame is refused', vc.parseShelfList(shelfList(tooMany, 1)), nil);
-check('SC15 an empty shelf reads', #vc.parseShelfList(shelfList({}, 0)).entries, 0);
+local empty = vc.parseShelfList(shelfList({}, 0));
+check('SC15 an empty shelf reads', empty ~= nil and #empty.entries == 0, true);
 
 check('SC20 SV_PUT for a vault row: { u32 VaultRowId; 0; 0; flags 0; 0 }',
     vc.shelfPutPayload({ vaultRowId = 0x01020304 }), string.char(4, 3, 2, 1, 0, 0, 0, 0));
@@ -211,25 +221,26 @@ check('SC22 a wardrobe piece: VaultRowId 0, then Container and Slot',
 local pa = vc.parseShelfPutAck(putAck(20, { 1, 7 }, false, 0, 0));
 check('SC23 SV_PUT answer: NEEDS_CONFIRM with its jobs',
     pa ~= nil and pa.code == 20 and #pa.jobs == 2 and pa.jobs[1] == 1 and pa.jobs[2] == 7 and pa.wardrobe == false, true);
-local pw = vc.parseShelfPutAck(putAck(0, {}, true, 55, 9));
+local pw = vc.parseShelfPutAck(putAck(0, {}, true, 55, 9)) or {};
 check('SC24 ...OK with the shelf row, the Rev and the wardrobe flag',
     pw.code == 0 and pw.shelfRowId == 55 and pw.revision == 9 and pw.wardrobe == true, true);
 check('SC25 ...a job list shorter than its count is refused', vc.parseShelfPutAck(putAck(20, { 1, 7 }):sub(1, 13)), nil);
 check('SC26 ...and a frame under 12 bytes', vc.parseShelfPutAck(w16(0)), nil);
 check('SC27 SV_TAKE asks by shelf row', vc.shelfTakePayload(0x0A0B0C0D), string.char(0x0D, 0x0C, 0x0B, 0x0A));
-local ta = vc.parseShelfTakeAck(takeAck(0, 88, 10));
+local ta = vc.parseShelfTakeAck(takeAck(0, 88, 10)) or {};
 check('SC28 SV_TAKE answer: the code, the new vault row, the Rev',
     ta.code == 0 and ta.vaultRowId == 88 and ta.revision == 10, true);
 check('SC29 ...a short one is refused', vc.parseShelfTakeAck(w16(0) .. w16(0)), nil);
-local mm = vc.parseShelfMembers(members(GROUP, 7, 11));
+local mm = vc.parseShelfMembers(members(GROUP, 7, 11)) or { members = {} };
+local m1, m3 = mm.members[1] or {}, mm.members[3] or {};
 check('SC30 SV_MEMBERS: the group, its leader, its members', mm.groupId == 7 and mm.leader == 11 and #mm.members == 3, true);
-check('SC31 ...a zero-padded name reads clean', mm.members[1].name, 'Alice');
-check('SC32 ...the flags: active, leader, online', mm.members[1].active and mm.members[1].leader and mm.members[1].online, true);
-check('SC33 ...a member who left is listed, not active', mm.members[3].active, false);
+check('SC31 ...a zero-padded name reads clean', m1.name, 'Alice');
+check('SC32 ...the flags: active, leader, online', m1.active and m1.leader and m1.online, true);
+check('SC33 ...a member who left is listed, not active', m3.active, false);
 check('SC34 a full 16-byte name keeps all 16',
-    vc.parseShelfMembers(members({ { 14, 'Abcdefghijklmnop', 1 } })).members[1].name, 'Abcdefghijklmnop');
+    (((vc.parseShelfMembers(members({ { 14, 'Abcdefghijklmnop', 1 } })) or { members = {} }).members[1]) or {}).name, 'Abcdefghijklmnop');
 check('SC35 a truncated member list is refused', vc.parseShelfMembers(members({ { 11, 'Alice', 1 } }):sub(1, 20)), nil);
-local pc = vc.parseShelfChanged(svPush(12, 4, true, 7).payload);
+local pc = vc.parseShelfChanged(svPush(12, 4, true, 7).payload) or {};
 check('SC36 SV_CHANGED: Rev, count, InGroup, GroupId',
     pc.revision == 12 and pc.count == 4 and pc.inGroup == true and pc.groupId == 7, true);
 check('SC37 ...a short push is refused', vc.parseShelfChanged(w32(1)), nil);
@@ -396,8 +407,9 @@ check('SN8 Cancel sends nothing', sends(vc.op.SV_PUT), 1);
 check('SN9 ...and closes the question', svm.pendingConfirm(), nil);
 svm.shareVaultRow(harness); tick();
 reply(putAck(vc.giCode.NEEDS_CONFIRM, { 1 }, false, 0, 0));
+local cq = svm.pendingConfirm();
 check('SN10 one layout reads in the singular',
-    table.concat(svm.confirmLines(svm.pendingConfirm()), '|'):find('It is in your WAR layout.', 1, true) ~= nil, true);
+    cq ~= nil and table.concat(svm.confirmLines(cq), '|'):find('It is in your WAR layout.', 1, true) ~= nil, true);
 local askSeq = last()[6];
 svm.confirm(true); tick();
 local put2 = last();
@@ -461,7 +473,7 @@ svm._note = function(t, e) notes[#notes + 1] = { t = t, e = e }; end;
 svm.take({ rowId = 31, itemId = 12345, name = 'Shared Sword' }); tick();
 reply(takeAck(vc.giCode.RARE_HELD, 0, 0));
 check('SN34 a refused take says why', lastNote(), 'Shared Sword: you already have one of that Rare piece');
-check('SN34a ...as a complaint', notes[#notes].e, true);
+check('SN34a ...as a complaint', notes[#notes] ~= nil and notes[#notes].e, true);
 svm.take({ rowId = 31, itemId = 12345, name = 'Shared Sword' }); tick();
 frame(vc.status.TOO_FAR);
 check('SN35 a take away from a Gear Vault says where to stand',
@@ -542,7 +554,7 @@ local more = last();
 check('SR22 MORE asks again, after the last RowId', more[5] == vc.op.SV_LIST and u32At(more, 9) == 3, true);
 reply(shelfList({ shelfRow(4, 104) }, 9));
 check('SR23 one consistent shelf, no duplicates', #vc.shelf.rows == 4 and vc.shelf.readRev == 9, true);
-check('SR23a ...in RowId order', vc.shelf.rows[1].rowId == 1 and vc.shelf.rows[4].rowId == 4, true);
+check('SR23a ...in RowId order', #vc.shelf.rows == 4 and vc.shelf.rows[1].rowId == 1 and vc.shelf.rows[4].rowId == 4, true);
 boot({}); tab.open = true; tick();
 reply(members(GROUP)); tick();
 frame(0, vc.FLAG_MORE, shelfList({ shelfRow(1, 101) }, 9));
@@ -555,9 +567,11 @@ check('SR25 ...the shelf is read again from the top', last()[5] == vc.op.SV_LIST
 boot({}); tab.open = true; tick();
 reply(members(GROUP)); tick();
 vc.onFrame(svPush(12, 1, true, 7));        -- the shelf moved while our read was out
+local n26 = sends(vc.op.SV_LIST);
 reply(shelfList({ shelfRow(1, 101) }, 11));   -- this answer predates it
 tick();
-check('SR26 a newer Rev announced during the read reads once more', last()[5], vc.op.SV_LIST);
+check('SR26 a newer Rev announced during the read reads once more',
+    sends(vc.op.SV_LIST) == n26 + 1 and vc._st().pending ~= nil and vc._st().pending.op == vc.op.SV_LIST, true);
 reply(shelfList({ shelfRow(1, 101), shelfRow(2, 102) }, 12));
 local n4 = shelfSends();
 for _ = 1, 10 do tick(0.25); end
@@ -662,11 +676,12 @@ check('SV12a ...then goes', sends(vc.op.HELLO), h0 + 1);
 -- the server's echo push (scope VAULT) lands right after: still one read
 boot({ rows = { { 1, 100 }, { 2, 101 } } });
 vc.requestShelfPut({ vaultRowId = 2, itemId = 101 }, function() end); tick();
-reply(putAck(0, {}, false, 55, 6));
-now = now + 0.1;
+now = now + 0.15;                          -- the answer's round trip
+frame(0, 0, putAck(0, {}, false, 55, 6));
+h0 = sends(vc.op.HELLO);
+for _ = 1, 6 do now = now + 1 / 60; vc.pump(true); end   -- frames pass; the push lands 0.1 s later
 vc.onFrame({ op = vc.op.CHANGED, seq = 0, status = 0, flags = 0,
              payload = w16(vc.change.VAULT) .. w16(2) .. w32(11) .. w32(0) .. w32(1) .. w16(0) .. w16(0) .. w32(1) });
-h0 = sends(vc.op.HELLO);
 srv.rows = { { 1, 100 } };
 settle(20);
 check('SV13 our answer and the vault\'s CHANGED push make ONE re-read', sends(vc.op.HELLO), h0 + 1);
@@ -737,12 +752,14 @@ gate.open = true;
 for _ = 1, 10 do tick(0.25); end
 check('SV27 leaving the group cancels a share that never left', qerr == 'not_in_group' and sends(vc.op.SV_PUT) == 0, true);
 boot({});
-vc.requestShelfPut({ vaultRowId = 1 }, function(_, e) qerr = e; end);
+local heard, lastAck = 0, nil;
+vc.requestShelfPut({ vaultRowId = 1 }, function(ack, e) heard = heard + 1; lastAck = ack; qerr = e; end);
 tick();
 vc.onFrame(svPush(9, 0, false, 0));
-check('SV28 ...but a share already on the wire still gets its answer', vc.shelfBusy(), true);
+check('SV28 ...but a share already on the wire still gets its answer', vc.shelfBusy() == true and heard == 0, true);
 reply(putAck(vc.giCode.NOT_IN_GROUP, {}, false, 0, 0));
-check('SV28a ...and its caller hears it', vc.shelfBusy() == false and qerr == nil, true);
+check('SV28a ...and its caller hears it, once', vc.shelfBusy() == false and heard == 1 and qerr == nil
+    and lastAck ~= nil and lastAck.code == vc.giCode.NOT_IN_GROUP, true);
 
 -- ===========================================================================
 -- SZ: zone lines (the vault's laws hold for the shelf)
@@ -859,6 +876,7 @@ local function hasExact(list, text)
     for _, s in ipairs(list) do if s == text then return true; end end
     return false;
 end
+local function queued() return (vc._st().shelfWriteQ or {})[1] or {}; end
 local function balanced()
     return depth.child == 0 and depth.item == 0 and depth.tree == 0 and depth.tip == 0 and depth.col == 0
         and depth.pop == 0 and depth.bar == 0 and depth.tab == 0;
@@ -898,8 +916,8 @@ check('SU6 the stacks stay balanced', balanced(), true);
 press.small = 'Take##gvst31';
 frameUI();
 press.small = nil;
-check('SU7 Take queues one SV_TAKE for that row', vc.shelfBusy() and vc._st().shelfWriteQ[1].op == vc.op.SV_TAKE
-    and vc._st().shelfWriteQ[1].shelfRowId == 31, true);
+check('SU7 Take queues one SV_TAKE for that row', vc.shelfBusy() and queued().op == vc.op.SV_TAKE
+    and queued().shelfRowId == 31, true);
 frameUI();
 check('SU8 ...the row says Taking... and no Take button is offered meanwhile',
     has(texts, 'Taking...') and not has(smallHits, 'Take##'), true);
@@ -930,8 +948,8 @@ check('SU10a ...beside its existing action', has(selectables, 'Add to Mog Wardro
 press.select = 'Share with your group';
 frameUI();
 press.select = nil;
-check('SU11 ...which queues one SV_PUT for that vault row', vc.shelfBusy() and vc._st().shelfWriteQ[1].op == vc.op.SV_PUT
-    and vc._st().shelfWriteQ[1].vaultRowId == 1, true);
+check('SU11 ...which queues one SV_PUT for that vault row', vc.shelfBusy() and queued().op == vc.op.SV_PUT
+    and queued().vaultRowId == 1, true);
 frameUI();
 check('SU11a ...and the row says sharing... until it is answered', has(texts, 'sharing...'), true);
 tick(); reply(putAck(vc.giCode.NEEDS_CONFIRM, { 1, 7 }, false, 0, 0));
@@ -971,8 +989,8 @@ check('SU16a ...each with a Share button', has(smallHits, 'Share##gvsw' .. tostr
 press.small = 'Share##gvsw';
 frameUI();
 press.small = nil;
-check('SU17 Share queues one SV_PUT by (Container, Slot)', vc.shelfBusy() and vc._st().shelfWriteQ[1].op == vc.op.SV_PUT
-    and vc._st().shelfWriteQ[1].vaultRowId == 0, true);
+check('SU17 Share queues one SV_PUT by (Container, Slot)', vc.shelfBusy() and queued().op == vc.op.SV_PUT
+    and queued().vaultRowId == 0, true);
 tick();
 check('SU17a ...on the wire as VaultRowId 0, Container 10, Slot 33',
     u32At(last(), 9) == 0 and last()[13] == 10 and last()[14] == 33 and last()[15] == 0, true);
