@@ -11766,9 +11766,9 @@ Shared Vault".
   announcement now waits for the read's answer.
 - Making every check fail once found four weak tests (SR26, SV13, SV28a, and a
   harness that stopped at its first broken step). All are fixed, and the
-  breaks live on in the sweep as X01-X83.
-- Tests: `tests/gearvault_shared.lua` (221 checks, in CI). The sweep is 267
-  mutants: 263 killed, 4 accepted, none open. R22's pattern was re-anchored;
+  breaks live on in the sweep as X01-X84.
+- Tests: `tests/gearvault_shared.lua` (222 checks, in CI). The sweep is 268
+  mutants: 264 killed, 4 accepted, none open. R22's pattern was re-anchored;
   it had matched twice since the manual layout actions.
 - Owed: the field round (the checklist in the design doc), on a local shard
   with the server branch.

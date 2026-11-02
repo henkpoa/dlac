@@ -576,10 +576,10 @@ requests, answers), `sharedvault.lua` (the moves, the question, the words),
 `vaultui.lua` (the tab, the menu item, the popup, the wardrobe list) and
 `init.lua` (`/dl vault`'s line; a character switch forgets an open question).
 
-**Tests.** `tests/gearvault_shared.lua`, 221 checks, in CI. Every check was
+**Tests.** `tests/gearvault_shared.lua`, 222 checks, in CI. Every check was
 seen red at least once under a deliberate break, and the mutation sweep keeps
-those breaks: S01-S52 break the guards, X01-X83 the codecs, words, tab and
-glue. Board: 267 mutants, 263 killed, 4 accepted, none open
+those breaks: S01-S52 break the guards, X01-X84 the codecs, words, tab and
+glue. Board: 268 mutants, 264 killed, 4 accepted, none open
 ([gear-vault-live-sync.md](gear-vault-live-sync.md), "Re-running it"). S09
 is equivalent: the pump drops every shelf read wanted while the tab is closed
 (S13).
