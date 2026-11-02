@@ -286,6 +286,12 @@ check('SG8 InGroup 1 with GroupId 0 is no group', vc.shelfAvailable(), false);
 boot({});
 vc.onFrame(svPush(5, 0, false, 7));
 check('SG9 InGroup 0 hides the tab whatever the GroupId says', vc.shelfAvailable(), false);
+boot({ noTail = true });
+vc.onFrame(svPush(5, 0, true, 7));
+check('SG10 a push cannot open the tab on a server whose HELLO did not offer the shelf', vc.shelfAvailable(), false);
+boot({ caps = 1 + 2 + 4 + 8 });
+vc.onFrame(svPush(5, 0, true, 7));
+check('SG10a ...nor on an older server', vc.shelfAvailable(), false);
 
 -- ===========================================================================
 -- SW: PUT and TAKE are writes -- the replay window, the same seq, never a
@@ -556,6 +562,20 @@ reply(shelfList({ shelfRow(1, 101), shelfRow(2, 102) }, 12));
 local n4 = shelfSends();
 for _ = 1, 10 do tick(0.25); end
 check('SR27 ...and then holds still', shelfSends(), n4);
+boot({}); tab.open = true; tick();
+reply(members(GROUP)); tick();
+vc.onFrame(svPush(12, 1, true, 7));        -- announced while our read was out...
+reply(shelfList({ shelfRow(1, 101) }, 12));   -- ...and the read already shows it
+local n4b = shelfSends();
+for _ = 1, 10 do tick(0.25); end
+check('SR27a a Rev announced during the read that the read already shows costs no second read', shelfSends(), n4b);
+boot({}); tab.open = true; tick();
+reply(members(GROUP)); tick();
+vc.onFrame(svPush(12, 1, true, 7));        -- announced while our read was out...
+reply(shelfList({ shelfRow(1, 101), shelfRow(2, 102) }, 13));   -- ...which saw a later change too
+local n4c = shelfSends();
+for _ = 1, 10 do tick(0.25); end
+check('SR27b ...nor one the read overtook', shelfSends() == n4c and vc.shelf.readRev == 13, true);
 -- our own take: Rev + 1 is exactly our change
 boot({});
 srv.shelf = { { 31, 12345, 900, 11 }, { 32, 23456, 901, 12 } };

@@ -425,8 +425,13 @@ M = [
     ('S31', 'a re-delivered shelf row is skipped by RowId', VC,
      'if e.rowId > accLast then st.svAcc[#st.svAcc + 1] = e; accLast = e.rowId; end',
      'st.svAcc[#st.svAcc + 1] = e; accLast = math.max(accLast, e.rowId);'),
-    ('S32', 'a Rev announced during the read reads once more', VC,
-     'if st.svNoteGen ~= p.svGen and st.svKnownRev ~= M.shelf.readRev and shelfOpen(now) then', 'if false then'),
+    ('S32', 'a newer Rev announced during the read reads once more', VC,
+     'if st.svNoteGen ~= p.svGen and st.svKnownRev ~= nil and st.svKnownRev > M.shelf.readRev',
+     'if false and st.svKnownRev ~= nil and st.svKnownRev > M.shelf.readRev'),
+    ('S51', 'an announcement during a read waits for the read\'s answer', VC,
+     "    if st.pending ~= nil and st.pending.kind == 'shelf-list' then return; end\n", ''),
+    ('S52', 'only a NEWER announced Rev reads again after a read', VC,
+     'st.svKnownRev > M.shelf.readRev', 'st.svKnownRev ~= M.shelf.readRev'),
     ('S33', 'SV_CHANGED is a push, never a reply', VC,
      'if f.op == M.op.SV_CHANGED and (f.seq or 0) == 0 then return onShelfPush(f, now); end', ''),
     ('S34', 'the HELLO tail tells the group and the shelf\'s Rev', VC,
@@ -483,6 +488,8 @@ ACCEPTED = {
            'only skips the not-vaulted / choose-a-copy bookkeeping for a stale mirror',
     'R02': 'equivalent with the real client: the engine\'s in-flight count is above 0 only while its edits sit '
            'in layoutSetQ, which the layoutBusy gate (R03, killed) already sees',
+    'S09': 'equivalent: the pump drops every Shared Vault read wanted while its tab is closed (S13, killed), so '
+           'this early check only saves setting the flag',
 }
 
 

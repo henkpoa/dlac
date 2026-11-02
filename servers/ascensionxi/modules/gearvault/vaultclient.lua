@@ -1539,10 +1539,12 @@ end
 
 -- The server says the shelf is at `rev`. Re-read only if that differs from
 -- the last read's Rev, and only while the tab is open (the next open reads
--- anyway).
+-- anyway). While a read is on the wire its answer decides instead: it may
+-- already show this Rev, or a later one (see the SV_LIST commit).
 local function noteShelfRev(rev, now)
     st.svKnownRev = rev;
     st.svNoteGen = (st.svNoteGen or 0) + 1;
+    if st.pending ~= nil and st.pending.kind == 'shelf-list' then return; end
     if shelfOpen(now) and M.shelf.readRev ~= rev then st.svListWant = true; end
 end
 
@@ -1794,9 +1796,11 @@ function onShelfReply(p, f, now)
         M.shelf.count = #st.svAcc;
         M.shelf.stamp = now;
         st.svAcc, st.svAccRev, st.svFailed = nil, nil, nil;
-        -- another Rev was announced while the pages were on the wire (or
-        -- the view fell into doubt): once more
-        if st.svNoteGen ~= p.svGen and st.svKnownRev ~= M.shelf.readRev and shelfOpen(now) then
+        -- A Rev announced while the pages were on the wire: read once more
+        -- only if it is NEWER than this answer (the counter only grows). The
+        -- same Rev, or an older one the read already overtook, is covered.
+        if st.svNoteGen ~= p.svGen and st.svKnownRev ~= nil and st.svKnownRev > M.shelf.readRev
+            and shelfOpen(now) then
             st.svListWant = true;
         end
         -- a sharer the member list cannot name joined after it was read
