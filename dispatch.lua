@@ -8262,7 +8262,8 @@ M.starterTriggersText = [[
 --             day/weather perpetuation gear; never match with no avatar or spirit out
 --             | rageType (PetAction: what an avatar's Blood Pact: Rage deals --
 --             Physical, Magic, Hybrid or Breath)
---             | abilityType | target ('Self': the action is aimed at YOU -- a self-waltz
+--             | abilityType (on PetAction, 'Blood Pact: Ward' = any ward: Avatar-Ward)
+--             | target ('Self': the action is aimed at YOU -- a self-waltz
 --             can wear VIT+CHR while waltzing someone else keeps the plain CHR set)
 --             | player state: playerHPBelow/Above, playerHPPercentBelow/Above,
 --             playerMPBelow/Above, playerMPPercentBelow/Above, tpBelow/tpAbove (raw TP),

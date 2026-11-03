@@ -11,8 +11,18 @@
 -- its table.
 -- tests/stance_sets.lua holds RDM to the pack's latent 30000 and 30001 rows
 -- and PLD to its latent 30002 rows.
+-- `gates` lists the job's stances as the buff bar names them -- the Stance
+-- Gates the Sets tab's Behaviour popup offers (2026-11-03): a piece gated on
+-- one is worn only while it is on you. Each is a status name in the AXI
+-- client DAT: Composure 419, Duelist's Focus 520, Duelist's Trance 521
+-- (client/sources/rdm-abilities), Afflatus Solace 417, Afflatus Misery 418,
+-- Divine Guard 654, Divine Fury 655 (client/sources/pld-divine-guard).
 return {
+    WHM = {
+        gates = { 'Afflatus Solace', 'Afflatus Misery' },
+    },
     RDM = {
+        gates = { 'Composure', "Duelist's Focus", "Duelist's Trance" },
         stance = { -- Duelist's Focus / Duelist's Trance (latent 30000, power >= 2)
             label = 'Duelist Stance',
             [16829] = { Accuracy = 5, Attack = 5 }, -- Fencing Degen
@@ -44,6 +54,7 @@ return {
         },
     },
     PLD = {
+        gates = { 'Divine Guard', 'Divine Fury' },
         divineguard = { -- Divine Guard (latent 30002, power 1; AXI #1061)
             label = 'Divine Guard',
             [12515] = { CoverDuration = 5, CoverMagicRanged = 1, Enmity = 2, VIT = 3 }, -- Gallant Coronet

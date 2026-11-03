@@ -33,6 +33,17 @@ function M.label(job, typeId)
     return (t ~= nil and type(t.label) == 'string') and t.label or nil;
 end
 
+-- The job's stances as the buff bar names them (the pack's `gates` list):
+-- what the Sets tab's Behaviour popup offers as Stance Gates. Only names --
+-- this module still never reads your buffs; utils judges a gate live at the
+-- flatten. nil when the pack names none for the job.
+function M.gates(job)
+    local rows = data();
+    local t = rows and rows[job];
+    local g = (type(t) == 'table') and t.gates or nil;
+    return (type(g) == 'table' and #g > 0) and g or nil;
+end
+
 -- Every stance bonus the pack gives this piece, as { { label, stats } }:
 -- jobs in name order, each job's stances in TYPES (menu) order. The hover
 -- card lists them whatever set or job is in view; apply() is what counts them.

@@ -1057,6 +1057,73 @@ local dwSer = table.concat(setmgr.renderSetLines('T', {
 }), '\n');
 check('G19b serializes the Dual Wield gear rule', dwSer:find('dw = true', 1, true) ~= nil, true);
 
+-- Stance gates (2026-11-03, AscensionXI): an entry's `stance` is a rebuild
+-- signal of its own, judged ONLY after a status packet (0x063/0x037) -- the
+-- buffs are never re-read per pass -- and only for the stances the last
+-- flatten named. utils.activeBuffNames is the read; the packet counter is
+-- driven by hand.
+(function()
+    local plain  = { Name = 'PlainTabard',  Level = 60, Type = 'Body' };
+    local gated  = { Name = 'StanceTabard', Level = 40, Type = 'Body' };
+    local savedRead, reads, BUFFS = utils.activeBuffNames, 0, {};
+    utils.activeBuffNames = function() reads = reads + 1; return BUFFS; end;
+    local bs = utils._buffState;
+    local function packet() bs.pkt = bs.pkt + 1; bs.at = -10; end   -- arrived; its settle is over
+    TEST_PLAYER = { MainJob = 'RDM', SubJob = 'WHM', MainJobSync = 74, SubJobSync = 37 };   -- level change: a flatten
+    packet();
+    local s = { Dynamic = { TP = { Body = { plain, { gear = gated, stance = "Duelist's Focus" } } } } };
+    s = utils.rebuildSets(s);
+    check('G27 stance down: the stance piece is excluded', s.TP and s.TP.Body, 'PlainTabard');
+    check('G27b the flatten watches the stance it named',
+        utils._stanceWatch ~= nil and utils._stanceWatch["duelist's focus"], true);
+    BUFFS = { ["duelist's focus"] = true };
+    local r0, rev0 = reads, utils._laddersRev;
+    s = utils.rebuildSets(s);
+    check('G28 no status packet: nothing re-read, nothing re-flattened',
+        (reads - r0) .. '/' .. (utils._laddersRev - rev0) .. '/' .. tostring(s.TP.Body), '0/0/PlainTabard');
+    packet();
+    s = utils.rebuildSets(s);
+    check('G29 a status packet: stance up, the piece outranks the higher level', s.TP.Body, 'StanceTabard');
+    rev0 = utils._laddersRev;
+    packet();                                    -- e.g. Protect wore off: the stance stands
+    s = utils.rebuildSets(s);
+    check('G30 a packet that leaves the stance as it was re-reads but does not re-flatten',
+        utils._laddersRev - rev0, 0);
+    BUFFS = { composure = true };
+    packet();
+    s = utils.rebuildSets(s);
+    check('G31 the stance went (another one is up): back to the plain piece', s.TP.Body, 'PlainTabard');
+    -- The settle: a packet lands before the client applies it, so for half a
+    -- second after one the read repeats -- at most every 50 ms.
+    local now = os.clock();
+    bs.pkt, bs.at, bs.readPkt, bs.readAt = bs.pkt, now, bs.pkt, now;
+    r0 = reads;
+    utils.buffNamesNow();
+    check('G32 inside the settle, a read 50 ms old is kept', reads - r0, 0);
+    bs.readAt = now - 0.2;
+    utils.buffNamesNow();
+    check('G32b ...and an older one is repeated', reads - r0, 1);
+    bs.at = -10;
+    -- A flatten that names no stance watches nothing: no buff read at all.
+    utils.BuildDynamicSets({ Dynamic = { TP = { Body = { plain } } } });
+    check('G33 no stance gate anywhere: nothing watched', utils._stanceWatch, nil);
+    packet(); r0 = reads;
+    utils.rebuildSets({ Dynamic = { TP = { Body = { plain } } } });
+    check('G33b ...so a status packet costs no read', reads - r0, 0);
+    check('G33c the wrapper does not mutate the shared record', gated.stance, nil);
+    utils.activeBuffNames = savedRead;
+    bs.set = nil;
+
+    local ser = table.concat(setmgr.renderSetLines('T', {
+        { name = 'Body', items = {
+            { path = 'gear.Body.A', stance = 'Composure' },
+            { path = 'gear.Body.B', stance = { "Duelist's Focus", "Duelist's Trance" } },
+        } },
+    }), '\n');
+    check('G34 serializes a stance gate', ser:find('{gear = gear.Body.A, stance = "Composure"}', 1, true) ~= nil, true);
+    check('G34b ...and a stance list', ser:find('stance = { "Duelist\'s Focus", "Duelist\'s Trance" }', 1, true) ~= nil, true);
+end)();
+
 -- min/maxLevel bounds through the same wrapper (the ffxi-lac semantics)
 TEST_PLAYER = { MainJob = 'WHM', SubJob = 'NIN', MainJobSync = 50, SubJobSync = 25 };
 local gMin = utils.BuildDynamicSets({ Dynamic = { TP = {
@@ -9275,6 +9342,42 @@ end)();
         L(quirk2, 'Waist', nil, cctx).virt, 'dlac:AutoStaff');
     utils.dispatchModule = savedDM;
 
+    -- LD8c-LD8k. Stance gates (2026-11-03): the mode tier's shape on the
+    -- game's own buff, one tier under the mode. cctx.buffs = what is on you.
+    local sc = { mjLevel = 50, isDW = false, buffs = { composure = true } };
+    local function tabards(st)
+        return { { Name = 'Plain Tabard', Level = 50 }, { Name = 'Stance Tabard', Level = 30, stance = st } };
+    end
+    lad = L(tabards('Composure'), 'Body', nil, sc);
+    check('LD8c stance up: the stance entry outranks a higher unconditional one', lad.items[1].name, 'Stance Tabard');
+    check('LD8d ...the plain piece is its fallback rung', lad.items[2] and lad.items[2].name, 'Plain Tabard');
+    check('LD8e stance down: excluded outright', #L(tabards("Duelist's Focus"), 'Body', nil, sc).items, 1);
+    check('LD8f a list holds when ANY is up (case-blind)',
+        L(tabards({ "Duelist's Focus", 'COMPOSURE' }), 'Body', nil, sc).items[1].name, 'Stance Tabard');
+    utils.dispatchModule = { modeActive = function(v) return v == 'DT' end };
+    lad = L({ { Name = 'DT Body', Level = 10, mode = 'DT' }, { Name = 'Stance Tabard', Level = 30, stance = 'Composure' } },
+            'Body', nil, sc);
+    check('LD8g a mode gate outranks a stance gate', lad.items[1].name, 'DT Body');
+    utils.dispatchModule = savedDM;
+    check('LD8h the caller\'s stanceOk judges instead (the Sets-tab preview)',
+        L(tabards('Divine Guard'), 'Body', nil, { mjLevel = 50, stanceOk = function(st) return st == 'Divine Guard'; end }).items[1].name,
+        'Stance Tabard');
+    check('LD8i an unreadable buff list holds no stance', #L(tabards('Composure'), 'Body', nil, { mjLevel = 50, buffs = false }).items, 1);
+    -- One read per context; every stance named is watched, up or down.
+    local savedRead, n = utils.activeBuffNames, 0;
+    utils.activeBuffNames = function() n = n + 1; return { composure = true }; end;
+    utils._buffState.set = nil;                  -- force the next read
+    local c2 = { mjLevel = 50, stanceSeen = {} };
+    L(tabards("Duelist's Focus"), 'Body', nil, c2);
+    L(tabards('Composure'), 'Legs', nil, c2);
+    check('LD8j one buff read per context; both stances watched',
+        string.format('%d/%s/%s', n, tostring(c2.stanceSeen["duelist's focus"]), tostring(c2.stanceSeen.composure)), '1/true/true');
+    utils.activeBuffNames = savedRead;
+    utils._buffState.set = nil;
+    local wp = utils.workingPick({ { rec = { Name = 'Plain Tabard', Level = 50 } },
+                                   { rec = { Name = 'Stance Tabard', Level = 30 }, stance = 'Composure' } }, 'Body', nil, sc);
+    check('LD8k the Sets-tab preview passes the stance gate through', wp and wp.rec.Name, 'Stance Tabard');
+
     -- LD9. PARITY BY CONSTRUCTION, verified anyway: a full BuildDynamicSets
     -- run equals flattenHead over each slot's own ladder.
     local savedPlayerLD = TEST_PLAYER;
@@ -13226,6 +13329,21 @@ end)();
         table.concat(ptypes.Haste, ','), 'All,Avatar,Wyvern');
     check('PM18b ...per stat, sorted ("wyvern" finds Pet:HP% -- the field case)',
         table.concat(ptypes.RangedAccuracy, ','), 'Automaton');
+    -- petSetStats (2026-11-03): a composition's pet channel, petScoreStats
+    -- summed per piece -- Set totals' Pet section and the weighted score.
+    local pss = oracle.petSetStats({ Head = { Id = 1 }, Hands = { Id = 2 }, Body = { Id = 4096 }, Feet = { Id = 1 } });
+    check('PM18c petSetStats sums the pieces',
+        string.format('%s/%s/%s', tostring(pss and pss['Pet:Haste']), tostring(pss and pss['Pet:Attack']),
+            tostring(pss and pss['Pet:RangedAccuracy'])), '10/8/5');
+    check('PM18d ...nil when no piece grants pets anything, nil-safe',
+        tostring(oracle.petSetStats({ Body = { Id = 4096 } })) .. '/' .. tostring(oracle.petSetStats(nil)), 'nil/nil');
+    -- The stat panel's Pet section (gearfmt.petPanelKeys): shown only for a
+    -- set with pet stats; the avatar's four lead, the rest follow by name.
+    check('PM18e petPanelKeys: the four lead, then the rest by name, bare keys never',
+        table.concat(gf.petPanelKeys({ STR = 3, ['Pet:Haste'] = 3, ['Pet:Accuracy'] = 5, ['Pet:Enmity'] = 2 }) or {}, ','),
+        'Pet:Attack,Pet:Accuracy,Pet:MagicAttackBonus,Pet:MagicAccuracy,Pet:Enmity,Pet:Haste');
+    check('PM18f ...nil for a set with no pet stats (no Pet section)',
+        tostring(gf.petPanelKeys({ STR = 3, MagicAccuracy = 4 })) .. '/' .. tostring(gf.petPanelKeys(nil)), 'nil/nil');
 
     -- statdefs speaks the namespace: derived label/section, canon keeps the prefix
     local sd = dofile('gear/statdefs.lua');

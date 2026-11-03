@@ -191,6 +191,29 @@ local function petLines(rec)
     return lines;
 end
 
+-- The stat panel's Pet section, in order: the 'Pet:' keys of a totals table
+-- (what the set gives YOUR PET), or nil when it has none -- the section only
+-- shows for a set that carries pet stats. Attack, Accuracy, Magic Attack Bonus
+-- and Magic Accuracy always lead, at 0 if absent (Henrik 2026-11-03, the
+-- avatar's four); the pet's other stats follow by name. Bare keys never land
+-- here, so the panel's Other section keeps them.
+function M.petPanelKeys(totals)
+    if type(totals) ~= 'table' then return nil; end
+    local rest = {};
+    for k in pairs(totals) do
+        if type(k) == 'string' and string.sub(k, 1, 4) == 'Pet:' then rest[#rest + 1] = k; end
+    end
+    if #rest == 0 then return nil; end
+    local out = { 'Pet:Attack', 'Pet:Accuracy', 'Pet:MagicAttackBonus', 'Pet:MagicAccuracy' };
+    local lead = {};
+    for _, k in ipairs(out) do lead[k] = true; end
+    table.sort(rest);
+    for _, k in ipairs(rest) do
+        if not lead[k] then out[#out + 1] = k; end
+    end
+    return out;
+end
+
 -- Collapse the 8-way crafting families into ONE display token when uniform
 -- (Henrik: "All Skills +2 instead of listing each skill one by one"). Display
 -- only -- scoring and the engine still see the real per-craft keys.

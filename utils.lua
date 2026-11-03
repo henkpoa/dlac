@@ -119,10 +119,96 @@ end
 -- once and cached, so this persists across HandleDefault calls.
 local _lastLevel, _lastSJLevel, _lastSJ = 0, 0, nil;
 
+-- STANCE GATES (2026-11-03, AscensionXI; Henrik: "under the B (Behaviour)
+-- button on equipments, that you can select a stance"). A set entry's `stance`
+-- -- a status effect's name, or a list of them meaning ANY -- makes the piece a
+-- candidate only while that status is on you, and then it beats the
+-- unconditional entries: a mode gate whose switch is the game's own buff.
+--
+-- The buff list is NOT re-read per pass. The client only learns a status
+-- change from a packet (0x063 status icons, 0x037 the character update), so
+-- the packet is the invalidation: buffNamesNow() keeps the last read until one
+-- arrives, then re-reads for a short settle (packet_in fires before the client
+-- applies it), at most once per 50 ms.
+local _bf = { pkt = 0, at = -1, set = nil, ver = 0, readPkt = -1, readAt = -1 };
+pcall(function()
+    ashita.events.register('packet_in', 'dlac-utils-stance', function(e)
+        if e.id == 0x063 or e.id == 0x037 then
+            _bf.pkt = _bf.pkt + 1;
+            _bf.at = os.clock();
+        end
+    end);
+end);
+M._buffState = _bf;   -- headless test seam
+
+-- The names of the status effects on you now, lowercased -- { [name] = true }
+-- -- or nil when the read fails (headless, before login). The client's own
+-- names, so AscensionXI's stances (Duelist's Focus, Divine Guard) read as
+-- the buff bar spells them.
+function M.activeBuffNames()
+    local set = nil;
+    pcall(function()
+        local buffs = AshitaCore:GetMemoryManager():GetPlayer():GetBuffs();
+        local resx = AshitaCore:GetResourceManager();
+        local s = {};
+        for _, id in pairs(buffs) do
+            id = tonumber(id);
+            if id ~= nil and id > 0 and id < 1000 then
+                local nm = resx:GetString('buffs.names', id);
+                if type(nm) == 'string' then
+                    nm = string.gsub(nm, '%z+$', '');
+                    if #nm > 0 then s[string.lower(nm)] = true; end
+                end
+            end
+        end
+        set = s;
+    end);
+    return set;
+end
+
+-- The packet-invalidated read: (set, version). The version moves only when a
+-- re-read happens, so a caller can skip work while it stands still.
+function M.buffNamesNow()
+    local now = os.clock();
+    if _bf.set == nil or _bf.readPkt ~= _bf.pkt
+       or (now - _bf.at < 0.5 and now - _bf.readAt > 0.05) then
+        _bf.set = M.activeBuffNames();
+        _bf.readPkt, _bf.readAt = _bf.pkt, now;
+        _bf.ver = _bf.ver + 1;
+    end
+    return _bf.set, _bf.ver;
+end
+
+-- Does a stance gate hold? ANY of its names in `buffs` (case-blind); an
+-- unreadable buff list (nil) holds none, so a bad read never equips a stance
+-- piece.
+function M.stanceActive(stance, buffs)
+    if type(buffs) ~= 'table' then return false; end
+    if type(stance) == 'table' then
+        for _, s in ipairs(stance) do
+            if buffs[string.lower(tostring(s))] then return true; end
+        end
+        return false;
+    end
+    return buffs[string.lower(tostring(stance))] == true;
+end
+
+-- The watched stances that are up, as one comparable string.
+local function stanceSig(watch, buffs)
+    if type(buffs) ~= 'table' then return '?'; end
+    local on = {};
+    for nm in pairs(watch) do
+        if buffs[nm] then on[#on + 1] = nm; end
+    end
+    table.sort(on);
+    return table.concat(on, '|');
+end
+
 -- Call `sets = utils.rebuildSets(sets)` at the top of HandleDefault. Fetches the
 -- player and manages rebuild state internally; returns the (possibly rebuilt) sets.
 local _lastModesRev = nil;
 local _lastDW = nil;
+local _stanceRb = { sig = nil, ver = nil };   -- what the last flatten saw of the watched stances
 function M.rebuildSets(sets)
     local player = gData.GetPlayer();
     if player == nil then return sets; end
@@ -144,6 +230,16 @@ function M.rebuildSets(sets)
     if dwNow ~= _lastDW then
         shouldRebuild = true;
         _lastDW = dwNow;
+    end
+    -- A stance the sets gate on came up or went down. Judged only when the
+    -- buff read moved (a status packet arrived), and only for the stances the
+    -- last flatten named (M._stanceWatch) -- nothing to do for sets without one.
+    if M._stanceWatch ~= nil then
+        local buffs, ver = M.buffNamesNow();
+        if ver ~= _stanceRb.ver then
+            _stanceRb.ver = ver;
+            if stanceSig(M._stanceWatch, buffs) ~= _stanceRb.sig then shouldRebuild = true; end
+        end
     end
     if shouldRebuild then
         sets = M.BuildDynamicSets(sets);
@@ -383,6 +479,9 @@ end
 --   * an ACTIVE mode-gated entry outranks every unconditional one (specific
 --     beats generic -- the old pass-1/pass-2 split, now a tier); an INACTIVE
 --     one is excluded outright;
+--   * a stance-gated entry (`stance`, 2026-11-03) the same, one tier under
+--     the mode: its stance up, it outranks every entry without one; down, it
+--     is excluded. A mode is the player's explicit switch, so it still wins;
 --   * an entry with an explicit level RANGE that is live right now OUTRANKS
 --     every unbounded entry (a range is an instruction, not a hint -- the
 --     Garrison Tunica field case);
@@ -395,11 +494,14 @@ end
 -- LIVE reads of M.dispatchModule, exactly as the old walk read them --
 -- unless the caller supplies its OWN mode judge as cctx.modeOk (stage 5:
 -- the Sets-tab preview passes its display-truth judge), the one way a
--- preview may legitimately answer differently.
+-- preview may legitimately answer differently. Stances likewise: the
+-- caller's cctx.stanceOk, else the buffs read ONCE per cctx (cctx.buffs,
+-- buffNamesNow) -- so the ladders of one flatten agree. cctx.stanceSeen,
+-- when given, collects every stance named (the rebuild watch list).
 --
 -- Returns { items = {rung...}, accs = {rung...}, virt = marker|nil }:
---   item rung -- { name, level, rank, modeTier, ord, gear = <resolved obj> }
---   acc rung  -- { name, prio, acc, level, rank, modeTier, ord }  (the
+--   item rung -- { name, level, rank, modeTier, stanceTier, ord, gear = <resolved obj> }
+--   acc rung  -- { name, prio, acc, level, rank, modeTier, stanceTier, ord }  (the
 --                AutoAcc pool competes only among itself -- pool split law)
 --   virt      -- the winning marker STRING (composition is flattenHead's job)
 function M.slotLadder(slotTable, slotName, currentMain, cctx)
@@ -411,6 +513,14 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
         if type(cctx.modeOk) == 'function' then return cctx.modeOk(mode) == true; end
         local dsp = M.dispatchModule;
         return dsp ~= nil and type(dsp.modeActive) == 'function' and dsp.modeActive(mode) == true;
+    end
+    local function stanceOk(stance)
+        if type(cctx.stanceOk) == 'function' then return cctx.stanceOk(stance) == true; end
+        if cctx.buffs == nil then
+            local b, ver = M.buffNamesNow();
+            cctx.buffs, cctx.buffsVer = b or false, ver;   -- false: read failed, not retried
+        end
+        return M.stanceActive(stance, cctx.buffs or nil);
     end
     local lastVirt, lastBareVirt = nil, nil;
     local ord = 0;
@@ -515,6 +625,19 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
                 modeTier = 1;
             end
 
+            -- The stance tier, the same shape on the game's buff: stance up,
+            -- the entry outranks the ones without a stance; down, it is out.
+            -- Every stance named is watched (cctx.stanceSeen), up or down.
+            local stanceTier = 0;
+            if gearObject.stance ~= nil then
+                if type(cctx.stanceSeen) == 'table' then
+                    local names = (type(gearObject.stance) == 'table') and gearObject.stance or { gearObject.stance };
+                    for _, s in ipairs(names) do cctx.stanceSeen[string.lower(tostring(s))] = true; end
+                end
+                if not stanceOk(gearObject.stance) then break; end
+                stanceTier = 1;
+            end
+
             -- The Dual Wield gear rule (dw = true on the wrapper): the piece is
             -- a CANDIDATE only while the trait is actually up (cctx.isDW -- the
             -- server's own trait bit, same answer the Sub pairing trusts). A
@@ -563,12 +686,12 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
                     prio = math.floor(tonumber(gearObject.removePrio) or 1),
                     acc  = math.floor(tonumber(gearObject.acc) or 0),
                     level = gearObject.Level, rank = rank,
-                    modeTier = modeTier, ord = ord,
+                    modeTier = modeTier, stanceTier = stanceTier, ord = ord,
                 };
             else
                 out.items[#out.items + 1] = {
                     name = gearObject.Name, level = gearObject.Level,
-                    rank = rank, modeTier = modeTier, ord = ord,
+                    rank = rank, modeTier = modeTier, stanceTier = stanceTier, ord = ord,
                     gear = gearObject,
                 };
             end
@@ -576,6 +699,7 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
     end
     local function better(a, b)
         if a.modeTier ~= b.modeTier then return a.modeTier > b.modeTier; end
+        if a.stanceTier ~= b.stanceTier then return a.stanceTier > b.stanceTier; end
         if a.rank ~= b.rank then return a.rank > b.rank; end
         if a.level ~= b.level then return a.level > b.level; end
         return a.ord < b.ord;
@@ -684,7 +808,7 @@ function M.workingPick(list, slotName, currentMain, cctx)
                 a = (it.mode ~= nil) and { gear = it.rec.Name, mode = it.mode } or it.rec.Name;
             else
                 a = { gear = it.rec, minLevel = it.minLevel, maxLevel = it.maxLevel,
-                      mode = it.mode, dw = it.dw, autoType = it.autoType,
+                      mode = it.mode, stance = it.stance, dw = it.dw, autoType = it.autoType,
                       removePrio = it.removePrio, acc = it.acc };
             end
         end
@@ -725,7 +849,7 @@ function M.BuildDynamicSets(sets)
     -- THIS flatten's context, so a ladder and the flatten it accompanies can
     -- never disagree about level or Dual Wield.
     M._laddersRev = (M._laddersRev or 0) + 1;
-    local cctx = { mjLevel = mjLevel, isDW = isDW };
+    local cctx = { mjLevel = mjLevel, isDW = isDW, stanceSeen = {} };
     M._lastFlattenCtx = cctx;
 
     -- Each dynamic set: every slot's pick IS its ladder's head (stage 1 --
@@ -758,6 +882,15 @@ function M.BuildDynamicSets(sets)
         -- here would lose it. And the flag was never a dlac field, so the check was
         -- dead code that always read nil. See dispatch.reservedDrops / ADR 0006.)
         sets[setName] = currentSet;
+    end
+    -- The stances these sets gate on, and what this flatten saw of them:
+    -- rebuildSets re-flattens when that changes (nil = no stance gate at all).
+    M._stanceWatch = (next(cctx.stanceSeen) ~= nil) and cctx.stanceSeen or nil;
+    if M._stanceWatch ~= nil then
+        local buffs = cctx.buffs;
+        if buffs == nil then buffs = M.buffNamesNow(); end   -- defensive: a gate always reads them
+        _stanceRb.sig = stanceSig(M._stanceWatch, buffs or nil);
+        _stanceRb.ver = cctx.buffsVer or _bf.ver;
     end
     return sets;
 end

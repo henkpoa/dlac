@@ -205,10 +205,20 @@ assert(lines(19978) == 'Composure: INT+4 MND+4 | Duelist Stance: Enhancing Magic
 assert(lines(99999) == '', 'a piece without stance gear gets no line')
 assert(fmt.stanceLines({}) and #fmt.stanceLines({}) == 0 and #fmt.stanceLines(nil) == 0)
 assert(#stance.bonusesOf({Id=15078, Level=75}) == 2, 'Valor Coronet: both stances, read without a level')
+-- Stance Gates (2026-11-03): the Behaviour popup offers each job's stances as
+-- the buff bar names them. The WHM row has no Set Type table, so it must not
+-- leak into the menu or the hover card.
+assert(table.concat(stance.gates('RDM'), ',') == "Composure,Duelist's Focus,Duelist's Trance", 'RDM stance gates')
+assert(table.concat(stance.gates('WHM'), ',') == 'Afflatus Solace,Afflatus Misery', 'WHM stance gates')
+assert(table.concat(stance.gates('PLD'), ',') == 'Divine Guard,Divine Fury', 'PLD stance gates')
+assert(stance.gates('WAR') == nil and stance.gates('BLM') == nil, 'no gates where the pack names none')
+assert(#optim.setTypeOptions('WHM', 'normal') == 2, 'WHM keeps Normal and 1-Hit WS only')
+assert(stance.label('WHM') == nil, 'a gates-only job has no Set Type stance')
 sp.active = function() return 'cexi' end
 assert(stance.apply(hat,hat.Stats,ctx)==hat.Stats, 'AXI only')
 assert(stance.label('RDM') == nil and stance.label('RDM','composure') == nil, 'no stance menu row off AXI')
 assert(stance.label('PLD','divineguard') == nil, 'nor a Paladin one')
 assert(lines(12644) == '' and #stance.bonusesOf({Id=12515}) == 0, 'no stance lines off AXI')
+assert(stance.gates('RDM') == nil and stance.gates('PLD') == nil, 'no stance gates off AXI')
 os.remove(tmp)
-print('OK -- Set Type: stance, Composure, Divine Guard and Divine Fury scoring, totals, defaults, persistence, migration, rename, export/import, the menu and the hover card')
+print('OK -- Set Type: stance, Composure, Divine Guard and Divine Fury scoring, totals, defaults, persistence, migration, rename, export/import, the menu, the hover card and the stance gates')
