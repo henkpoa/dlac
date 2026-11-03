@@ -42,6 +42,7 @@ local vc     = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultcli
 local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutcounts');
 local recon  = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
 local usg    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
+local svm    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\sharedvault');
 
 -- Tell the layout engine its inputs changed (a setting, the Bench): it runs
 -- a moment later instead of on its quiet beat.
@@ -260,6 +261,14 @@ local function noteResult(text, isErr)
     chat('gear vault: ' .. text);
 end
 
+-- The Shared Vault's results land on the same line, named as its own.
+if svm ~= nil then
+    svm._note = function(text, isErr)
+        _lastMsg = { text = text, err = (isErr == true) };
+        chat('shared vault: ' .. text);
+    end;
+end
+
 -- One queued layout edit from a tab button. `okText` is the success line;
 -- the refusal vocabulary is shared. Every accepted edit re-asks the layout
 -- so the pane catches up.
@@ -448,6 +457,28 @@ local function vaultView()
     sortGroups(grouped);
     _vView = { grouped = grouped, total = total };
     return _vView;
+end
+
+-- The Shared Vault's view: the shelf's rows the same way, each with who
+-- shared it. Rebuilt when the shelf or the member list is read again.
+local _sView, _sStamp, _sMembers = nil, nil, nil;
+local function shelfView()
+    local sh = vc.shelf or {};
+    if _sView ~= nil and _sStamp == sh.stamp and _sMembers == sh.membersStamp then return _sView; end
+    _sStamp, _sMembers = sh.stamp, sh.membersStamp;
+    local grouped, total = {}, 0;
+    for _, r in ipairs(sh.rows or {}) do
+        local rec = recOf(r.itemId);
+        total = total + 1;
+        bucket(grouped, rec, {
+            rowId = r.rowId, itemId = r.itemId, qty = 1, identity = r.identity, instanceId = r.instanceId,
+            sharer = svm ~= nil and svm.sharerName(r.sharedBy) or nil,
+            rec = rec, name = nameOf(r.itemId), sortKey = r.rowId,
+        });
+    end
+    sortGroups(grouped);
+    _sView = { grouped = grouped, total = total };
+    return _sView;
 end
 
 -- The layout pane's view: layout entries enriched the same way, with YOUR
@@ -762,6 +793,41 @@ local function wornAtSlot()
     return out;
 end
 local function invalidateWorn() _wornAt = 0; end
+
+-- The unworn gear in the Mog Wardrobes, for the Shared Vault tab's share list
+-- (S12 rule 2: a wardrobe piece you are not wearing can be shared). Known
+-- equipment only, single pieces, nothing the vault keeps out and nothing on
+-- the body; the server refuses anything else per piece, in its own words.
+-- Cached a beat.
+local _wd, _wdAt = nil, 0;
+M._wardrobeOverride = nil;   -- test seam: the list itself
+local function wardrobeShareable()
+    if M._wardrobeOverride ~= nil then return M._wardrobeOverride; end
+    local now = os.clock();
+    if _wd ~= nil and now - _wdAt < 2.0 then return _wd; end
+    _wdAt = now;
+    local out = {};
+    pcall(function()
+        local inv = AshitaCore:GetMemoryManager():GetInventory();
+        local worn = wornAtSlot();
+        for _, cid in ipairs(WARDROBES) do
+            for idx = 1, inv:GetContainerCountMax(cid) or 0 do
+                local entry = inv:GetContainerItem(cid, idx);
+                if entry ~= nil and entry.Id ~= nil and entry.Id ~= 0 and entry.Id ~= 65535
+                    and entry.Flags ~= 5 and worn[cid * 256 + idx] == nil and (entry.Count or 1) <= 1 then
+                    local rec = recOf(entry.Id);
+                    if rec ~= nil and not M.keptOutOfVault(rec) then
+                        out[#out + 1] = { container = cid, slot = idx, itemId = entry.Id, qty = 1,
+                            identity = entry.Extra,   -- the raw exdata: its augments read as a vault row's
+                            rec = rec, name = rec.Name or nameOf(entry.Id), sortKey = cid * 256 + idx };
+                    end
+                end
+            end
+        end
+    end);
+    _wd = out;
+    return out;
+end
 
 -- Text width for right-aligning a wider button against the Store column;
 -- the codebase's ~9.5px/char estimate when the binding has no CalcTextSize.
@@ -1170,6 +1236,39 @@ end
 -- label still points the way. Either way the order never moves.
 local _sub = { want = 0, lastSeen = 0 };
 
+-- THE SHARED VAULT'S QUESTION (S12 rules 1 and 2): a piece in your job
+-- layouts, or in a Mog Wardrobe, comes back NEEDS_CONFIRM with the layouts it
+-- is in. Asked over whichever sub-tab is showing (a share can start from the
+-- Vault tab's menu); only Share anyway sends it again, with the confirm flag.
+-- Cancel, a click elsewhere, or a minute without an answer sends nothing.
+local _confirmShown = nil;   -- the question the popup was opened for
+local function renderShareConfirm(cGOLD, cDIM)
+    local c = (svm ~= nil) and svm.pendingConfirm() or nil;
+    if c == nil then _confirmShown = nil; return; end
+    if _confirmShown ~= c then
+        _confirmShown = c;
+        imgui.OpenPopup('##gv-share-confirm');
+    end
+    if imgui.BeginPopup('##gv-share-confirm') then
+        for i, line in ipairs(svm.confirmLines(c)) do
+            imgui.TextColored((i == 1) and cGOLD or cDIM, esc(line));
+        end
+        if imgui.SmallButton('Share anyway##gvsvyes') then
+            svm.confirm(true);
+            imgui.CloseCurrentPopup();
+        end
+        imgui.SameLine(0, 10);
+        if imgui.SmallButton('Cancel##gvsvno') then
+            svm.confirm(false);
+            imgui.CloseCurrentPopup();
+        end
+        imgui.EndPopup();
+    else
+        svm.confirm(false);   -- clicked away: that is a no
+        _confirmShown = nil;
+    end
+end
+
 -- ---------------------------------------------------------------------------
 -- The tab
 -- ---------------------------------------------------------------------------
@@ -1203,6 +1302,8 @@ function M.render(job, level)
         if imgui.IsItemHovered() then imgui.SetTooltip('Ask the server again right now.'); end
         return;
     end
+    -- Group Ironman's Shared Vault: offered by the server, and in a group
+    local shelfOn = svm ~= nil and type(vc.shelfAvailable) == 'function' and vc.shelfAvailable();
     local vaultN = 0;
     for _, r in ipairs(vc.mirror.rows) do vaultN = vaultN + math.max(1, r.qty); end
     -- The header speaks only when something is WRONG (2026-09-30: routine
@@ -1789,6 +1890,10 @@ function M.render(job, level)
                                 imgui.SetTooltip('You removed this from the layout, so dlac will not add it back\nby itself. Add to Mog Wardrobe puts it back and clears this.');
                             end
                         end
+                        if svm ~= nil and svm.isSharingRow(e.rowId) then
+                            imgui.SameLine(0, 8);
+                            imgui.TextColored(cDIM, 'sharing...');
+                        end
                     end,
                     b1w = 210,   -- room for the named action (was 'Layout' -- jargon)
                     buttons = function(hot, b1, b2)
@@ -1959,6 +2064,118 @@ function M.render(job, level)
         end
     end
 
+    -- THE SHARED VAULT (Group Ironman): what your group shares, each piece
+    -- with who shared it and a Take button, then the unworn wardrobe gear you
+    -- can share; a piece in your Gear Vault is shared from the Vault tab's
+    -- right-click menu. One piece per click. Drawing this tab is what reads
+    -- the shelf: once when it opens, again when the server says it moved
+    -- (vaultclient's Shared Vault section) -- never on a clock.
+    local function idleTip()
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('One piece at a time: wait for the last one to finish (or answer its question).');
+        end
+    end
+    local function renderSharedTab()
+        vc.noteShelfView();
+        local members = svm.memberLine();
+        if members ~= '' then
+            imgui.TextColored(cDIM, esc('Your group: ' .. members));
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Gear any member shares waits here for the whole group.\nTake moves a piece into your own Gear Vault; Share moves one of yours here.\nBoth work at a Gear Vault, one piece at a time.');
+            end
+        end
+        if type(vc.shelfFailed) == 'function' and vc.shelfFailed() then
+            if members ~= '' then imgui.SameLine(0, 12); end
+            imgui.TextColored(cGOLD, '[Shared Vault unreachable]');
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('The last read of the Shared Vault got no answer. The list shows the last one\nthat did; reopening this tab asks again. /dl vault says why.');
+            end
+        elseif type(vc.shelfReading) == 'function' and vc.shelfReading() and (vc.shelf or {}).stamp ~= nil then
+            if members ~= '' then imgui.SameLine(0, 12); end
+            imgui.TextColored(cDIM, 'updating...');
+        end
+        local sv = filterView(shelfView(), needle);
+        if sv.total > 0 then
+            renderTree(sv, 'S', searching, forceClose, level, COL, function(e)
+                return {
+                    key = 'S' .. tostring(e.rowId),
+                    augOf = function() return isAugmented(e.identity) and augTextOf(e.identity) or nil; end,
+                    tags = function()
+                        if isAugmented(e.identity) then
+                            imgui.SameLine(0, 8);
+                            imgui.TextColored(cGOLD, '[aug]');
+                        end
+                        if e.sharer ~= nil then
+                            imgui.SameLine(0, 8);
+                            imgui.TextColored(cDIM, esc('from ' .. e.sharer));
+                        end
+                    end,
+                    buttons = function(hot, b1, b2)
+                        imgui.SameLine(b2);
+                        if svm.isTaking(e.rowId) then
+                            imgui.TextColored(cDIM, 'Taking...');
+                        elseif svm.busy() then
+                            imgui.TextColored(cDIM, 'Take');
+                            idleTip();
+                        elseif imgui.SmallButton('Take##gvst' .. tostring(e.rowId)) then
+                            svm.take(e);
+                        end
+                        if imgui.IsItemHovered() then
+                            hot();
+                            if not svm.busy() then
+                                imgui.SetTooltip('Move this piece into your own Gear Vault (at a Gear Vault).');
+                            end
+                        end
+                    end,
+                };
+            end);
+        else
+            imgui.TextColored(cDIM, ((vc.shelf or {}).stamp == nil) and 'Reading the Shared Vault...'
+                or (searching and 'Nothing in the Shared Vault matches.' or 'Nothing is shared yet.'));
+        end
+
+        local wd = {};
+        for _, p in ipairs(wardrobeShareable()) do
+            if needle == '' or string.find(string.lower(p.name), needle, 1, true) ~= nil then wd[#wd + 1] = p; end
+        end
+        if #wd > 0 then
+            table.sort(wd, byLevel);
+            if imgui.CollapsingHeader(string.format('Share from your Mog Wardrobes (%d)###gvsvw', #wd)) then
+                for _, p in ipairs(wd) do
+                    renderRow(p, level, COL, {
+                        key = 'W' .. tostring(p.sortKey),
+                        -- two copies of one piece can differ: say which one this is
+                        augOf = function() return isAugmented(p.identity) and augTextOf(p.identity) or nil; end,
+                        tags = function()
+                            if isAugmented(p.identity) then
+                                imgui.SameLine(0, 8);
+                                imgui.TextColored(cGOLD, '[aug]');
+                            end
+                        end,
+                        buttons = function(hot, b1, b2)
+                            imgui.SameLine(b2);
+                            if svm.isSharingSlot(p.container, p.slot) then
+                                imgui.TextColored(cDIM, 'Sharing...');
+                            elseif svm.busy() then
+                                imgui.TextColored(cDIM, 'Share');
+                                idleTip();
+                            elseif imgui.SmallButton('Share##gvsw' .. tostring(p.sortKey)) then
+                                svm.shareWardrobe(p);
+                            end
+                            if imgui.IsItemHovered() then
+                                hot();
+                                if not svm.busy() then
+                                    imgui.SetTooltip('Share this piece with your group (at a Gear Vault). It leaves your\nMog Wardrobe and any job layout that uses it; you are asked first.');
+                                end
+                            end
+                        end,
+                    });
+                end
+            end
+        end
+        imgui.TextColored(cDIM, 'To share a piece from your Gear Vault, right-click it in the Vault tab.');
+    end
+
     -- Fixed order: Vault, then Inventory. The auto-switch is a held
     -- SetSelected flag on Inventory (see _sub's comment); a binding that
     -- drops the flag simply leaves the player one click from the gold tab.
@@ -1989,6 +2206,12 @@ function M.render(job, level)
         if n > 0 then imgui.PopStyleColor(1); end
         if open then
             renderInvTab();
+            imgui.EndTabItem();
+        end
+        -- Group Ironman's Shared Vault: only while the server offers it and
+        -- the character is in a group (S12 rule 7) -- hidden on older servers.
+        if shelfOn and imgui.BeginTabItem(string.format('Shared Vault (%d)###gvtsv', svm.count())) then
+            renderSharedTab();
             imgui.EndTabItem();
         end
         imgui.EndTabBar();
@@ -2039,8 +2262,20 @@ function M.render(job, level)
             M.addToAllLayouts(_vaultMenu);
             imgui.CloseCurrentPopup();
         end
+        -- Group Ironman: this one piece to the group's Shared Vault (a stack
+        -- never goes: materials belong in the group pool)
+        if shelfOn and _vaultMenu ~= nil and (_vaultMenu.qty or 1) <= 1 then
+            if imgui.Selectable('Share with your group') then
+                svm.shareVaultRow(_vaultMenu);
+                imgui.CloseCurrentPopup();
+            end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Move this piece to your group\'s Shared Vault (at a Gear Vault),\nwhere any member can take it. If a job layout uses it, you are asked first.');
+            end
+        end
         imgui.EndPopup();
     end
+    renderShareConfirm(cGOLD, cDIM);
 
     if _lastMsg ~= nil then
         imgui.TextColored(_lastMsg.err and cERR or cDIM, esc(_lastMsg.text));

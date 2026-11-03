@@ -49,6 +49,12 @@
 
     Everything time-flavoured runs on injectable seams (M._clock, M._send)
     so the headless suite drives the whole state machine with no Ashita.
+
+    Group Ironman's SHARED VAULT (ops 0x60-0x6F, the section of that name
+    below) rides this same client: one request in flight, the same pacing,
+    and PUT / TAKE are writes, so their retries keep the seq inside the
+    server's replay window. A shelf answer never changes the vault's own
+    state.
 ]]--
 
 local M = {};
@@ -70,6 +76,10 @@ M.op =
     LIST2 = 0x46, LAYOUT_LIST2 = 0x47, LAYOUT_SET2 = 0x48,
     INSTANCE_LOOKUP = 0x49, LOST_LIST = 0x4A,
     CHANGED = 0x4B,       -- S2C push only (seq 0): the server says what changed
+    -- Group Ironman's Shared Vault (capability SHELF; server
+    -- group_ironman_vault.lua): the group's shelf of gear.
+    SV_LIST = 0x60, SV_PUT = 0x61, SV_TAKE = 0x62, SV_MEMBERS = 0x63,
+    SV_CHANGED = 0x6F,    -- S2C push only (seq 0): the shelf or your group changed
 };
 
 -- HELLO capability bits. The reply's u16 @2 is the server's; the request's
@@ -83,8 +93,11 @@ M.cap =
     PUSH       = 4,   -- CHANGED pushes to a subscribed client
     STREAM     = 8,   -- list reads answer up to N frames per request
     EXP_BAND_STATUS = 16, -- read-only recharge preflight, op 0x4C
+    SHELF      = 32,  -- the Shared Vault, ops 0x60-0x6F; HELLO appends the group's ids
 };
-M.CLIENT_CAPS = 1;    -- request word bit 0: subscribe me to CHANGED pushes
+M.CLIENT_CAP_PUSH       = 1;   -- request word bit 0: subscribe me to CHANGED pushes
+M.CLIENT_CAP_SHELF_PUSH = 2;   -- request word bit 1: ...and to SV_CHANGED (an older server ignores it)
+M.CLIENT_CAPS = M.CLIENT_CAP_PUSH + M.CLIENT_CAP_SHELF_PUSH;
 
 -- CHANGED scope bits (u16 @0 of the push payload).
 M.change =
@@ -256,12 +269,20 @@ function M.listPayload(afterRowId)
 end
 
 -- HELLO S2C: { proto, vaultCount, maxList, maxDeposit, maxWithdraw, caps... } or nil.
+-- With SHELF, bytes 20..31 are { u32 GroupId (0 = not in a group); u32
+-- VaultRev (the shelf's counter); u32 ShelfCount }. A reply too short for
+-- them offers no shelf; the vault fields read as before either way.
 function M.parseHello(payload)
     if type(payload) ~= 'string' or #payload < 12 then return nil; end
     local caps = u16(payload, 2);
     local instances = has(caps, M.cap.INSTANCES);
     if instances and #payload < 20 then return nil; end
+    local shelfTail = #payload >= 32;
     return {
+        shelf      = has(caps, M.cap.SHELF) and shelfTail,
+        groupId    = shelfTail and u32(payload, 20) or 0,
+        shelfRev   = shelfTail and u32(payload, 24) or nil,
+        shelfCount = shelfTail and u32(payload, 28) or nil,
         caps = caps,
         instances = instances, revision = instances and u32(payload, 12) or nil,
         atomicInstanceAdd = instances and has(caps, M.cap.ATOMIC_ADD),
@@ -513,12 +534,19 @@ function M.seedSeq(n)
 end
 
 -- Retry policy per op: writes stay inside the replay window, reads wait longer.
+-- The Shared Vault's PUT and TAKE are writes too: the server answers a
+-- byte-identical retry from its own replay ring for 5 s, and only then.
 local WRITE_OPS = nil;
 local function isWrite(op)
     WRITE_OPS = WRITE_OPS or { [M.op.DEPOSIT] = true, [M.op.WITHDRAW] = true,
+        [M.op.SV_PUT] = true, [M.op.SV_TAKE] = true,
         [M.op.LAYOUT_SET] = true, [M.op.LAYOUT_SET2] = true };
     return WRITE_OPS[op] == true;
 end
+M._isWrite = isWrite;
+
+-- The Shared Vault's handlers (its section, below the instance protocol).
+local shelfWriteLost, shelfReadCut, shelfReadGaveUp, shelfDrain, onShelfReply, onShelfPush, noteShelfHello;
 local function timeoutOf(op) return isWrite(op) and M.SEND_TIMEOUT or M.READ_TIMEOUT; end
 local function retriesOf(op) return isWrite(op) and M.MAX_RETRIES or M.READ_RETRIES; end
 
@@ -535,6 +563,7 @@ end
 -- re-read of both views reveal what actually landed.
 local function failWrite(p, why)
     st.probeOnly = false;
+    if p.op == M.op.SV_PUT or p.op == M.op.SV_TAKE then shelfWriteLost(p, why); return; end
     if p.op == M.op.WITHDRAW or p.op == M.op.DEPOSIT then
         local q = (p.op == M.op.WITHDRAW) and st.withdrawQ or st.depositQ;
         local req = table.remove(q or {}, 1);
@@ -671,6 +700,7 @@ local function goUnattuned(now)
             if type(req.onDone) == 'function' then pcall(req.onDone, nil, 'not_attuned'); end
         end
     end
+    shelfDrain('not_attuned');
     M.mirror.rows = {};
     M.mirror.counts = {};
     M.mirror.vaultCount = 0;
@@ -807,6 +837,7 @@ function M.noteZoneIn()
             if p.kind == 'lookup' and st.lookupQ and st.lookupQ[1] then st.lookupQ[1].attempts = 0; end
             if p.kind == 'lost' then st.lostWant = true; end
             if p.kind == 'sync-hello' or p.kind == 'sync-list' then st.zoneFull = true; end
+            if p.kind == 'shelf-list' or p.kind == 'shelf-members' then shelfReadCut(p); end
         end
     end
 end
@@ -1337,6 +1368,530 @@ function M.bindingCandidates(itemId)
 end
 
 -- ---------------------------------------------------------------------------
+-- THE SHARED VAULT (Group Ironman; server group_ironman_vault.lua, wire in
+-- the ascensionxi repo's group-ironman-implementation.md, "The Shared Vault
+-- (DLAC)"). A group's shelf of gear beside every member's own vault, in this
+-- band's 0x60-0x6F. Offered when HELLO sets SHELF; shown only while the
+-- character is in a group: HELLO's GroupId, or the last SV_CHANGED's InGroup
+-- (decision S12 rule 7).
+--
+--   * It rides THIS client: one request in flight, the same gate and pacing.
+--     PUT and TAKE are writes (isWrite): a retry keeps its seq inside the
+--     server's replay window, and a lost answer is outcome unknown -- both
+--     stores are re-read, the write is never re-sent with a fresh seq.
+--   * One write at a time (S12 rule 8: one piece per click).
+--   * The shelf is read when its tab opens and when the server says it moved
+--     (an SV_CHANGED, a HELLO tail, our own write's answer) -- only while the
+--     tab is open (S9), only when the Rev differs from the last read's, and
+--     never on a clock.
+--   * A shelf answer never changes the vault's own state: a refusal, a
+--     timeout or an unreadable page costs the shelf, never the vault.
+-- ---------------------------------------------------------------------------
+M.SHELF_LIST_MAX    = 12;   -- 40-byte rows after an 8-byte header
+M.SHELF_MEMBERS_MAX = 20;   -- 24-byte rows after a 12-byte header
+M.SHELF_VIEW_GAP    = 1.0;  -- a Shared Vault tab not drawn for this long was closed
+
+-- GroupIronmanCode: the per-move result word (u16 on the wire).
+M.giCode =
+{
+    OK = 0, NOT_IN_GROUP = 1, EVER_GROUPED = 2, TOO_OLD = 3, NO_INVITE = 4, SAME_ACCOUNT = 5,
+    NOT_IN_LEADERS_PARTY = 6, LEADER_OFFLINE = 7, GROUP_FULL = 8, NOT_LEADER = 9, NOT_A_MEMBER = 10,
+    LEADER_PRESENT = 11, BUSY = 12, STORE_ERROR = 13, CLOSED = 14, SELF = 15, UNKNOWN_CHARACTER = 16,
+    STAYS_WITH_YOU = 17, SHELF_CAP = 18, RARE_IN_STORE = 19, NEEDS_CONFIRM = 20, NOT_ELIGIBLE = 21,
+    NO_ROW = 22, RARE_HELD = 23, DUPLICATE = 24, ITEM_BUSY = 25, TIER_LOCKED = 26, NOT_STORABLE = 27,
+    NO_BALANCE = 28, INVENTORY_FULL = 29, NO_SEAL = 30, SCROLL_HELD = 31, ALREADY_INVITED = 32,
+    ALREADY_MEMBER = 33, NOTHING_TO_DO = 34, PARTIAL = 35,
+};
+
+-- SV_LIST C2S: { u32 AfterRowId } + the stream tail. S2C frame: { u16 Count;
+-- u16 Rsvd; u32 Rev; Count x 40: u32 RowId; u16 ItemNo; u16 Rsvd; u32
+-- InstanceId; u32 SharedBy (a charid); u8 IdentityExtra[24] (the normalized
+-- blob LIST2 sends) }. A truncated frame is refused whole.
+function M.parseShelfList(payload)
+    if type(payload) ~= 'string' or #payload < 8 then return nil; end
+    local n = u16(payload, 0);
+    if n > M.SHELF_LIST_MAX or #payload < 8 + n * 40 then return nil; end
+    local out = { entries = {}, revision = u32(payload, 4) };
+    for i = 0, n - 1 do
+        local o = 8 + i * 40;
+        out.entries[#out.entries + 1] = { rowId = u32(payload, o), itemId = u16(payload, o + 4),
+            instanceId = u32(payload, o + 8), sharedBy = u32(payload, o + 12), identity = payload:sub(o + 17, o + 40) };
+    end
+    return out;
+end
+
+-- SV_PUT C2S: { u32 VaultRowId; u8 Container; u8 Slot; u8 Flags (bit 0 =
+-- confirm); u8 Rsvd }. VaultRowId 0 names an unworn wardrobe piece by
+-- (Container, Slot).
+function M.shelfPutPayload(e)
+    return wu32(e.vaultRowId or 0)
+        .. string.char((e.container or 0) % 256, (e.slot or 0) % 256, e.confirm and 1 or 0, 0);
+end
+
+-- SV_PUT S2C: { u16 Code; u8 JobCount; u8 Wardrobe; u32 ShelfRowId; u32 Rev;
+-- JobCount x u8 Job }. NEEDS_CONFIRM names the job layouts that hold the
+-- piece; Wardrobe = 1 marks a wardrobe piece, which always asks once.
+function M.parseShelfPutAck(payload)
+    if type(payload) ~= 'string' or #payload < 12 then return nil; end
+    local n = u8(payload, 2);
+    if #payload < 12 + n then return nil; end
+    local out = { code = u16(payload, 0), wardrobe = u8(payload, 3) ~= 0,
+        shelfRowId = u32(payload, 4), revision = u32(payload, 8), jobs = {} };
+    for i = 0, n - 1 do out.jobs[#out.jobs + 1] = u8(payload, 12 + i); end
+    return out;
+end
+
+-- SV_TAKE C2S: { u32 ShelfRowId }. S2C: { u16 Code; u16 Rsvd; u32 VaultRowId; u32 Rev }.
+function M.shelfTakePayload(shelfRowId) return wu32(shelfRowId or 0); end
+
+function M.parseShelfTakeAck(payload)
+    if type(payload) ~= 'string' or #payload < 12 then return nil; end
+    return { code = u16(payload, 0), vaultRowId = u32(payload, 4), revision = u32(payload, 8) };
+end
+
+-- SV_MEMBERS S2C: { u16 Count; u16 Rsvd; u32 GroupId; u32 Leader; Count x 24:
+-- u32 CharId; u8 Flags (bit 0 active, 1 leader, 2 online); u8 Rsvd[3]; char
+-- Name[16] (zero-padded) }. Members who left are listed too, not active.
+function M.parseShelfMembers(payload)
+    if type(payload) ~= 'string' or #payload < 12 then return nil; end
+    local n = u16(payload, 0);
+    if n > M.SHELF_MEMBERS_MAX or #payload < 12 + n * 24 then return nil; end
+    local out = { groupId = u32(payload, 4), leader = u32(payload, 8), members = {} };
+    for i = 0, n - 1 do
+        local o = 12 + i * 24;
+        local flags = u8(payload, o + 4);
+        local name = payload:sub(o + 9, o + 24);
+        local z = name:find('\0', 1, true);
+        if z ~= nil then name = name:sub(1, z - 1); end
+        out.members[#out.members + 1] = { charId = u32(payload, o), name = name,
+            active = has(flags, 1), leader = has(flags, 2), online = has(flags, 4) };
+    end
+    return out;
+end
+
+-- SV_CHANGED S2C push (seq 0): { u32 Rev; u32 ShelfCount; u8 InGroup; u8
+-- Rsvd[3]; u32 GroupId }.
+function M.parseShelfChanged(payload)
+    if type(payload) ~= 'string' or #payload < 16 then return nil; end
+    return { revision = u32(payload, 0), count = u32(payload, 4),
+        inGroup = u8(payload, 8) ~= 0, groupId = u32(payload, 12) };
+end
+
+-- What the tab reads. rows: { rowId, itemId, instanceId, sharedBy, identity }
+-- in RowId order; readRev: the Rev those rows were read at (nil = never read,
+-- or no longer trusted); names: charid -> name, from SV_MEMBERS.
+local function emptyShelf()
+    return { rows = {}, stamp = nil, readRev = nil, count = nil,
+             members = {}, names = {}, leader = nil, membersStamp = nil };
+end
+M.shelf = emptyShelf();
+
+-- The tab draws itself only while this says so (S12 rule 7).
+function M.shelfAvailable()
+    return not st.dormant and not st.unattuned and not st.svOff and M.limits ~= nil
+        and M.limits.shelf == true and (st.svGroupId or 0) ~= 0;
+end
+
+local function shelfOpen(now)
+    return st.svViewAt ~= nil and (now or M._clock()) - st.svViewAt <= M.SHELF_VIEW_GAP;
+end
+function M.shelfOpen() return shelfOpen(M._clock()); end
+
+-- The tab calls this on every frame it draws. Opening it reads the member
+-- list and the shelf (S9: on open, never on a clock). Returns true on the
+-- frame it opened.
+function M.noteShelfView()
+    local now = M._clock();
+    local opened = not shelfOpen(now);
+    st.svViewAt = now;
+    if opened and M.shelfAvailable() then
+        st.svMembersWant = true;
+        st.svListWant = true;
+    end
+    return opened;
+end
+
+local function shelfForget()
+    M.shelf = emptyShelf();
+    st.svAcc, st.svAccRev, st.svListWant, st.svMembersWant = nil, nil, nil, nil;
+    st.svKnownRev, st.svFailed, st.svNamesFor = nil, nil, nil;
+end
+
+-- Queued shelf writes that have not left never will; the one on the wire
+-- still answers. onDone hears `why`.
+local function shelfCancelQueued(why)
+    local q = st.shelfWriteQ or {};
+    local p = st.pending;
+    local keepFirst = false;
+    if p ~= nil and (p.op == M.op.SV_PUT or p.op == M.op.SV_TAKE) then
+        if p.sentAt ~= nil then keepFirst = true; else st.pending = nil; end
+    end
+    st.shelfWriteQ = keepFirst and { q[1] } or {};
+    for i = (keepFirst and 2 or 1), #q do
+        if type(q[i].onDone) == 'function' then pcall(q[i].onDone, nil, why); end
+    end
+end
+
+function shelfDrain(why)
+    shelfCancelQueued(why);
+    shelfForget();
+end
+
+-- The server says the shelf is at `rev`. Re-read only if that differs from
+-- the last read's Rev, and only while the tab is open (the next open reads
+-- anyway). While a read is on the wire its answer decides instead: it may
+-- already show this Rev, or a later one (see the SV_LIST commit).
+local function noteShelfRev(rev, now)
+    st.svKnownRev = rev;
+    st.svNoteGen = (st.svNoteGen or 0) + 1;
+    if st.pending ~= nil and st.pending.kind == 'shelf-list' then return; end
+    if shelfOpen(now) and M.shelf.readRev ~= rev then st.svListWant = true; end
+end
+
+-- Our view may be wrong (a write whose outcome is unknown, an answer that
+-- says the row is gone): distrust it until the next read -- now, if the tab
+-- is open.
+local function shelfDoubt(now)
+    M.shelf.readRev = nil;
+    st.svKnownRev = nil;
+    st.svNoteGen = (st.svNoteGen or 0) + 1;
+    if shelfOpen(now) then st.svListWant = true; end
+end
+
+-- Where the server says the character stands: in group `groupId` (0 = in
+-- none), its shelf at `rev` holding `count`. Leaving hides the tab and
+-- forgets the shelf; a different group's shelf is not this one.
+local function setShelfGroup(groupId, rev, count, now)
+    groupId = groupId or 0;
+    local was = st.svGroupId or 0;
+    if groupId == 0 then
+        st.svGroupId = 0;
+        if was ~= 0 then shelfCancelQueued('not_in_group'); shelfForget(); end
+        return;
+    end
+    if was ~= 0 and was ~= groupId then shelfForget(); end
+    st.svGroupId = groupId;
+    if count ~= nil then M.shelf.count = count; end
+    if was ~= groupId and shelfOpen(now) then st.svMembersWant = true; end
+    if rev ~= nil then noteShelfRev(rev, now); end
+end
+
+function noteShelfHello(h, now)
+    if h.shelf then
+        setShelfGroup(h.groupId, h.shelfRev, h.shelfCount, now);
+    elseif (st.svGroupId or 0) ~= 0 then
+        setShelfGroup(0, nil, nil, now);   -- this server offers no shelf (any more)
+    end
+end
+
+-- SV_CHANGED. T2: never a reply, so it never touches the transport's
+-- pending slot. Sent when the shelf moved past what this session was told,
+-- when the character's group membership changed (InGroup 0: hide the tab),
+-- and once after the character reaches a map process (a zone line, a login),
+-- which does not know what the session was told. Its Rev is always the
+-- shelf's current one.
+function onShelfPush(f, now)
+    if type(M._notePush) == 'function' then pcall(M._notePush, f.op, 'shared vault push'); end
+    local c = (f.status == M.status.OK) and M.parseShelfChanged(f.payload) or nil;
+    if c == nil then
+        noteWhy('ate an unreadable Shared Vault push', now);
+        return true;
+    end
+    st.svLastPush = { at = now, revision = c.revision, inGroup = c.inGroup };
+    if st.dormant or st.unattuned or st.svOff then return true; end
+    setShelfGroup(c.inGroup and c.groupId or 0, c.revision, c.count, now);
+    return true;
+end
+
+-- One write at a time.
+function M.shelfBusy() return #(st.shelfWriteQ or {}) > 0; end
+
+-- For the tab's header: a read on its way, or the last one went unanswered.
+function M.shelfReading()
+    local k = st.pending and st.pending.kind;
+    return k == 'shelf-list' or st.svListWant == true;
+end
+function M.shelfFailed() return st.svFailed == true; end
+
+-- Share ONE piece: e = { vaultRowId = <own vault row>, itemId } or, for an
+-- unworn piece in a Mog Wardrobe, { container, slot, itemId }. confirm =
+-- true only on the resend after NEEDS_CONFIRM, once the player agreed.
+-- onDone(ack, err) fires once: ack is parseShelfPutAck's table (its code a
+-- GroupIronmanCode), or nil with err = 'too_far' | 'not_attuned' | 'busy' |
+-- 'unavailable' | 'malformed' | 'timeout' | 'not_in_group' | ...
+function M.requestShelfPut(e, onDone)
+    if not M.shelfAvailable() or M.shelfBusy() or type(e) ~= 'table' then return false; end
+    local rowId = math.max(0, math.floor(tonumber(e.vaultRowId) or 0));
+    local container, slot = tonumber(e.container), tonumber(e.slot);
+    if rowId == 0 and (container == nil or slot == nil) then return false; end
+    st.shelfWriteQ = { {
+        kind = 'shelf-put', op = M.op.SV_PUT, vaultRowId = rowId, itemId = e.itemId, onDone = onDone,
+        payload = M.shelfPutPayload({ vaultRowId = rowId, container = (rowId == 0) and container or 0,
+            slot = (rowId == 0) and slot or 0, confirm = e.confirm == true }),
+    } };
+    return true;
+end
+
+-- Take ONE piece from the shelf into the own vault: e = { shelfRowId, itemId }.
+-- onDone(ack, err) as for a share (ack = parseShelfTakeAck's table).
+function M.requestShelfTake(e, onDone)
+    if not M.shelfAvailable() or M.shelfBusy() or type(e) ~= 'table' then return false; end
+    local rowId = math.floor(tonumber(e.shelfRowId) or 0);
+    if rowId <= 0 then return false; end
+    st.shelfWriteQ = { {
+        kind = 'shelf-take', op = M.op.SV_TAKE, shelfRowId = rowId, itemId = e.itemId, onDone = onDone,
+        payload = M.shelfTakePayload(rowId),
+    } };
+    return true;
+end
+
+-- A row the server deleted: gone from the vault now (a withdraw's
+-- subtraction; the re-read follows).
+local function dropMirrorRow(rowId)
+    for i, row in ipairs(M.mirror.rows) do
+        if row.rowId == rowId then
+            table.remove(M.mirror.rows, i);
+            local counts = {};
+            for _, r in ipairs(M.mirror.rows) do
+                counts[r.itemId] = (counts[r.itemId] or 0) + math.max(1, r.qty);
+            end
+            M.mirror.counts = counts;
+            M.mirror.vaultCount = #M.mirror.rows;
+            M.mirror.stamp = M._clock();
+            if type(M._onFresh) == 'function' then pcall(M._onFresh); end
+            return true;
+        end
+    end
+    return false;
+end
+
+local function dropShelfRow(rowId, now)
+    for i, row in ipairs(M.shelf.rows) do
+        if row.rowId == rowId then
+            table.remove(M.shelf.rows, i);
+            M.shelf.count = #M.shelf.rows;
+            M.shelf.stamp = now;
+            return true;
+        end
+    end
+    return false;
+end
+
+-- A write whose answer never came (retries spent, or it died at a zone
+-- line): it may have run. Both stores are re-read; it is never re-sent.
+function shelfWriteLost(p, why)
+    local req = table.remove(st.shelfWriteQ or {}, 1);
+    if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'timeout'); end
+    M.markStale(0, why);
+    M.invalidateLayout();   -- a confirmed share leaves the job layouts that named it
+    shelfDoubt(M._clock());
+end
+
+-- A read whose answer never came: the tab says so, and the next open or
+-- SV_CHANGED asks again (no retry on a clock).
+function shelfReadGaveUp(p, now)
+    noteWhy(string.format('%s (%s#%d) timed out: no reply after %d retries',
+        p.kind, opName(p.op), p.seq, retriesOf(p.op)), now);
+    if p.op == M.op.SV_LIST then st.svAcc, st.svAccRev = nil, nil; end
+    st.svFailed = true;
+end
+
+-- A read on the wire at a zone line: asked again once the zone is ours, if
+-- the tab is still open then.
+function shelfReadCut(p)
+    if p.op == M.op.SV_LIST then st.svAcc, st.svAccRev = nil, nil; st.svListWant = true; end
+    if p.op == M.op.SV_MEMBERS then st.svMembersWant = true; end
+end
+
+local SHELF_STATUS_WORD = {
+    [M.status.TOO_FAR] = 'too_far', [M.status.NOT_ATTUNED] = 'not_attuned',
+    [M.status.BUSY] = 'busy', [M.status.MALFORMED] = 'malformed',
+};
+
+-- An unreadable answer to a write cannot prove nothing moved.
+local function shelfWriteUnreadable(req, now)
+    M.markStale(0, 'shared vault: unreadable write answer');
+    st.probeOnly = false;
+    M.invalidateLayout();
+    shelfDoubt(now);
+    if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, nil, 'malformed'); end
+end
+
+-- The answer to the pending Shared Vault request.
+function onShelfReply(p, f, now)
+    local write = (p.op == M.op.SV_PUT or p.op == M.op.SV_TAKE);
+    if f.status ~= M.status.OK then
+        st.pending = nil;
+        noteWhy(string.format('%s (%s#%d) refused: %s', p.kind, opName(p.op), p.seq, statusName(f.status)), now);
+        if f.status == M.status.BAD_OP or f.status == M.status.PROTO_UNSUPPORTED then
+            st.svOff = true;   -- this server cannot serve the shelf after all: hidden for the session
+        end
+        if p.op == M.op.SV_LIST then st.svAcc, st.svAccRev = nil, nil; st.svFailed = true; end
+        if write then
+            local req = table.remove(st.shelfWriteQ or {}, 1);
+            -- TOO_FAR, NOT_ATTUNED and MALFORMED are decided before anything
+            -- moves. Anything else can follow a move that ran (the server's
+            -- handler failed after it): re-read both stores.
+            if f.status ~= M.status.TOO_FAR and f.status ~= M.status.NOT_ATTUNED and f.status ~= M.status.MALFORMED then
+                M.markStale(0, 'shared vault write refused');
+                st.probeOnly = false;
+                M.invalidateLayout();
+                shelfDoubt(now);
+            end
+            if req ~= nil and type(req.onDone) == 'function' then
+                pcall(req.onDone, nil, SHELF_STATUS_WORD[f.status] or 'unavailable');
+            end
+        end
+        if st.svOff then shelfDrain('unavailable'); end
+        return true;
+    end
+
+    if p.op == M.op.SV_MEMBERS then
+        st.pending = nil;
+        local m = M.parseShelfMembers(f.payload);
+        if m == nil then noteWhy('the Shared Vault member list did not parse', now); return true; end
+        if p.svGroup ~= st.svGroupId then return true; end   -- the group changed meanwhile
+        if m.groupId == 0 then setShelfGroup(0, nil, nil, now); return true; end   -- in no group after all
+        local names = {};
+        for _, e in ipairs(m.members) do names[e.charId] = e.name; end
+        M.shelf.members, M.shelf.names, M.shelf.leader, M.shelf.membersStamp = m.members, names, m.leader, now;
+        return true;
+    end
+
+    if p.op == M.op.SV_LIST then
+        -- the vault's list shape: rows in ascending RowId, MORE = ask again
+        -- past the last one, FOLLOWS = another frame of this reply is on its
+        -- way; a retried request's duplicate rows are skipped by key
+        local chunk = M.parseShelfList(f.payload);
+        if chunk == nil or p.svGroup ~= st.svGroupId then
+            st.pending = nil;
+            st.svAcc, st.svAccRev = nil, nil;
+            if chunk == nil then st.svFailed = true; noteWhy('a Shared Vault page did not parse', now); end
+            return true;
+        end
+        if st.svAccRev ~= nil and st.svAccRev ~= chunk.revision then
+            -- the shelf moved between our pages: read it again from the top
+            st.pending = nil;
+            st.svAcc, st.svAccRev = nil, nil;
+            if shelfOpen(now) then st.svListWant = true; end
+            return true;
+        end
+        st.svAccRev = chunk.revision;
+        st.svAcc = st.svAcc or {};
+        local accLast = p.accLast or p.cursor or 0;
+        for _, e in ipairs(chunk.entries) do
+            if e.rowId > accLast then st.svAcc[#st.svAcc + 1] = e; accLast = e.rowId; end
+        end
+        p.accLast = accLast;
+        if has(f.flags, M.FLAG_FOLLOWS) then p.sentAt = now; return true; end
+        st.pending = nil;
+        if has(f.flags, M.FLAG_MORE) then
+            if accLast <= (p.cursor or 0) then st.svAcc, st.svAccRev = nil, nil; return true; end
+            beginOp('shelf-list', M.op.SV_LIST, wu32(accLast) .. streamTail(), now, accLast);
+            st.pending.svGroup, st.pending.svGen = p.svGroup, p.svGen;
+            return true;
+        end
+        M.shelf.rows = st.svAcc;
+        M.shelf.readRev = st.svAccRev;
+        M.shelf.count = #st.svAcc;
+        M.shelf.stamp = now;
+        st.svAcc, st.svAccRev, st.svFailed = nil, nil, nil;
+        -- A Rev announced while the pages were on the wire: read once more
+        -- only if it is NEWER than this answer (the counter only grows). The
+        -- same Rev, or an older one the read already overtook, is covered.
+        if st.svNoteGen ~= p.svGen and st.svKnownRev ~= nil and st.svKnownRev > M.shelf.readRev
+            and shelfOpen(now) then
+            st.svListWant = true;
+        end
+        -- a sharer the member list cannot name joined after it was read
+        for _, r in ipairs(M.shelf.rows) do
+            if (r.sharedBy or 0) ~= 0 and M.shelf.names[r.sharedBy] == nil then
+                if st.svNamesFor ~= M.shelf.readRev and shelfOpen(now) then
+                    st.svNamesFor = M.shelf.readRev;
+                    st.svMembersWant = true;
+                end
+                break;
+            end
+        end
+        return true;
+    end
+
+    if p.op == M.op.SV_PUT then
+        st.pending = nil;
+        local req = table.remove(st.shelfWriteQ or {}, 1);
+        local ack = M.parseShelfPutAck(f.payload);
+        if ack == nil then shelfWriteUnreadable(req, now); return true; end
+        if ack.code == M.giCode.OK then
+            -- the server deleted that vault row: gone now, and the vault is
+            -- read again (it may have left a wardrobe, and the job layouts
+            -- that named it)
+            if req ~= nil and (req.vaultRowId or 0) > 0 then dropMirrorRow(req.vaultRowId); end
+            M.markStale(M.SETTLE_EDIT, 'shared a piece');
+            st.probeOnly = false;
+            if #ack.jobs > 0 or ack.wardrobe then M.invalidateLayout(); end
+            noteShelfRev(ack.revision, now);   -- the shelf holds a row we have not read
+        elseif ack.code == M.giCode.NO_ROW then
+            M.markStale(0, 'shared vault: that vault row was gone');
+            st.probeOnly = false;
+        elseif ack.code == M.giCode.NOT_IN_GROUP then
+            setShelfGroup(0, nil, nil, now);
+        end
+        if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack, nil); end
+        return true;
+    end
+
+    if p.op == M.op.SV_TAKE then
+        st.pending = nil;
+        local req = table.remove(st.shelfWriteQ or {}, 1);
+        local ack = M.parseShelfTakeAck(f.payload);
+        if ack == nil then shelfWriteUnreadable(req, now); return true; end
+        if ack.code == M.giCode.OK then
+            -- a new row of our own vault: one LIST folds it in (a deposit's
+            -- rule), and the server may move it on to a wardrobe when a
+            -- layout names it -- the layout shows where each copy is
+            M.markStale(M.SETTLE_EDIT, 'took a piece');
+            st.probeOnly = false;
+            if req ~= nil and layoutNames(req.itemId) then M.invalidateLayout(); end
+            -- the shelf lost exactly this row: when nothing else moved since
+            -- our read, what we hold IS the shelf at the new Rev
+            local held = M.shelf.readRev;
+            if req ~= nil and dropShelfRow(req.shelfRowId, now) and held ~= nil and ack.revision == held + 1 then
+                M.shelf.readRev = ack.revision;
+            end
+            noteShelfRev(ack.revision, now);
+        elseif ack.code == M.giCode.NO_ROW then
+            shelfDoubt(now);   -- someone took it first: our shelf is out of date
+        elseif ack.code == M.giCode.NOT_IN_GROUP then
+            setShelfGroup(0, nil, nil, now);
+        end
+        if req ~= nil and type(req.onDone) == 'function' then pcall(req.onDone, ack, nil); end
+        return true;
+    end
+
+    st.pending = nil;
+    return true;
+end
+
+-- /dl vault's shelf line: nil when this server offers no shelf.
+function M.shelfStatusLine()
+    if M.limits == nil or not M.limits.shelf then return nil; end
+    if st.svOff then return 'shared vault: this server refused it -- hidden for the session.'; end
+    if (st.svGroupId or 0) == 0 then
+        return 'shared vault: offered, but this character is in no group -- the tab stays hidden.';
+    end
+    local n = #(M.shelf.rows or {});
+    local read = (M.shelf.stamp ~= nil)
+        and string.format('%d piece%s read at revision %s', n, (n == 1) and '' or 's', tostring(M.shelf.readRev))
+        or 'not read yet (it reads when its tab opens)';
+    local behind = (st.svKnownRev ~= nil and st.svKnownRev ~= M.shelf.readRev)
+        and (', the server is at revision ' .. tostring(st.svKnownRev)) or '';
+    local push = (st.svLastPush ~= nil)
+        and string.format(' -- last push %ds ago', math.max(0, math.floor(M._clock() - st.svLastPush.at))) or '';
+    return string.format('shared vault: group %d -- %s%s%s%s.', st.svGroupId, read, behind, push,
+        st.svFailed and ' -- the last read failed' or '');
+end
+
+-- ---------------------------------------------------------------------------
 -- The frame pump. `ready` = a real character is known (job id ~= 0). All
 -- pacing lives here; callers just call it every frame.
 -- ---------------------------------------------------------------------------
@@ -1377,6 +1932,8 @@ function M.pump(ready)
                     finishLookup(nil, 'timeout');
                 elseif p.op == M.op.LOST_LIST then
                     st.lostAcc = nil;
+                elseif p.op == M.op.SV_LIST or p.op == M.op.SV_MEMBERS then
+                    shelfReadGaveUp(p, now);   -- the shelf's, never the vault's backoff
                 elseif (p.op == M.op.LAYOUT_LIST or p.op == M.op.LAYOUT_LIST2) then
                     noteWhy('layout ask timed out (no reply after ' .. retriesOf(p.op) .. ' retries)', now);
                     st.layoutAcc = nil;   -- the tab just shows stale and re-asks
@@ -1427,6 +1984,30 @@ function M.pump(ready)
         local e = st.layoutSetQ[1].e;
         beginOp('layoutset', M.instanceMode() and M.op.LAYOUT_SET2 or M.op.LAYOUT_SET,
             M.instanceMode() and M.layoutSet2Payload(e) or M.layoutSetPayload(e), now);
+        return;
+    end
+    -- The Shared Vault: its one write, then the reads its open tab asked for
+    -- (a tab closed before they left drops them: the next open reads, S9).
+    -- The member list goes first, so the rows can name who shared them.
+    if st.shelfWriteQ ~= nil and st.shelfWriteQ[1] ~= nil then
+        local req = st.shelfWriteQ[1];
+        beginOp(req.kind, req.op, req.payload, now);
+        return;
+    end
+    if (st.svMembersWant or st.svListWant) and not (shelfOpen(now) and M.shelfAvailable()) then
+        st.svMembersWant, st.svListWant = nil, nil;
+    end
+    if st.svMembersWant then
+        st.svMembersWant = nil;
+        beginOp('shelf-members', M.op.SV_MEMBERS, wu32(0), now);
+        st.pending.svGroup = st.svGroupId;
+        return;
+    end
+    if st.svListWant then
+        st.svListWant = nil;
+        st.svAcc, st.svAccRev = {}, nil;
+        beginOp('shelf-list', M.op.SV_LIST, wu32(0) .. streamTail(), now, 0);
+        st.pending.svGroup, st.pending.svGen = st.svGroupId, st.svNoteGen;
         return;
     end
     -- A layout ask waits for HELLO: before it, the client cannot know the
@@ -1524,6 +2105,7 @@ function M.onFrame(f)
     if f.op < M.op.HELLO or f.op > 0x7F then return false; end
     local now = M._clock();
     if f.op == M.op.CHANGED and (f.seq or 0) == 0 then return onPush(f, now); end
+    if f.op == M.op.SV_CHANGED and (f.seq or 0) == 0 then return onShelfPush(f, now); end
     if M._received then M._received(f.op, f.seq); end
     st.trace.lastRecv = { op = f.op, seq = f.seq, status = f.status, len = #(f.payload or ''), at = now };
     local p = st.pending;
@@ -1531,6 +2113,9 @@ function M.onFrame(f)
         noteWhy(string.format('ate a %s#%d we were not waiting for (late duplicate)', opName(f.op), f.seq), now);
         return true;   -- ours by partition, but not the answer we await (late dupe): eat it
     end
+    -- A Shared Vault answer is the shelf's alone: whatever its status, it
+    -- never sends the vault dormant, un-attuned or into its backoff.
+    if p.op >= M.op.SV_LIST and p.op <= M.op.SV_CHANGED then return onShelfReply(p, f, now); end
 
     if f.status == M.status.BAD_OP then
         noteWhy('server answered BAD_OP: no vault service here -- dormant for the session', now);
@@ -1673,6 +2258,7 @@ function M.onFrame(f)
         local modeChanged = M.instanceMode() ~= (h.instances == true);
         M.limits = h;
         st.subscribed = h.push == true;   -- the server keeps it until we log out
+        noteShelfHello(h, now);           -- the group and its shelf's Rev, told to this session
         if modeChanged then
             -- A layout can arrive before the login HELLO. Its old rows lack
             -- instance/location fields even though the mirror is now v2.
@@ -2084,6 +2670,7 @@ function M._reset()
     M.mirror = { fresh = false, rows = {}, counts = {}, vaultCount = nil, stamp = nil, revision = nil };
     M.layoutCache = { job = nil, entries = {}, fresh = false, stamp = nil };
     M.limits = nil; M.revision = nil; M.lost = { entries = {}, fresh = false };
+    M.shelf = emptyShelf();
     st = { dormant = false, unattuned = false, pending = nil, seq = 0, lastSend = 0,
            staleAt = nil, mirrorGen = 0, giveups = 0, rowsAcc = nil, lastJob = nil,
            saidProto = false, trace = {}, subscribed = false, fieldHold = false };

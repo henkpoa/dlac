@@ -468,3 +468,160 @@ Regression: `lua tests/exp_ring_recharge.lua`, the normal core/UI suites and
 the AXI native `charge_exp_band` suite. Server source and native test handoff:
 `C:/repos/axi-dlac-ring-recharge/documentation/custom/vault-exp-band-recharge.md`.
 Live Ashita rendering and the deployed command round-trip still need a field check.
+
+### The Shared Vault (Group Ironman, 2026-11-02)
+
+**Status:** dlac `2026.11.02a`, branch `claude/shared-vault`. It pairs with
+AscensionXI branch `claude/group-ironman`: the server is
+`modules/custom/lua/group_ironman_vault.lua`, and the wire is in that repo's
+`documentation/custom/group-ironman-implementation.md`, "The Shared Vault
+(DLAC)". The headless suite and the mutation sweep are green. Not deployed;
+**a field round is owed** (the checklist ends this section).
+
+Group Ironman lets up to six characters share a shelf of gear, the **Shared
+Vault**, beside each member's own Gear Vault. The Gear Vault window gets a
+third tab, **Shared Vault**, after Vault and Inventory.
+
+**When the tab shows.** The vault HELLO reply sets capability **32**
+(`cap.SHELF`) and appends 12 bytes, and the character is in a group: the
+tail's GroupId is not 0, or the latest SV_CHANGED said InGroup 1. An
+SV_CHANGED with InGroup 0, a HELLO with GroupId 0 or a NOT_IN_GROUP answer
+hides the tab and forgets the shelf. An older server never shows it, and dlac
+never sends it a shelf op.
+
+**The wire** (vault partition, little-endian, payloads after the 8-byte
+envelope):
+
+| Op | C2S | S2C |
+|---|---|---|
+| HELLO 0x40 | word @2: bit 1 (value 2) asks for SV_CHANGED; bit 0 is still the vault's own push | caps bit 32; bytes 20-31: `u32 GroupId; u32 VaultRev; u32 ShelfCount` |
+| SV_LIST 0x60 | `u32 AfterRowId` + the stream tail (flags 1, up to 8 frames) | per frame `u16 Count; u16 Rsvd; u32 Rev;` then Count x 40: `u32 RowId; u16 ItemNo; u16 Rsvd; u32 InstanceId; u32 SharedBy; u8 IdentityExtra[24]`. Up to 12 rows a frame; MORE 1, FOLLOWS 4 |
+| SV_PUT 0x61 | `u32 VaultRowId; u8 Container; u8 Slot; u8 Flags (bit 0 confirm); u8 Rsvd`. VaultRowId 0 names a wardrobe piece | `u16 Code; u8 JobCount; u8 Wardrobe; u32 ShelfRowId; u32 Rev;` then JobCount x `u8 Job` |
+| SV_TAKE 0x62 | `u32 ShelfRowId` | `u16 Code; u16 Rsvd; u32 VaultRowId; u32 Rev` |
+| SV_MEMBERS 0x63 | 4 bytes, ignored | `u16 Count; u16 Rsvd; u32 GroupId; u32 Leader;` then Count x 24: `u32 CharId; u8 Flags (1 active, 2 leader, 4 online); u8 Rsvd[3]; char Name[16]` |
+| SV_CHANGED 0x6F | (push, seq 0) | `u32 Rev; u32 ShelfCount; u8 InGroup; u8 Rsvd[3]; u32 GroupId` |
+
+A move's result is a GroupIronmanCode (`vaultclient.giCode`): 0 OK, 1
+NOT_IN_GROUP, 12 BUSY, 13 STORE_ERROR, 17 STAYS_WITH_YOU, 18 SHELF_CAP, 19
+RARE_IN_STORE, 20 NEEDS_CONFIRM, 21 NOT_ELIGIBLE, 22 NO_ROW, 23 RARE_HELD, 24
+DUPLICATE, 25 ITEM_BUSY, and others a share or a take never meets.
+`sharedvault.REFUSAL` puts the ones they can meet into words.
+
+**What the player sees.**
+
+- The shelf, grouped by slot like the Vault tab: icon, name, level, `[aug]`,
+  the hover card with the augments, and "from Alice" (names from SV_MEMBERS,
+  read when the tab opens). A line above names the members still in the
+  group, the leader marked.
+- **Take** on each row (SV_TAKE): the piece goes into your own Gear Vault.
+  It works at a Gear Vault.
+- **Share with your group** in the Vault tab's right-click menu: that vault
+  row (SV_PUT by row). Stacks are not offered: pieces only (S12 rule 3).
+- **Share from your Mog Wardrobes**: the unworn gear in Wardrobes 1-8, each
+  with **Share** (SV_PUT by container and slot).
+- One piece per click: one share or take at a time. The buttons go dim while
+  one is out or a question waits.
+- **The question.** A piece in your job layouts, and every wardrobe piece,
+  comes back NEEDS_CONFIRM. A popup opens over whichever sub-tab is showing:
+  "Share X with your group? It is in your WAR and PLD layouts. Sharing it
+  removes it from those layouts, pins included." A wardrobe piece says "It is
+  in your Mog Wardrobe." **Share anyway** sends SV_PUT again with the confirm
+  flag, as a new request with its own seq. Cancel, a click elsewhere, leaving
+  the group, or a minute without an answer sends nothing.
+- Results and refusals land on the window's result line and in chat as
+  "shared vault: ...". `/dl vault` adds a line for the shelf.
+
+**Reads (S9).** Opening the tab reads the member list, then the shelf. After
+that the shelf is read again only when the server names a Rev other than the
+one the rows were read at: an SV_CHANGED (including the one a map process sends
+after a zone line or a login), a HELLO tail (the server counts that Rev as
+told), or the answer to our own share or take. Only while the tab is open; a
+closed tab reads at its next open. Never on a timer. Two refinements:
+
+- A Rev announced while a read is on the wire waits for that read, and reads
+  once more only if it is newer than the answer. The server's counter only
+  grows, so the same Rev, or an older one the read overtook, is covered.
+- A take answered at the read Rev + 1 was our change alone: its row is
+  dropped locally and nothing is read.
+
+A row whose sharer the member list cannot name asks for the members once per
+Rev.
+
+**Write laws (C1: the vault's own are unchanged).** SV_PUT and SV_TAKE are on
+`isWrite`: two retries with the same seq, none past WRITE_DEADLINE from the
+first send, so all inside the server's 5 s replay window. A lost answer, or one
+cut by a zone line, is outcome unknown: the vault and the layout are re-read
+(the shelf too, when its tab is open), and the write is never re-sent. Shelf
+ops ride the vault client's one request in flight, its pacing and the shared
+gate, where 0x60-0x6F is the vault's own module. A shelf answer never changes
+the vault's state:
+
+- BAD_OP or PROTO_UNSUPPORTED on a shelf op hides the shelf for the session
+  and leaves the vault alone.
+- A refusal decided before anything moves (TOO_FAR, NOT_ATTUNED, MALFORMED)
+  re-reads nothing.
+- BUSY, UNAVAILABLE or an unreadable answer may follow a move that ran, so
+  both stores are re-read.
+
+**The vault after a move.** A share takes the vault row out of the mirror at
+once (the server deleted it; a withdraw's subtraction) and re-reads the vault
+after SETTLE_EDIT, and the layout too when the piece left job layouts or a
+wardrobe. A take marks the vault for one LIST (a deposit's rule), and the layout
+when it names the item. The server's own CHANGED push for the same move lands
+inside SETTLE_EDIT, so the two make one read. The shelf never joins the mirror:
+ownership, the + Add picker and lockstyle never see it (S12 rule 6).
+
+**Files.** `vaultclient.lua` (its "THE SHARED VAULT" section: codecs, state,
+requests, answers), `sharedvault.lua` (the moves, the question, the words),
+`vaultui.lua` (the tab, the menu item, the popup, the wardrobe list) and
+`init.lua` (`/dl vault`'s line; a character switch forgets an open question).
+
+**Tests.** `tests/gearvault_shared.lua`, 222 checks, in CI. Every check was
+seen red at least once under a deliberate break, and the mutation sweep keeps
+those breaks: S01-S52 break the guards, X01-X84 the codecs, words, tab and
+glue. Board: 268 mutants, 264 killed, 4 accepted, none open
+([gear-vault-live-sync.md](gear-vault-live-sync.md), "Re-running it"). S09
+is equivalent: the pump drops every shelf read wanted while the tab is closed
+(S13).
+
+**Server notes** (found while building this; nothing was changed server-side):
+
+1. SV_PUT and SV_TAKE also arm the vault's own CHANGED push for the acting
+   session. The shelf ops do not pass through `gv.onPacket`, so `servingId` is
+   nil when `sv.put`/`sv.take` call `gv.markChanged`; the vault's own writes
+   are never echoed. dlac folds the echo into the same read (above), so it
+   costs one small frame per move.
+2. The implementation doc's "Live updates (S9)" paragraph still says a HELLO
+   resets the session to "told nothing" so that the next tick pushes. The code
+   now records the HELLO tail's Rev as told (`sv.onHello`). dlac reads the
+   tail either way.
+3. SV_LIST reads the counter before the rows, outside the group lock, so a
+   frame can carry rows newer than its Rev. That direction costs dlac at most
+   one extra read; the reverse order would hide a change.
+
+**Field round owed** (local shard on AscensionXI `claude/group-ironman`, two
+clients in one group):
+
+1. `/dl check` shows `2026.11.02a`. A character in no group sees Vault and
+   Inventory only.
+2. Found a group, or accept an invite, with dlac loaded: the Shared Vault tab
+   appears within a few seconds, with no reload.
+3. Open the tab: the member line names the group, and the shelf lists what is
+   shared, with "from <name>".
+4. At a Gear Vault, right-click a vault piece and choose Share with your
+   group: the row leaves the Vault tab at once and shows on the shelf. A piece
+   in a job layout asks first and names the layouts; Cancel leaves it, and
+   Share anyway shares it and the layouts lose it.
+5. Share an unworn wardrobe piece from the tab's list: it asks first, and a
+   yes shares it.
+6. Take a piece: it leaves the shelf and joins the Vault tab within about a
+   second, and the member who shared it gets a chat line.
+7. With the tab open on client A, share a piece on client B: A shows it within
+   about 2.5 s, without Sync.
+8. Away from a Gear Vault, Take and Share say "stand at a Gear Vault to use the
+   Shared Vault".
+9. Leave the group: the tab disappears.
+10. `debug/gear-vault-wire.log` shows no 0x60-0x63 requests while the tab is
+    closed and none on a clock while it is open, and `push op=6F` lines when
+    the shelf moves.
+11. The map server log shows no new rate-limit lines.

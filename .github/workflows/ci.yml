@@ -80,6 +80,9 @@ jobs:
       - name: Gear vault live sync (city rule, pushes, streams, write laws)
         run: lua5.4 tests/gearvault_live.lua
 
+      - name: Gear vault Shared Vault tab (Group Ironman ops, the question, refresh rules)
+        run: lua5.4 tests/gearvault_shared.lua
+
       - name: AscensionXI HELM packet regression
         run: lua5.4 tests/ascensionxi_helm.lua
 

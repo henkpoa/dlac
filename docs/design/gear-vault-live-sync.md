@@ -419,6 +419,14 @@ not in `ACCEPTED`, a pattern that no longer matches, or a mutant that does
 not parse. After an edit moves a guard, update its pattern rather than
 deleting the mutant.
 
+Since 2026-11-02 the sweep also covers the Shared Vault (Group Ironman;
+[gear-vault-integration.md](gear-vault-integration.md), "The Shared Vault").
+S01–S52 break its guards, and X01–X84 its codecs, words, tab and glue, all
+against `tests/gearvault_shared.lua`. The board is 268 mutants: 264 killed,
+4 accepted (V30, R02, R23 and S09), none open. The same change re-anchored
+R22, whose pattern had matched twice since the manual layout actions added a
+second `MAX_PUSH` check.
+
 ### What the server must guarantee (assumed here, tested on the AscensionXI side)
 
 1. **The replay ring.** It is keyed on op + seq + payload bytes, per
