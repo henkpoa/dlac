@@ -2840,6 +2840,19 @@ end)();
     local panel = src:match('local function renderStatsPanel%(title, totals, setBonuses%)(.-)\nend\n');
     check('RAC12 the totals panel keeps the race mask out of Other',
         panel ~= nil and panel:find('k ~= fmt.RACE_KEY', 1, true) ~= nil, true);
+    -- The Pet section (2026-11-03). gearui loads here without imgui, so the
+    -- panel cannot render; pin the seams instead: Pet: keys stay out of Other,
+    -- the section's rows come from gearfmt.petPanelKeys (tested in PM18e/f),
+    -- and both totals feed it the oracle's pet sum.
+    check('PSP1 the totals panel keeps Pet: keys out of Other and lists them under Pet',
+        panel ~= nil and panel:find("string.sub(k, 1, 4) ~= 'Pet:'", 1, true) ~= nil
+            and panel:find("local pets = fmt.petPanelKeys(resolved);", 1, true) ~= nil
+            and panel:find("section('Pet', pets)", 1, true) ~= nil, true);
+    local wst = src:match('local function workingSetTotals%(mainLevel%)(.-)\nend\n');
+    local wrn = src:match('local function wornSetTotals%(%)(.-)\nend\n');
+    check('PSP2 Set totals and Worn totals both add the oracle\'s pet sum',
+        wst ~= nil and wst:find('gearOracle.petSetStats(comp)', 1, true) ~= nil
+            and wrn ~= nil and wrn:find('gearOracle.petSetStats(comp)', 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -4682,6 +4695,91 @@ end)();
                 check('TB57 the Avatar-Rage popups stayed balanced', depth.popup, 0);
             else
                 check('TB50 the Avatar-Rage parameters are reachable', type(RAGE), 'table');
+            end
+
+            -- TB58-64. Avatar-Ward, PetAction only: ONE plain entry (no
+            -- cascade) that saves abilityType = Blood Pact: Ward -- the type
+            -- the client gives every ward -- so the engine needs nothing new.
+            if type(DEFS) == 'table' then
+                local D = require('dlac\\dispatch');
+                local function wardDef(h)
+                    for i, d in ipairs(DEFS[h] or {}) do
+                        if d.label == 'Avatar-Ward' then return i, d; end
+                    end
+                    return nil;
+                end
+                local wi, wd = wardDef('PetAction');
+                local elsewhere = {};
+                for h, _ in pairs(DEFS) do
+                    if h ~= 'PetAction' and wardDef(h) ~= nil then elsewhere[#elsewhere + 1] = h; end
+                end
+                check('TB58 PetAction offers Avatar-Ward, no other handler does',
+                    tostring(wi ~= nil) .. '/' .. table.concat(elsewhere, ','), 'true/');
+                check('TB59 ...as abilityType = Blood Pact: Ward, a fixed entry',
+                    string.format('%s/%s/%s', tostring(wd and wd.key), tostring(wd and wd.kind), tostring(wd and wd.value)),
+                    'abilityType/fixed/Blood Pact: Ward');
+                if wi ~= nil then
+                    -- The REAL chooser: Avatar-Ward is a Selectable, not a menu.
+                    local savedBP, savedBM = IM.BeginPopup, IM.BeginMenu;
+                    IM.BeginPopup = function(id)
+                        local s = tostring(id);
+                        if s == '##dlac_trigadd' or s == '##trgcondmenu' then depth.popup = depth.popup + 1; return true; end
+                        return false;
+                    end
+                    IM.BeginMenu = function(l) REC[#REC + 1] = 'menu:' .. tostring(l); return false; end
+                    trig.data = {};
+                    trig.addFor, trig.addConds, trig._addDef = 'PetAction', {}, 1;
+                    trig._addValSel = nil; trig.addValText[1] = ''; trig.addSet = 'BP_Ward';
+                    trig.addNote, trig.addSwap = nil, nil;
+                    trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+                    frame('Avatar-Ward##trgct' .. wi);
+                    local asMenu = false;
+                    for _, l in ipairs(REC) do if l:find('Avatar-Ward', 1, true) and l:sub(1, 5) == 'menu:' then asMenu = true; end end
+                    check('TB60 clicking Avatar-Ward lands it (no cascade)',
+                        tostring(trig._addDef == wi) .. '/' .. tostring(asMenu), 'true/false');
+                    IM.BeginPopup, IM.BeginMenu = savedBP, savedBM;
+                    frame(nil);
+                    local btn = false;
+                    for _, l in ipairs(REC) do if l == 'Avatar-Ward###trgcondbtn' then btn = true; end end
+                    check('TB61 ...and the condition button names it', btn, true);
+
+                    -- Saved as abilityType = Blood Pact: Ward; the engine loads it
+                    -- and fires it on a ward, never on a rage or a jug pet's move.
+                    trig.data = {};
+                    trig.addFor, trig.addConds, trig._addDef = 'PetAction', {}, wi;
+                    trig._addValSel = nil; trig.addSet = 'BP_Ward';
+                    trig.addNote, trig.addSwap = nil, nil;
+                    frame('+ & condition##trgac');
+                    frame('Add rule###trgaddgo');
+                    local r = trig.data.PetAction and trig.data.PetAction[1];
+                    local got = (type(r) == 'table') and (r.when or {}).abilitytype or nil;
+                    local norm, warns = D._normalize({ PetAction = { r } });
+                    check('TB62 it saves as abilityType = Blood Pact: Ward, and the engine loads it',
+                        tostring(got) .. '/' .. tostring(#((norm or {}).PetAction or {})) .. '/' .. tostring(#(warns or {})),
+                        'Blood Pact: Ward/1/0');
+                    local mm = D._matchers;
+                    local function pact(name, typ) return { action = { ActionType = 'Ability', Name = name, Type = typ } }; end
+                    check('TB63 it fires on Healing Ruby, not on Searing Light or a MobSkill',
+                        string.format('%s/%s/%s',
+                            tostring(mm.abilitytype(got, pact('Healing Ruby', 'Blood Pact: Ward'))),
+                            tostring(mm.abilitytype(got, pact('Searing Light', 'Blood Pact: Rage'))),
+                            tostring(mm.abilitytype(got, { action = { ActionType = 'MobSkill', Name = 'Tail Whip' } }))),
+                        'true/false/false');
+
+                    -- 'e' reloads it as Avatar-Ward; a hand-written abilityType of
+                    -- another value stays put (it is not the Avatar-Ward entry).
+                    trig.data = {};
+                    trig.addFor, trig._addDef = 'PetAction', 1;
+                    trig.addConds = { { key = 'abilitytype', value = 'blood pact: ward' } };
+                    frame('e##trgce1');
+                    local back = (trig._addDef == wi) and #trig.addConds == 0;
+                    trig._addDef = 1;
+                    trig.addConds = { { key = 'abilitytype', value = 'Blood Pact: Rage' } };
+                    frame('e##trgce1');
+                    check('TB64 editing reloads Avatar-Ward; another value stays a row',
+                        tostring(back) .. '/' .. tostring(trig._addDef) .. '/' .. tostring(#trig.addConds), 'true/1/1');
+                    check('TB64b the Avatar-Ward popups stayed balanced', depth.popup, 0);
+                end
             end
         end
     end
@@ -9005,6 +9103,56 @@ end)();
     check('GR10 Dual Wield clears the type', it.autoType == nil and it.removePrio == nil and it.dw == true, true);
     gearui._applyGearRule(it, 'None');
     check('GR11 None clears everything', it.autoType == nil and it.dw == nil and it.acc == nil, true);
+end)();
+
+-- ---------------------------------------------------------------------------
+-- SG. Stance Gates in the Behaviour popup (2026-11-03, AscensionXI). The
+--     choices come from the pack (stancestats.gates); the live judge reads
+--     utils' packet-invalidated buffs and is false while browsing another
+--     job. gearui captured the real (nil) imgui at load, so the popup and the
+--     row tag are source pins; the load/commit round trip is pinned the same
+--     way, beside the mode gate it copies.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedSS, savedU = package.loaded['dlac\\gear\\stancestats'], package.loaded['dlac\\utils'];
+    package.loaded['dlac\\gear\\stancestats'] = { gates = function(job)
+        return (job == 'RDM') and { 'Composure', "Duelist's Focus", "Duelist's Trance" } or nil;
+    end };
+    check('SG1 the job\'s stances are offered', table.concat(gearui._stanceGateOptions('RDM'), ','),
+        "Composure,Duelist's Focus,Duelist's Trance");
+    check('SG2 a job without stances gets none', #gearui._stanceGateOptions('WAR'), 0);
+    package.loaded['dlac\\gear\\stancestats'] = { gates = function() error('pack unreadable'); end };
+    check('SG3 a failing pack read offers none', #gearui._stanceGateOptions('RDM'), 0);
+    package.loaded['dlac\\gear\\stancestats'] = savedSS;
+    local realU = require('dlac\\utils');
+    package.loaded['dlac\\utils'] = { stanceActive = realU.stanceActive,
+        buffNamesNow = function() return { ["duelist's trance"] = true }, 1; end };
+    check('SG4 the live judge: up / down / any of a list',
+        string.format('%s/%s/%s', tostring(gearui._entryStanceOk("Duelist's Trance")),
+            tostring(gearui._entryStanceOk('Composure')),
+            tostring(gearui._entryStanceOk({ 'Composure', "Duelist's Trance" }))), 'true/false/true');
+    package.loaded['dlac\\utils'] = savedU;
+
+    local f = io.open('ui/gearui.lua', 'r');
+    check('SG5 gearui is readable', f ~= nil, true);
+    if f == nil then return; end
+    local src = f:read('*a'):gsub('\r', ''); f:close();
+    local pop = src:match('local function renderEntryEditPopup%(%)(.-)\nend\n') or '';
+    check('SG6 the popup offers the job\'s stances, not on a virtual row',
+        pop:find("local stOpts = (it.rec.Virtual ~= true) and M._stanceGateOptions(ui._editJob) or {};", 1, true) ~= nil
+            and pop:find("BeginCombo('##eestanceadd', '+ add stance gate')", 1, true) ~= nil
+            and pop:find('imgui.EndCombo();', pop:find('##eestanceadd', 1, true), true) ~= nil, true);
+    check('SG7 one stance stays a string, several a list, none clears',
+        pop:find('if #sts == 0 then it.stance = nil;', 1, true) ~= nil
+            and pop:find('elseif #sts == 1 then it.stance = sts[1];', 1, true) ~= nil, true);
+    check('SG8 the B button names whose stances to offer', src:find('ui._editJob = job;', 1, true) ~= nil, true);
+    check('SG9 the row tag is escaped (imgui text is printf)',
+        src:find("'[' .. fmt.esc(modeTagText(it.stance)) .. ']'", 1, true) ~= nil, true);
+    local res = src:match('local function resolveSetItem%(elem%)(.-)\nend\n') or '';
+    check('SG10 a saved stance loads back onto the row',
+        res:find('stG = elem.stance', 1, true) ~= nil and select(2, res:gsub('stance = stG', '')) == 2, true);
+    check('SG11 ...and commits with it', src:find('if it.stance ~= nil then entry.stance = it.stance; end', 1, true) ~= nil, true);
+    check('SG12 the preview judges stances live', select(2, src:gsub('stanceOk = M._entryStanceOk', '')), 2);
 end)();
 
 -- ---------------------------------------------------------------------------

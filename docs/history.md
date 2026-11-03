@@ -11772,3 +11772,54 @@ Shared Vault".
   it had matched twice since the manual layout actions.
 - Owed: the field round (the checklist in the design doc), on a local shard
   with the server branch.
+
+## 2026-11-03: Avatar-Ward, pet stats in the totals, Stance Gates (`2026.11.03a`)
+
+Henrik: "In the places where we have Avatar-Rage, we need one for
+Avatar-Ward. For now no cascading menu is needed, they mostly need to be able
+to match a blood pact ward to equip summoning magic skill +." Then the
+avatar's Attack, Accuracy, Magic Attack Bonus and Magic Accuracy "in weights
+(as well as in the stats window)", for both servers; and, AscensionXI only, a
+stance under the Behaviour button: "Composure, Duelist's Focus, Duelist's
+Trance, Afflatus Solace, Afflatus Ward, Fury and Guard for PLD etc."
+
+- **Avatar-Ward** is one plain PetAction entry. It saves
+  `abilityType = 'Blood Pact: Ward'`: the client files every ward under the
+  Blood Pact: Ward recast timer (174), and `GetPetAction` already reports that
+  type, so the engine needed nothing and it works the same on both servers.
+  The rule builder learned a top-level `fixed` entry (the entry is the value).
+  Editing a hand-written `abilityType` of another value leaves it as a row.
+  Tests TB58-TB64b.
+- **Pet stats in the totals.** The weights already priced `Pet:` stats (All +
+  the best pet type, `petScoreStats`), but Set totals and Worn totals were
+  pet-blind. `gearoracle.petSetStats(comp)` sums a composition's pet stats.
+  Both totals add it, and the weighted score uses the same sum. The panel
+  draws a **Pet** section when a piece gives the pet anything: Attack,
+  Accuracy, Magic Attack Bonus and Magic Accuracy lead, the rest follow by
+  name (`gearfmt.petPanelKeys`). The keys stay `Pet:` (saved weights use
+  them); typing "avatar" in the stat picker already finds them.
+- **AscensionXI had no pet stats at all**: its generator never read
+  `item_mods_pet`. The AXI change (tools/dlac-pack: `item_mods_pet` replays
+  with the module SQL, `build_petmods`) writes `data/petmods.lua`, 491 items /
+  1000 rows; the Summoner's Horn's Avatar Magic Accuracy +10 and the Rekindled
+  staves' avatar Attack/Accuracy come from module SQL only. Generated at AXI
+  main `e8a58803a8` with the patch: only `petmods.lua` and the manifest's two
+  lines changed; the rest of the pack is byte-identical.
+- **Stance Gates.** A set entry's `stance` (a buff name, or a list = any)
+  makes the piece a candidate only while that stance is on you, and then it
+  outranks the entries without one; a mode gate still outranks it. The
+  Behaviour popup offers the job's stances from `stances.lua` `gates` (WHM
+  Afflatus Solace/Misery -- "Afflatus Ward" read as Misery --, RDM
+  Composure/Duelist's Focus/Duelist's Trance, PLD Divine Guard/Fury), by the
+  names the AXI client DAT gives the buff icons (419, 520, 521, 417, 418, 654,
+  655). Rows show the gate as a `[stance]` tag, green while it holds.
+- The buff list is not re-read per pass (Henrik's event rule).
+  `utils.buffNamesNow` keeps the last read until a status packet arrives
+  (0x063, 0x037), then re-reads for a half-second settle at most every 50 ms.
+  `rebuildSets` re-flattens only when one of the stances the last flatten
+  named came up or went down. A set without a stance gate costs nothing.
+- Tests: run_tests 7927 -> 7953 (PM18c-f, G27-G34b, LD8c-LD8k), smoke_ui
+  1750 -> 1772 (TB58-TB64b, PSP1-2, SG1-12), stance_sets and
+  ascensionxi_catalog extended.
+- Owed: the in-game round (steps in the PR), the AXI generator PR, and the
+  DLAC wiki text into the AXI ledger with the next pin PR.

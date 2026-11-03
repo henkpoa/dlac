@@ -207,4 +207,20 @@ bag = { { Id = 26549, Extra = extra } };
 local fallback = gi.scan({ 0 })[1];
 assert(fallback.Slot == 'Body' and fallback.Level == 127 and fallback.Jobs == 0x1FFFFE);
 ci.flat = realFlat;
-print('OK -- AscensionXI custom catalog names, eligibility, stats and display units');
+
+-- What gear grants your pet (data\petmods.lua, item_mods_pet with the modules'
+-- SQL): the Summoner's Horn's avatar magic accuracy and the Rekindled staves'
+-- avatar attack/accuracy come only from module SQL, and reach the item card,
+-- the Pet: weights and Set totals through the oracle.
+local oracle = require('dlac\\gear\\gearoracle');
+local horn = oracle.petScoreStats(15086);
+assert(horn and horn['Pet:MagicAccuracy'] == 10, "Summoner's Horn: Avatar Magic Accuracy +10");
+assert(oracle.petStats(20007).Avatar.Attack == 2 and oracle.petStats(20007).Avatar.Accuracy == 2, 'Rekindled staff avatar stats');
+local gf = require('dlac\\gear\\gearfmt');
+assert(gf.petLines({ Id = 15086 })[1] == 'Avatar: MagicAccuracy+10', 'the item card names the avatar line');
+local keys = {};
+for _, k in ipairs(oracle.petStatKeys()) do keys[k] = true; end
+for _, k in ipairs({ 'Attack', 'Accuracy', 'MagicAttackBonus', 'MagicAccuracy' }) do
+    assert(keys[k], 'the Pet: weights offer ' .. k);
+end
+print('OK -- AscensionXI custom catalog names, eligibility, stats, display units and pet stats');

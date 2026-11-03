@@ -23,6 +23,8 @@
                                namespaced keys ({ ['Pet:Haste'] = 6 }) the weights
                                system prices like any stat; per stat the scalar is
                                All + the best named type (a pet is exactly one type).
+        petSetStats(comp)   -> petScoreStats summed over a composition's pieces
+                               (Set totals' Pet section, the weighted score).
         petStatKeys()       -> sorted distinct stat keys across the pet data --
                                the weights editor's "stat menu" source.
     Plus the interpreter passthroughs the Sets core + worn panel read through the
@@ -438,6 +440,23 @@ function M.petScoreStats(recOrId)
         out[nk] = (out[nk] or 0) + v;
     end
     if next(out) == nil then return nil; end
+    return out;
+end
+
+-- petSetStats(comp): a composition's pet channel -- petScoreStats summed over
+-- the pieces of { slot -> record } -- or nil when no piece grants pets
+-- anything. What Set totals shows under Pet and what the weighted score adds
+-- on top of setStats (which stays pet-blind: the goldens pin it).
+function M.petSetStats(comp)
+    if type(comp) ~= 'table' then return nil; end
+    local out = nil;
+    for _, rec in pairs(comp) do
+        local p = M.petScoreStats(rec);
+        if p ~= nil then
+            out = out or {};
+            for k, v in pairs(p) do out[k] = (out[k] or 0) + v; end
+        end
+    end
     return out;
 end
 

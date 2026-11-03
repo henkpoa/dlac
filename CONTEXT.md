@@ -23,6 +23,10 @@ The plain slot→item table produced from a Dynamic Set by `rebuildSets` — wha
 What a set is *for*, picked per job and set in the Sets tab (stored beside its weights, `gearoptim` `typePerSet`), so behaviour rules can read it (2026-10-18). **Normal** changes nothing. **1-Hit WS** marks a weapon skill set: at a weapon skill, AutoAcc counts the +100 ACC the server adds to the first melee hit. The **stance** type (named per job by the server pack: RDM *Duelist Stance*, WAR *Berserk*) plans the set with that stance up, so its gear bonuses join Stats and weighted builds; it never uses the stance. **Composure** (2026-10-22) does the same for Red Mage's support stance; the menu offers it only on jobs whose pack has Composure gear (`stances.lua`). The Set Type replaced the Stance Set checkbox, whose ticked sets load as the stance type.
 _Avoid_: set kind, set mode (a Mode is a player switch), stance set (the retired checkbox)
 
+**Stance gate**:
+A set entry's `stance` (2026-11-03, AscensionXI): the piece is a candidate only while that stance — a status effect by its buff-bar name, or a list meaning any of them — is on you, and then it outranks the slot's entries without one. The mode gate's shape, switched by the game's buff instead of a player toggle; a mode gate still outranks it. Set in the Sets tab's Behaviour popup, which offers the job's stances from the pack (`stances.lua` `gates`: WHM Afflatus Solace/Misery, RDM Composure/Duelist's Focus/Duelist's Trance, PLD Divine Guard/Fury). Judged at the flatten; the buff list is re-read only after a status packet (`utils.buffNamesNow`).
+_Avoid_: Set Type stance (that *plans* a set as if the stance were up and never looks at your buffs; a stance gate looks at nothing else)
+
 **Ammo ladder**:
 AutoAmmo's per-job ordered list of ammo *plus the rule that reads it*: walk top-down and take the first entry that clears all four gates — the context flag (ranged / WS / a special's window), pairing with the ranged weapon actually worn, stock in the equippable bags, and what the current level and job can wear. The player's order is the priority; every gate only ever *removes* candidates, never reorders them. Kin to a **Dynamic Set**'s per-slot candidate list — the same "ordered candidates, best eligible for the current level" idea, applied to the one slot a set cannot safely own — and it is named for that kinship because the two looked alike while behaving differently until the level gate landed (2026-07-27). An instance of the general **Ladder**.
 _Avoid_: priority list (that is the order alone; the gates are what make it a ladder), fallback list
@@ -124,7 +128,7 @@ _Avoid_: day match / weather match / favourability for these (those test the ACT
 
 **Rage type**:
 What an avatar's Blood Pact: Rage deals — Physical, Magic, Hybrid (physical AND magic damage: Burning Strike, Flaming Crush) or Breath (Nether Blast) — the PetAction `rageType` condition (engine v175). The server's pact scripts are the source (`dispatch.RAGE_TYPE`); neither LAC nor the client carries it. A rage that deals no damage has none.
-_Avoid_: Rage vs Ward (that is the pact's *kind* — `abilityType = Blood Pact: Rage` — not what it deals; Meteor Strike and Predator Claws are both Rage); element (a pact's element says nothing about physical or magic)
+_Avoid_: Rage vs Ward (that is the pact's *kind* — `abilityType = Blood Pact: Rage` — not what it deals; Meteor Strike and Predator Claws are both Rage; the Triggers tab's **Avatar-Ward** entry on PetAction is `abilityType = Blood Pact: Ward`, any ward, 2026-11-03); element (a pact's element says nothing about physical or magic)
 
 **Claim**:
 A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.

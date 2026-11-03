@@ -884,6 +884,9 @@ local function wornSetTotals()
             end
         end
     end
+    -- ...and what the worn pieces give your pet (the panel's Pet section).
+    local pet = (type(gearOracle.petSetStats) == 'function') and gearOracle.petSetStats(comp) or nil;
+    for k, v in pairs(pet or {}) do totals[k] = (totals[k] or 0) + v; end
     return totals, bonuses;
 end
 
@@ -2444,7 +2447,7 @@ local function renderStatsPanel(title, totals, setBonuses)
     local function statLine(name)
         local v = resolved[name] or 0;
         local col = (v ~= 0) and COL.USABLE or COL.DIM;
-        imgui.TextColored(col, name);
+        imgui.TextColored(col, (string.gsub(name, '^Pet:', '')));   -- under Pet, the plain name
         local vs = tostring(v);
         imgui.SameLine(STATS_W - 30 - imgui.CalcTextSize(vs));   -- right-aligned value column
         imgui.TextColored(col, vs);
@@ -2460,13 +2463,18 @@ local function renderStatsPanel(title, totals, setBonuses)
     end
     local others = {};
     for k in pairs(resolved) do
-        -- the race mask is no stat: summed over the worn pieces it is a meaningless number
-        if not STAT_LISTED[k] and k ~= fmt.RACE_KEY then others[#others + 1] = k; end
+        -- the race mask is no stat: summed over the worn pieces it is a meaningless
+        -- number; 'Pet:' keys are what the set gives your pet (the Pet section)
+        if not STAT_LISTED[k] and k ~= fmt.RACE_KEY and string.sub(k, 1, 4) ~= 'Pet:' then
+            others[#others + 1] = k;
+        end
     end
     table.sort(others);
     if #others > 0 then
         section('Other', others);
     end
+    local pets = fmt.petPanelKeys(resolved);   -- nil unless a piece gives the pet something
+    if pets ~= nil then section('Pet', pets); end
     if type(setBonuses) == 'table' and #setBonuses > 0 then
         imgui.Separator();
         for _, sb in ipairs(setBonuses) do
@@ -2609,10 +2617,12 @@ local function resolveSetItem(elem)
     local ref, minL, maxL, modeC = elem, nil, nil, nil;
     local autoT, remP, accV = nil, nil, nil;   -- Type automation fields (AutoAcc)
     local dwG = nil;                           -- Dual Wield gear rule (dw = true)
+    local stG = nil;                           -- stance gate (a name, or a list = any)
     if elem.gear ~= nil and elem.Name == nil then
         ref = elem.gear; minL = elem.minLevel; maxL = elem.maxLevel; modeC = elem.mode;
         autoT = elem.autoType; remP = elem.removePrio; accV = elem.acc;
         dwG = (elem.dw == true) and true or nil;
+        if type(elem.stance) == 'string' or type(elem.stance) == 'table' then stG = elem.stance; end
     end
     -- Wrapper around a STRING gear ref: a gated VIRTUAL entry, exactly how the
     -- Sets tab commits one ({ gear = "dlac:AutoIridescence", mode = "..." }).
@@ -2624,7 +2634,7 @@ local function resolveSetItem(elem)
                      minLevel = minL, maxLevel = maxL, mode = modeC };
         end
         local rec = _ownedByName and _ownedByName[string.lower(ref)] or nil;
-        return rec and { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
+        return rec and { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC, stance = stG,
                          dw = dwG, autoType = autoT, removePrio = remP, acc = accV } or nil;
     end
     if type(ref) ~= 'table' then return nil; end
@@ -2657,7 +2667,7 @@ local function resolveSetItem(elem)
                 Stats = (type(ref.Stats) == 'table') and ref.Stats or nil };
     end
     if rec == nil then return nil; end
-    return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC,
+    return { rec = rec, minLevel = minL, maxLevel = maxL, mode = modeC, stance = stG,
              dw = dwG, autoType = autoT, removePrio = remP, acc = accV };
 end
 
@@ -2831,6 +2841,19 @@ local function modeTagText(m)
     return tostring(m);
 end
 
+-- Preview-side stance check: the buffs on you now, through utils'
+-- packet-invalidated read (the flatten's own). Browsing another job it is
+-- always false -- you cannot be in that job's stance -- so its stance pieces
+-- preview as dormant, still listed.
+function M._entryStanceOk(stance)
+    if jbrowse ~= nil and jbrowse.active() then return false; end
+    local ok, r = pcall(function()
+        local u = require("dlac\\utils");
+        return u.stanceActive(stance, (u.buffNamesNow()));
+    end);
+    return ok and r == true;
+end
+
 local function previewCctx(mainLevel)
     -- BROWSING ANOTHER JOB (2026-08-06): Dual Wield is a fact about the character
     -- you are ON -- utils.isDualWieldAvailable reads the live trait bit
@@ -2842,7 +2865,8 @@ local function previewCctx(mainLevel)
     -- needed nothing: while BUILDING it never adapts to Dual Wield at all -- the
     -- hard rule in subCandidateOk, reverted three times.)
     if jbrowse ~= nil and jbrowse.active() then
-        return { mjLevel = tonumber(mainLevel) or 0, isDW = true, modeOk = entryModeOk };
+        return { mjLevel = tonumber(mainLevel) or 0, isDW = true, modeOk = entryModeOk,
+                 stanceOk = M._entryStanceOk };
     end
     local isDW = false;
     pcall(function()
@@ -2851,7 +2875,8 @@ local function previewCctx(mainLevel)
         local _, sjL = utils.determineLevels();
         isDW = utils.isDualWieldAvailable(p.MainJob, tonumber(mainLevel) or 0, p.SubJob, sjL) == true;
     end);
-    return { mjLevel = tonumber(mainLevel) or 0, isDW = isDW, modeOk = entryModeOk };
+    return { mjLevel = tonumber(mainLevel) or 0, isDW = isDW, modeOk = entryModeOk,
+             stanceOk = M._entryStanceOk };
 end
 
 local function bestByLevel(list, mainLevel, slotName)
@@ -2931,6 +2956,11 @@ local function workingSetTotals(mainLevel)
             for k, v in pairs(res.stats) do
                 if k ~= 'DMG' and k ~= 'Delay' then totals[k] = v; end
             end
+            -- What the set gives YOUR PET ('Pet:' keys, the Pet section),
+            -- beside setStats rather than in it: the weighted score below
+            -- adds the same numbers, so the panel and the score agree.
+            local pet = (type(gearOracle.petSetStats) == 'function') and gearOracle.petSetStats(comp) or nil;
+            for k, v in pairs(pet or {}) do totals[k] = (totals[k] or 0) + v; end
             return totals, res.setBonuses;
         end
     end
@@ -2963,18 +2993,13 @@ local function workingWeightedScore(mainLevel)
             -- keys summed per piece, so this number stays THE one objective
             -- Auto-build maximizes (its pools carry candidateStats' pet keys).
             -- setStats itself stays pet-blind: the goldens pin it byte-identical.
-            local stats, copied = res.stats, false;
-            for _, rec in pairs(comp) do
-                local p = (type(gearOracle.petScoreStats) == 'function')
-                    and gearOracle.petScoreStats(rec) or nil;
-                if p ~= nil then
-                    if not copied then
-                        local c = {};
-                        for k, v in pairs(stats) do c[k] = v; end
-                        stats, copied = c, true;
-                    end
-                    for k, v in pairs(p) do stats[k] = (stats[k] or 0) + v; end
-                end
+            local stats = res.stats;
+            local pet = (type(gearOracle.petSetStats) == 'function') and gearOracle.petSetStats(comp) or nil;
+            if pet ~= nil then
+                local c = {};
+                for k, v in pairs(stats) do c[k] = v; end
+                for k, v in pairs(pet) do c[k] = (c[k] or 0) + v; end
+                stats = c;
             end
             return scoreOf(stats);
         end
@@ -3000,6 +3025,7 @@ local function buildCommitSlots(working)
                     if it.minLevel ~= nil then entry.minLevel = it.minLevel; end
                     if it.maxLevel ~= nil then entry.maxLevel = it.maxLevel; end
                     if it.mode ~= nil then entry.mode = it.mode; end
+                    if it.stance ~= nil then entry.stance = it.stance; end
                     if it.dw == true then entry.dw = true; end
                     if it.autoType ~= nil then
                         -- Type automation: bake the piece's ACC (base stats +
@@ -4436,6 +4462,60 @@ local function renderEntryEditPopup()
         _setDirty = true;
     end
 
+    -- Stance Gates (AscensionXI, 2026-11-03): worn only while one of these
+    -- stances is on you -- the mode gate's shape, switched by the game's own
+    -- buff. Offered where the server pack names the job's stances
+    -- (stancestats.gates); a piece that already carries one keeps the section,
+    -- so it can be cleared anywhere. Not on virtual rows.
+    local stOpts = (it.rec.Virtual ~= true) and M._stanceGateOptions(ui._editJob) or {};
+    if #stOpts > 0 or it.stance ~= nil then
+        imgui.Separator();
+        imgui.TextColored(COL.DIM, 'Stance Gates:');
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('When enabled, this piece is equipped only while ANY of these\nstances is on you -- and then it beats the pieces without one\nin this list. A mode gate still wins over a stance gate.');
+        end
+        local sts = {};
+        if type(it.stance) == 'table' then
+            for _, s in ipairs(it.stance) do sts[#sts + 1] = tostring(s); end
+        elseif it.stance ~= nil then
+            sts[1] = tostring(it.stance);
+        end
+        local stChanged, stRemove = false, nil;
+        for si, s in ipairs(sts) do
+            imgui.TextColored(M._entryStanceOk(s) and COL.JOBS or COL.USABLE, fmt.esc(s));
+            if imgui.IsItemHovered() then imgui.SetTooltip('Green = on you right now.'); end
+            imgui.SameLine(0, 8);
+            if imgui.SmallButton('x##eestrm_' .. si) then stRemove = si; end
+        end
+        if stRemove ~= nil then table.remove(sts, stRemove); stChanged = true; end
+        if #sts == 0 then imgui.TextColored(COL.DIM, '(any stance -- no stance gate)'); end
+        if #stOpts > 0 then
+            imgui.PushItemWidth(220);
+            if imgui.BeginCombo('##eestanceadd', '+ add stance gate') then
+                local shown = 0;
+                for _, c in ipairs(stOpts) do
+                    local dup = false;
+                    for _, s in ipairs(sts) do
+                        if string.lower(s) == string.lower(c) then dup = true; break; end
+                    end
+                    if not dup then
+                        shown = shown + 1;
+                        if imgui.Selectable(c, false) then sts[#sts + 1] = c; stChanged = true; end
+                    end
+                end
+                if shown == 0 then imgui.TextColored(COL.DIM, '(all of this job\'s stances already added)'); end
+                imgui.EndCombo();
+            end
+            imgui.PopItemWidth();
+        end
+        if stChanged then
+            if #sts == 0 then it.stance = nil;
+            elseif #sts == 1 then it.stance = sts[1];    -- single gate stays a plain string
+            else it.stance = sts; end
+            _setDirty = true;
+        end
+    end
+
     -- Auto Type (Type automations): hand the piece to an equip automation that
     -- decides at equip time whether to wear it or the slot's next-best pick.
     -- AutoAcc is offered where a server pack provides the 'autoacc' service
@@ -4478,6 +4558,15 @@ local function renderEntryEditPopup()
         end
     end
     imgui.EndPopup();
+end
+
+-- The Stance Gates combo's choices for a job: the stances its server pack
+-- names (AscensionXI's Composure, Duelist's Focus ... -- stancestats.gates),
+-- or {} -- CatsEyeXI, and every job without stances.
+function M._stanceGateOptions(job)
+    local list = nil;
+    pcall(function() list = require('dlac\\gear\\stancestats').gates(job); end);
+    return (type(list) == 'table') and list or {};
 end
 
 -- The Gear Rule combo's choices, in order. AutoAcc exists where a server pack
@@ -4691,6 +4780,14 @@ local function renderSetBuilder(job, level)
                     imgui.SetTooltip('Mode-gated: used while ANY of these modes is active\n(and then it beats the unconditional entries).\nGreen = active right now.');
                 end
             end
+            if it.stance ~= nil then
+                imgui.SameLine(0, 8);
+                imgui.TextColored(M._entryStanceOk(it.stance) and COL.JOBS or COL.DIM,
+                    '[' .. fmt.esc(modeTagText(it.stance)) .. ']');
+                if imgui.IsItemHovered() then
+                    imgui.SetTooltip('Stance-gated: used while ANY of these stances is on you\n(and then it beats the entries without one).\nGreen = on you right now.');
+                end
+            end
             if it.autoType ~= nil then
                 imgui.SameLine(0, 8);
                 imgui.TextColored(COL.SCORE, string.format('[%s p%d]', fmt.esc(tostring(it.autoType)), it.removePrio or 1));
@@ -4708,13 +4805,14 @@ local function renderSetBuilder(job, level)
             imgui.SameLine(imgui.GetWindowWidth() - 86);   -- buttons at the right edge
             if imgui.Button('B##ed_' .. di, { 24, 20 }) then
                 ui._editIt = it;
+                ui._editJob = job;   -- whose stances the Stance Gates offer
                 ui._editMin = { it.minLevel or 0 };
                 ui._editMax = { it.maxLevel or 0 };
                 ui._editPrio = { it.removePrio or 1 };
                 openEdit = true;
             end
             if imgui.IsItemHovered() then
-                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, gate it on a mode, or give it a\ngear rule (e.g. Dual Wield: only while the trait is up).\nNeed the same item in two ranges? Duplicate the row (D)\nand give each row its own range.');
+                imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, gate it on a mode or a stance, or give\nit a gear rule (e.g. Dual Wield: only while the trait is up).\nNeed the same item in two ranges? Duplicate the row (D)\nand give each row its own range.');
             end
             imgui.SameLine(0, 4);
             if imgui.Button('D##dup_' .. di, { 24, 20 }) then action = { kind = 'dup', it = it }; end

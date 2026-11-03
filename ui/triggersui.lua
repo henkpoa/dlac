@@ -203,6 +203,13 @@ local COND_DEFS = {
         { key = 'element',  kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
         -- engine v175: a cascade of its own, PetAction only (RAGE_PARAMS below)
         { key = 'rageType', kind = 'rage', label = 'Avatar-Rage' },
+        -- Any Blood Pact: Ward, one entry, no cascade. The client files every
+        -- ward under the Blood Pact: Ward recast timer, so this is the
+        -- abilityType the engine already reads off the pet's action -- no
+        -- table to keep, the same on every server. 'fixed' at the top level:
+        -- the entry IS the value, like HasPet inside the Pet cascade.
+        { key = 'abilityType', kind = 'fixed', value = 'Blood Pact: Ward', label = 'Avatar-Ward',
+          hint = 'your avatar uses a Blood Pact: Ward -- any of them: Healing Ruby,\nShining Ruby, Aerial Armor, Frost Armor, Ecliptic Growl and the rest.\nGear summoning magic skill here: a ward\'s effect is worked out as the\navatar uses it. Fires as the avatar readies the ward.' },
         MODE_COND,
         { key = 'any',      kind = 'flag' },
     },
@@ -2885,8 +2892,14 @@ local function renderTrigAddPopup()
                 kind = CASCADES[cKind].params[cIdx].kind;
             end
         else
+            -- A top-level 'fixed' entry stands for ONE value of its key
+            -- (Avatar-Ward is abilityType = Blood Pact: Ward): a hand-written
+            -- abilityType = Blood Pact: Rage on PetAction is not it, so it
+            -- stays an exotic row rather than reloading as Avatar-Ward.
             for di, d in ipairs(defs) do
-                if string.lower(d.key) == key then defIdx = di; kind = d.kind; break; end
+                if string.lower(d.key) == key and (d.kind ~= 'fixed' or sameVal(d.value, c.value)) then
+                    defIdx = di; kind = d.kind; break;
+                end
             end
         end
         if defIdx == nil then return; end              -- exotic key: leave the row alone
@@ -2978,7 +2991,7 @@ local function renderTrigAddPopup()
         imgui.OpenPopup('##trgcondmenu');
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals.');
+        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals, and\nAvatar-Ward matches any Blood Pact: Ward.');
     end
     if imgui.BeginPopup('##trgcondmenu') then
         local function pickDef(di)
@@ -3142,7 +3155,9 @@ local function renderTrigAddPopup()
             imgui.PopItemWidth();
             if cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
         else
+            -- a flag, or a top-level 'fixed' entry (Avatar-Ward): nothing to type
             imgui.TextColored(COL_DIM, '(flag)');
+            if cur.kind == 'fixed' and cur.hint ~= nil and imgui.IsItemHovered() then imgui.SetTooltip(cur.hint); end
         end
         -- Capture the current widget's key + value; a cascade resolves to the
         -- SELECTED parameter's key and widget kind. `conds` is the target
@@ -3152,7 +3167,7 @@ local function renderTrigAddPopup()
         addCond = function(isOr, conds, applyNote)
             if cur == nil then return; end
             local ckey, ck = cur.key, cur.kind;
-            local fixedVal = nil;
+            local fixedVal = cur.value;   -- a top-level 'fixed' entry (Avatar-Ward) carries one
             local cs = CASCADES[ck];
             if cs ~= nil then
                 local pp = cs.params[trig[cs.slot]] or cs.params[1];

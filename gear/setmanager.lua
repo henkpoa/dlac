@@ -21,7 +21,8 @@
 -- Type automations ride the same wrapper: autoType = 'AutoAcc' plus its
 -- removePrio (release order) and acc (the piece's baked ACC for the engine).
 -- The Dual Wield gear rule rides it too: dw = true (a candidate only while
--- the trait is up -- gated at flatten time by utils.slotLadder).
+-- the trait is up -- gated at flatten time by utils.slotLadder). So does a
+-- stance gate: stance = 'Composure', or a list = any of them (AscensionXI).
 
 local M = {};
 
@@ -74,7 +75,7 @@ local function splitLines(text)
 end
 
 local function renderItem(it)
-    if it.minLevel == nil and it.maxLevel == nil and it.mode == nil
+    if it.minLevel == nil and it.maxLevel == nil and it.mode == nil and it.stance == nil
        and it.dw == nil and it.autoType == nil then
         return string.rep(' ', 16) .. it.path .. ',';   -- no rules -> bare gear ref
     end
@@ -82,13 +83,15 @@ local function renderItem(it)
     if it.minLevel ~= nil then parts[#parts + 1] = 'minLevel = ' .. tostring(it.minLevel); end
     if it.maxLevel ~= nil then parts[#parts + 1] = 'maxLevel = ' .. tostring(it.maxLevel); end
     if it.dw ~= nil then parts[#parts + 1] = 'dw = true'; end   -- Dual Wield gear rule
-    if it.mode ~= nil then
-        if type(it.mode) == 'table' then                 -- list = OR: any active mode
+    -- mode and stance gates: a string, or a list = OR (any one active)
+    for _, field in ipairs({ 'mode', 'stance' }) do
+        local g = it[field];
+        if type(g) == 'table' then
             local qs = {};
-            for _, m in ipairs(it.mode) do qs[#qs + 1] = string.format('%q', tostring(m)); end
-            parts[#parts + 1] = 'mode = { ' .. table.concat(qs, ', ') .. ' }';
-        else
-            parts[#parts + 1] = string.format('mode = %q', tostring(it.mode));
+            for _, m in ipairs(g) do qs[#qs + 1] = string.format('%q', tostring(m)); end
+            parts[#parts + 1] = field .. ' = { ' .. table.concat(qs, ', ') .. ' }';
+        elseif g ~= nil then
+            parts[#parts + 1] = string.format('%s = %q', field, tostring(g));
         end
     end
     if it.autoType ~= nil then                           -- Type automation (AutoAcc)

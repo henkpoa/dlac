@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.02a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.03a';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -479,8 +479,16 @@ addon.version = '2026.11.02a';  -- date of the last shipped change (Ashita print
                                 --  11.02a = Group Ironman's Shared Vault: a
                                 --  third Gear Vault tab for characters in a
                                 --  group -- take a piece the group shares,
-                                --  share one of yours, one per click)
-addon.desc    = 'Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
+                                --  share one of yours, one per click;
+                                --  11.03a = PetAction's Avatar-Ward: any
+                                --  Blood Pact: Ward; the stat panels' Pet
+                                --  section (Avatar Attack, Accuracy, Magic
+                                --  Attack Bonus, Magic Accuracy) and
+                                --  AscensionXI's pet stats in the catalog;
+                                --  Stance Gates in the Behaviour popup: a
+                                --  piece worn only while Composure, Divine
+                                --  Guard ... is on you)
+addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
 -- the very top of load, before anything else can fail. Its absence after an
