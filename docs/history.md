@@ -11853,3 +11853,31 @@ jobs can wear the piece now, so the picker hides it the same way.
   Three mutants (no cache, no budget spend, name before gate) each fail.
 - Owed: the in-game check (search "iron musket" in Body with "Show gear I
   don't own" ticked: the three cuirasses).
+
+## 2026-11-04: the Shared Vault for a former member's grace month (`2026.11.04b`)
+
+Henrik, for AscensionXI's Group Ironman onboarding: a member who leaves or is
+removed keeps one month in which they "will be able to hand over valuable
+things to the group": add to the Shared Vault and the group pool, but not
+take. The server change is AscensionXI's (`documentation/custom/
+group-ironman-onboarding.md`); this is the tab's half.
+
+- **The server says so in two places**, both read only when present, so an
+  older server is a member as before. The vault HELLO's shelf tail gains a
+  Flags byte at offset 32 (bit 0 ADD_ONLY), and SV_CHANGED's byte 9 (it was
+  reserved) carries the same bit. `setShelfGroup` keeps it beside the group:
+  the tab stays, and `vc.shelfAddOnly()` says it is add-only.
+- **The tab**: a line at the top ("You've left this group. For now you can
+  still share gear with it, but you can't take any."), and each row's Take
+  drawn dim with a tooltip instead of a button. Sharing from the Vault tab
+  and the wardrobe list works as before.
+- **Taking is refused before the wire**: `requestShelfTake` returns false
+  while add-only. The server refuses it too (NOT_IN_GROUP), which would hide
+  the tab (SV18), so this keeps the tab from flickering on a stray click.
+- A push without the flag lifts it (rejoined); InGroup 0 hides the tab and
+  clears it (the month ran out, or the group closed).
+- Tests: `tests/gearvault_shared.lua` 222 -> 234 (SC38-SC42, SG11-SG17), each
+  made to fail once (the HELLO flag ignored, the push flag ignored, the take
+  not gated); run_tests 7953 and smoke_ui 1772 unchanged and green.
+- Owed: the in-game round with a former member on a local shard, and the AXI
+  catalog pin after this merges.

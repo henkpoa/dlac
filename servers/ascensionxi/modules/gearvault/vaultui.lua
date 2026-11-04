@@ -2077,6 +2077,12 @@ function M.render(job, level)
     end
     local function renderSharedTab()
         vc.noteShelfView();
+        local addOnly = type(vc.shelfAddOnly) == 'function' and vc.shelfAddOnly();
+        if addOnly then
+            imgui.TextColored(cGOLD, 'You\'ve left this group.');
+            imgui.SameLine(0, 8);
+            imgui.TextColored(cDIM, 'For now you can still share gear with it, but you can\'t take any.');
+        end
         local members = svm.memberLine();
         if members ~= '' then
             imgui.TextColored(cDIM, esc('Your group: ' .. members));
@@ -2112,6 +2118,14 @@ function M.render(job, level)
                     end,
                     buttons = function(hot, b1, b2)
                         imgui.SameLine(b2);
+                        if addOnly then
+                            imgui.TextColored(cDIM, 'Take');
+                            if imgui.IsItemHovered() then
+                                hot();
+                                imgui.SetTooltip('You left this group: you can share with it for a while, but not take.');
+                            end
+                            return;
+                        end
                         if svm.isTaking(e.rowId) then
                             imgui.TextColored(cDIM, 'Taking...');
                         elseif svm.busy() then

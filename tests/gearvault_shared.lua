@@ -87,10 +87,11 @@ local function reply(payload, flags)
 end
 
 local FULL = 1 + 2 + 4 + 8 + 32;   -- instances, atomic add, push, stream, SHELF
-local function hello(caps, count, rev, group, shelfRev, shelfCount)
+local function hello(caps, count, rev, group, shelfRev, shelfCount, shelfFlags)
     local p = w16(1) .. w16(caps) .. w32(count or 0) .. string.char(15, 62, 62, 0) .. w32(rev or 10)
         .. string.char(13, 12, 41, 30);
     if group ~= nil then p = p .. w32(group) .. w32(shelfRev or 0) .. w32(shelfCount or 0); end
+    if group ~= nil and shelfFlags ~= nil then p = p .. string.char(shelfFlags, 0, 0, 0); end
     return p;
 end
 local function listRow(rowId, item, qty, inst)
@@ -117,9 +118,9 @@ local function putAck(code, jobs, wardrobe, shelfRowId, rev)
     return w16(code) .. string.char(#(jobs or {}), wardrobe and 1 or 0) .. w32(shelfRowId or 0) .. w32(rev or 0) .. j;
 end
 local function takeAck(code, vaultRowId, rev) return w16(code) .. w16(0) .. w32(vaultRowId or 0) .. w32(rev or 0); end
-local function svPush(rev, count, inGroup, group)
+local function svPush(rev, count, inGroup, group, shelfFlags)
     return { op = vc.op.SV_CHANGED, seq = 0, status = 0, flags = 0,
-             payload = w32(rev) .. w32(count or 0) .. string.char(inGroup and 1 or 0, 0, 0, 0) .. w32(group or 0) };
+             payload = w32(rev) .. w32(count or 0) .. string.char(inGroup and 1 or 0, shelfFlags or 0, 0, 0) .. w32(group or 0) };
 end
 local function zoneOut(state) vc.noteZoneOut(state or vc.LOGOUT_ZONECHANGE); end
 local function loaded() vc.noteItemSame(0); vc.noteItemSame(0); vc.noteItemSame(1); end
@@ -131,7 +132,7 @@ local function answer()
     local p = vc._st().pending;
     if p == nil or p.sentAt == nil then return false; end
     if p.op == vc.op.HELLO then
-        frame(0, 0, hello(srv.caps or FULL, #srv.rows, srv.rev, srv.group, srv.shelfRev, #srv.shelf));
+        frame(0, 0, hello(srv.caps or FULL, #srv.rows, srv.rev, srv.group, srv.shelfRev, #srv.shelf, srv.shelfFlags));
     elseif p.op == vc.op.LIST2 then
         local r = {};
         for _, x in ipairs(srv.rows) do r[#r + 1] = listRow(x[1], x[2]); end
@@ -244,6 +245,11 @@ local pc = vc.parseShelfChanged(svPush(12, 4, true, 7).payload) or {};
 check('SC36 SV_CHANGED: Rev, count, InGroup, GroupId',
     pc.revision == 12 and pc.count == 4 and pc.inGroup == true and pc.groupId == 7, true);
 check('SC37 ...a short push is refused', vc.parseShelfChanged(w32(1)), nil);
+check('SC38 a HELLO with the flags byte reads ADD_ONLY', (vc.parseHello(hello(FULL, 3, 10, 7, 42, 5, 1)) or {}).addOnly, true);
+check('SC39 ...a flags byte of 0 is not add-only', (vc.parseHello(hello(FULL, 3, 10, 7, 42, 5, 0)) or {}).addOnly, false);
+check('SC40 ...and a HELLO without it (an older server) is not add-only', (vc.parseHello(hello(FULL, 3, 10, 7, 42, 5)) or {}).addOnly, false);
+check('SC41 SV_CHANGED reads ADD_ONLY from byte 9', (vc.parseShelfChanged(svPush(12, 4, true, 7, 1).payload) or {}).addOnly, true);
+check('SC42 ...and 0 there is not add-only', pc.addOnly, false);
 
 -- ===========================================================================
 -- SH: the HELLO request subscribes to SV_CHANGED (word @2, bit 1)
@@ -303,6 +309,25 @@ check('SG10 a push cannot open the tab on a server whose HELLO did not offer the
 boot({ caps = 1 + 2 + 4 + 8 });
 vc.onFrame(svPush(5, 0, true, 7));
 check('SG10a ...nor on an older server', vc.shelfAvailable(), false);
+
+-- A former member inside their grace month (AXI group-ironman-onboarding.md):
+-- the tab stays, add-only -- sharing works, taking is never sent.
+boot({});
+srv.shelfFlags = 1;
+vc.markStale(0, 'test'); settle(20);
+check('SG11 a HELLO with ADD_ONLY keeps the tab', vc.shelfAvailable(), true);
+check('SG12 ...add-only', vc.shelfAddOnly(), true);
+check('SG13 ...a take is refused before the wire', vc.requestShelfTake({ shelfRowId = 1 }, function() end), false);
+check('SG14 ...a share is still offered', vc.requestShelfPut({ vaultRowId = 1 }, function() end), true);
+srv.shelfFlags = nil;
+boot({});
+vc.onFrame(svPush(5, 0, true, 7, 1));
+check('SG15 an SV_CHANGED with ADD_ONLY makes a member add-only (left mid-session)', vc.shelfAddOnly(), true);
+vc.onFrame(svPush(6, 0, true, 7, 0));
+check('SG16 ...and one without it lifts it (back in the group)', vc.shelfAddOnly(), false);
+vc.onFrame(svPush(7, 0, true, 7, 1));
+vc.onFrame(svPush(8, 0, false, 0, 1));
+check('SG17 InGroup 0 hides the tab and clears add-only', vc.shelfAvailable() or vc.shelfAddOnly(), false);
 
 -- ===========================================================================
 -- SW: PUT and TAKE are writes -- the replay window, the same seq, never a
