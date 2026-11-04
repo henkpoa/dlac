@@ -2009,13 +2009,19 @@ stays the hard backstop.
 **Fresh installs: full auto-setup, no Setup interaction ever (issue #91).** Once
 `firstRunInit` has resolved and native mode is on, the login/job beat calls
 `setupui.autoSetupNative`: when this character+job's baseline is missing it is
-created **automatically and fully silently** — storage + gear inventory + the four base
+created **automatically** — storage + gear inventory + the four base
 sets + starter triggers (the `setupNative` content, per job, idempotent, never
-clobbering). No chat on success (Henrik, post-field-confirm: the player is told
-nothing about first runs, engines, or scanning — the gear inventory auto-syncs
-from bags); only a FAILURE names itself, once. No red Migrate button, no popup,
+clobbering). A brand-new PROFILE (no storage pointer before the beat) says one
+line when its seed completes: `New profile created -- your gear, sets and
+triggers live in config\addons\dlac\<char>\.` (Henrik, 2026-11-04: first boot
+printed "cannot read gear.lua" errors instead). Otherwise no chat on success
+(Henrik, post-field-confirm: the player is told nothing about engines or
+scanning — the gear inventory auto-syncs from bags); a FAILURE names itself,
+once. The auto-sync waits for gear.lua (`gearimport.sync` is a no-op while the
+file is missing, so it never stages into nothing), and the seed that writes
+gear.lua kicks it (`syncflags.invDirty(1.0)`). No red Migrate button, no popup,
 no Commit for new users, ever. A later login
-on a NEW job auto-seeds that job's starters the same way. HARD GATES: never in
+on a NEW job auto-seeds that job's starters the same way, silently. HARD GATES: never in
 legacy mode; never before `firstRunInit` resolves; never for a not-ready job
 (`jobFile()` returns nil until `GetMainJob` settles — id-0 `NON` never seeds, hard
 rule 11). A persistent write failure names itself in status/chat **once** and is

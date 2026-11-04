@@ -968,6 +968,13 @@ local function refreshGear()
             if d ~= nil then path = d .. 'gear.lua'; end
         end);
         if path == nil then return; end   -- purge Phase 4: native home only
+        -- No file yet is a brand-new character, not a broken one: first-run
+        -- setup seeds it on the next storage beat, and until then the bundled
+        -- empty template IS the inventory. Only a file that exists and will not
+        -- parse is worth a line.
+        local fh = io.open(path, 'r');
+        if fh == nil then return; end
+        fh:close();
         local chunk, lerr = loadfile(path);
         if chunk == nil then print('[dlac] reload: gear.lua will not parse: ' .. tostring(lerr)); return; end
         local ok, g = pcall(chunk);

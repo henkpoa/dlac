@@ -353,7 +353,8 @@ end
 -- native flag, silently create this character+job's baseline the moment it is
 -- missing -- storage, gear inventory, the four base sets, starter triggers (the
 -- setupNative content, per job, idempotent, never clobbering) -- so a new player
--- never touches Setup. Called on the login/job beat (dlac.lua maintainStorage).
+-- never touches Setup; a brand-new profile gets one "New profile created" line.
+-- Called on the login/job beat (dlac.lua maintainStorage).
 -- HARD GATES: never for a not-ready job (D.jobFile() returns nil until
 -- GetMainJob settles -- hard rule 11, so id-0 'NON' never seeds). A persistent
 -- disk failure NAMES itself once and is retried next beat -- it is never
@@ -378,11 +379,24 @@ setup.autoSetupNative = function()
     end
     -- Missing -> seed it. Every helper checks-then-writes, so this is safe to run
     -- every beat and re-run after a partial failure; nothing is ever overwritten.
+    -- A new PROFILE is asked first: ensureStorage writes the pointer, and the
+    -- pointer is what every creator writes (a migrated character arrives with
+    -- one, so engineAutoMigrate's copy never counts as new). Held until the
+    -- seed completes, so a beat that fails half-way still announces later.
     pcall(function()
         local prof = require('dlac\\profiles');
+        if type(prof) == 'table' and type(prof.storageExists) == 'function' and prof.storageExists() ~= true then
+            setup._newProfile = true;
+        end
         if type(prof) == 'table' and type(prof.ensureStorage) == 'function' then prof.ensureStorage(); end
     end);
-    local _, gearWhy = seedGearFile(base);
+    local gearWritten, gearWhy = seedGearFile(base);
+    -- The auto-sync skips while there is no gear.lua (gearimport.sync), so read
+    -- the bags into the fresh one now -- not at the next inventory packet, which
+    -- may be an hour away for a player who just stands in town.
+    if gearWritten then
+        pcall(function() require('dlac\\gear\\syncflags').invDirty(1.0); end);
+    end
     local _, setsWhy = setup.seedSetsFile(base, abbr);
     local _, trigWhy = setup.seedTriggersFile(base, abbr);
     pcall(function() require('dlac\\gear\\profilesets').invalidate(); end);
@@ -412,10 +426,21 @@ setup.autoSetupNative = function()
     end
     setup.lastSeedFail = nil;
     setup._autoWarned[abbr] = nil;
-    -- A successful seed is SILENT (Henrik, 07-23, post-field-confirm: the
-    -- player is not told about first runs, engines, or scanning -- the gear
-    -- inventory auto-syncs from bags and everything just works). Only the
-    -- failure above speaks, once, because a broken seed must name itself.
+    -- A new job's seed is SILENT (Henrik, 07-23, post-field-confirm: the player
+    -- is not told about engines or scanning -- the gear inventory auto-syncs
+    -- from bags and everything just works). A new PROFILE says one line (Henrik,
+    -- 2026-11-04: first boot printed "cannot read gear.lua" errors instead --
+    -- "say new profile created or something, just feels more natural").
+    if setup._newProfile then
+        setup._newProfile = nil;
+        local folder = nil;
+        pcall(function() folder = tostring(D.dataDir()):match('([^\\]+)\\*$'); end);
+        local m = 'New profile created'
+            .. (folder ~= nil and (' -- your gear, sets and triggers live in config\\addons\\dlac\\' .. folder .. '\\') or '')
+            .. '.';
+        D.status(m);
+        pcall(function() print('[dlac] ' .. m); end);
+    end
     return 'seeded';
 end
 

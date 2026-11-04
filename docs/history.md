@@ -11881,3 +11881,36 @@ group-ironman-onboarding.md`); this is the tab's half.
   not gated); run_tests 7953 and smoke_ui 1772 unchanged and green.
 - Owed: the in-game round with a former member on a local shard, and the AXI
   catalog pin after this merges.
+
+## 2026-11-04: a new character's first login says "New profile created" (`2026.11.04c`)
+
+Henrik's screenshot of a brand-new AscensionXI character's first login: three
+red-looking lines, `reload: gear.lua will not parse: cannot open
+...\Allesnormales_13\gear.lua: No such file or directory` and `commit: cannot
+read gear.lua.` twice. "Instead of throwing errors, maybe have a check to see
+if profile is new and say new profile created or something? Just feels more
+natural."
+
+- **The cause was ORDER, not a broken file.** The flags loader re-reads gear.lua
+  on the first frame the character is known (the reload line); the auto-sync
+  runs ~2s after the job settles and again after the zone-in packet flood. Both
+  beat first-run setup, which seeds gear.lua on the ~5s storage beat. So the
+  sync compared the bags against the empty bundled template, called everything
+  new, staged it, and failed the commit, which is why the reload line came back
+  each time.
+- **The sync now waits.** `gearimport.sync` is a no-op while gear.lua is missing
+  (nothing staged, nothing said), and `refreshGear` in gearui says nothing about
+  a file that is not there; a file that exists and will not parse still prints.
+- **The seed kicks the sync.** `autoSetupNative` calls `syncflags.invDirty(1.0)`
+  on the beat that writes gear.lua, so the bags go in a second later rather than
+  at the next inventory packet.
+- **One line for a new profile.** "New profile" = no storage pointer before the
+  beat (a migrated character arrives with one, so it never counts). The flag is
+  held until the seed completes, so a beat that fails half-way announces on the
+  beat that finishes. A new job on an existing character stays silent, as the
+  07-23 ruling had it.
+- Tests: run_tests 7975 -> 7995 (NO41a-NO41p, FB1-FB4), seven mutants all killed
+  (the sync guard, the kick, the flag never set / not held / not cleared, an
+  announcement on every seed, the folder dropped from the line); smoke_ui 1772
+  unchanged.
+- Owed: an in-game first login on a fresh character.

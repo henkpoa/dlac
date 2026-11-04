@@ -17652,10 +17652,107 @@ end)();
     check('NO41 ...and says migration is automatic now',
           type(msg) == 'string' and msg:find('automatic', 1, true) ~= nil, true);
 
+    -- --- FIRST BOOT (Henrik, 2026-11-04): a brand-new character printed
+    -- "commit: cannot read gear.lua" twice, because the auto-sync ran before this
+    -- seed made the file. The sync now waits (FB1-FB4), the seed kicks it the
+    -- moment gear.lua lands, and a new PROFILE says one line instead. ---
+    do
+        local kicked, said = nil, {};
+        local savedSF = package.loaded['dlac\\gear\\syncflags'];
+        package.loaded['dlac\\gear\\syncflags'] = { invDirty = function(d) kicked = d; end };
+        local savedEnsure2 = prof.ensureStorage;
+        prof.ensureStorage = function() storageOn = true; return true; end   -- the pointer write
+        deps.status = function(s) said[#said + 1] = s; end
+        setup.configure(deps);
+
+        -- brand-new character: no pointer, no gear.lua
+        curAbbr = 'WHM'; storageOn = false; writes = {};
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+        check('NO41a a brand-new character seeds',           setup.autoSetupNative(), 'seeded');
+        check('NO41b ...says "New profile created" once',
+              #said == 1 and said[1]:find('New profile created', 1, true) ~= nil, true);
+        check('NO41c ...naming the folder it lives in',
+              said[1] ~= nil and said[1]:find('config\\addons\\dlac\\Mindie_12345\\', 1, true) ~= nil, true);
+        check('NO41d ...and kicks the gear sync at the fresh gear.lua', kicked, 1.0);
+
+        -- a new job on that character: silent, and no kick (gear.lua was there)
+        said, kicked = {}, nil; curAbbr = 'BLM';
+        check('NO41e a new job on it seeds',                 setup.autoSetupNative(), 'seeded');
+        check('NO41f ...silently',                           #said, 0);
+        check('NO41g ...with no sync kick',                  kicked, nil);
+        curAbbr = 'WHM';
+
+        -- an existing profile that lost its gear.lua: refilled and kicked, not "new"
+        said, kicked = {}, nil; storageOn = true;
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+        check('NO41h an old profile missing gear.lua seeds', setup.autoSetupNative(), 'seeded');
+        check('NO41i ...is not called a new profile',        #said, 0);
+        check('NO41j ...but still kicks the sync',           kicked, 1.0);
+
+        -- the first beat fails half-way (pointer written, sets not): the
+        -- announcement waits for the beat that completes, not the one that began
+        said, kicked = {}, nil; storageOn = false; setup._autoWarned = {};
+        disk = { ['I:\\game\\addons\\dlac\\gear.lua'] = 'return {}\n' };
+        local prevWrite = deps.writeFileText;
+        deps.writeFileText = function(p, c)
+            if p:find('sets\\', 1, true) then return false; end
+            return prevWrite(p, c);
+        end
+        setup.configure(deps);
+        check('NO41k a half-way first beat fails',           setup.autoSetupNative(), 'failed');
+        check('NO41l ...and does not claim a new profile',
+              said[1] ~= nil and said[1]:find('New profile', 1, true) == nil, true);
+        deps.writeFileText = prevWrite; setup.configure(deps); said = {};
+        check('NO41m the retry completes the seed',          setup.autoSetupNative(), 'seeded');
+        check('NO41n ...and THAT beat says "New profile created"',
+              #said == 1 and said[1]:find('New profile created', 1, true) ~= nil, true);
+        said = {};
+        check('NO41o the next beat is quiet again',          setup.autoSetupNative(), 'complete');
+        check('NO41p ...no second announcement',             #said, 0);
+
+        package.loaded['dlac\\gear\\syncflags'] = savedSF;
+        prof.ensureStorage = savedEnsure2;
+        deps.status = function() end;
+        setup.configure(deps);
+    end
+
     prof.engineMigrateStorage, prof.setNativeMode = savedMig, savedSet;
     prof.nativeMode, prof.ensureStorage, prof.storageExists = savedNative, savedEnsure, savedExists;
     prof.setsPath, prof.triggersPath, prof.dataDir = savedSetsP, savedTrigP, savedDataDir;
     os.execute, AshitaCore = savedExec, savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
+-- FB1+. The auto-sync waits for a new character's gear.lua (Henrik, 2026-11-04).
+-- First boot staged every item and failed the commit with "cannot read
+-- gear.lua", because the sync ran before first-run setup seeded the file. A
+-- missing file is now a quiet "not yet"; setup kicks the sync when it lands
+-- (NO41d). A real file under tests\ (gearimport reads with io.open), removed
+-- at section end.
+-- ---------------------------------------------------------------------------
+(function()
+    local prof = package.loaded['dlac\\profiles'];
+    local savedDataDir = prof.dataDir;
+    local savedScan, savedStage, savedCommit = gearimport.scan, gearimport.stage, gearimport.commit;
+    local home = 'tests' .. string.char(92) .. 'fb_';   -- gearPath() = home .. 'gear.lua'
+    local gpath = home .. 'gear.lua';
+    prof.dataDir = function() return home; end
+    local calls = {};
+    gearimport.scan   = function() return { { Name = 'Bronze Cap', Known = false } }; end
+    gearimport.stage  = function() calls[#calls + 1] = 'stage'; end
+    gearimport.commit = function() calls[#calls + 1] = 'commit'; end
+
+    os.remove(gpath);
+    check('FB1 no gear.lua yet -> the sync adds nothing', gearimport.sync(), 0);
+    check('FB2 ...and stages/commits nothing (no "cannot read gear.lua")', #calls, 0);
+
+    local f = io.open(gpath, 'w'); f:write('return {}\n'); f:close();
+    check('FB3 once setup seeds it, the same sync adds the bags', gearimport.sync(), 1);
+    check('FB4 ...through stage then commit', table.concat(calls, ','), 'stage,commit');
+    os.remove(gpath);
+
+    gearimport.scan, gearimport.stage, gearimport.commit = savedScan, savedStage, savedCommit;
+    prof.dataDir = savedDataDir;
 end)();
 
 -- ---------------------------------------------------------------------------
