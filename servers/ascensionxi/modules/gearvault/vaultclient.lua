@@ -271,7 +271,10 @@ end
 -- HELLO S2C: { proto, vaultCount, maxList, maxDeposit, maxWithdraw, caps... } or nil.
 -- With SHELF, bytes 20..31 are { u32 GroupId (0 = not in a group); u32
 -- VaultRev (the shelf's counter); u32 ShelfCount }. A reply too short for
--- them offers no shelf; the vault fields read as before either way.
+-- them offers no shelf; the vault fields read as before either way. Byte 32,
+-- when the server sends it, is the shelf's Flags: bit 0 ADD_ONLY, a former
+-- member inside their grace month, who may share but not take (AXI
+-- group-ironman-onboarding.md). An older server sends no byte 32.
 function M.parseHello(payload)
     if type(payload) ~= 'string' or #payload < 12 then return nil; end
     local caps = u16(payload, 2);
@@ -283,6 +286,7 @@ function M.parseHello(payload)
         groupId    = shelfTail and u32(payload, 20) or 0,
         shelfRev   = shelfTail and u32(payload, 24) or nil,
         shelfCount = shelfTail and u32(payload, 28) or nil,
+        addOnly    = (shelfTail and #payload >= 33 and u8(payload, 32) % 2 == 1) or false,
         caps = caps,
         instances = instances, revision = instances and u32(payload, 12) or nil,
         atomicInstanceAdd = instances and has(caps, M.cap.ATOMIC_ADD),
@@ -1470,11 +1474,12 @@ function M.parseShelfMembers(payload)
 end
 
 -- SV_CHANGED S2C push (seq 0): { u32 Rev; u32 ShelfCount; u8 InGroup; u8
--- Rsvd[3]; u32 GroupId }.
+-- Flags (bit 0 ADD_ONLY, as in HELLO; 0 from an older server); u8 Rsvd[2];
+-- u32 GroupId }.
 function M.parseShelfChanged(payload)
     if type(payload) ~= 'string' or #payload < 16 then return nil; end
     return { revision = u32(payload, 0), count = u32(payload, 4),
-        inGroup = u8(payload, 8) ~= 0, groupId = u32(payload, 12) };
+        inGroup = u8(payload, 8) ~= 0, addOnly = u8(payload, 9) % 2 == 1, groupId = u32(payload, 12) };
 end
 
 -- What the tab reads. rows: { rowId, itemId, instanceId, sharedBy, identity }
@@ -1490,6 +1495,12 @@ M.shelf = emptyShelf();
 function M.shelfAvailable()
     return not st.dormant and not st.unattuned and not st.svOff and M.limits ~= nil
         and M.limits.shelf == true and (st.svGroupId or 0) ~= 0;
+end
+
+-- A former member inside their grace month: the tab shows, sharing works,
+-- taking does not (the server refuses it too).
+function M.shelfAddOnly()
+    return M.shelfAvailable() and st.svAddOnly == true;
 end
 
 local function shelfOpen(now)
@@ -1559,11 +1570,12 @@ local function shelfDoubt(now)
 end
 
 -- Where the server says the character stands: in group `groupId` (0 = in
--- none), its shelf at `rev` holding `count`. Leaving hides the tab and
--- forgets the shelf; a different group's shelf is not this one.
-local function setShelfGroup(groupId, rev, count, now)
+-- none), its shelf at `rev` holding `count`, add-only or not. Leaving hides
+-- the tab and forgets the shelf; a different group's shelf is not this one.
+local function setShelfGroup(groupId, rev, count, now, addOnly)
     groupId = groupId or 0;
     local was = st.svGroupId or 0;
+    st.svAddOnly = groupId ~= 0 and addOnly == true;
     if groupId == 0 then
         st.svGroupId = 0;
         if was ~= 0 then shelfCancelQueued('not_in_group'); shelfForget(); end
@@ -1578,7 +1590,7 @@ end
 
 function noteShelfHello(h, now)
     if h.shelf then
-        setShelfGroup(h.groupId, h.shelfRev, h.shelfCount, now);
+        setShelfGroup(h.groupId, h.shelfRev, h.shelfCount, now, h.addOnly);
     elseif (st.svGroupId or 0) ~= 0 then
         setShelfGroup(0, nil, nil, now);   -- this server offers no shelf (any more)
     end
@@ -1597,9 +1609,9 @@ function onShelfPush(f, now)
         noteWhy('ate an unreadable Shared Vault push', now);
         return true;
     end
-    st.svLastPush = { at = now, revision = c.revision, inGroup = c.inGroup };
+    st.svLastPush = { at = now, revision = c.revision, inGroup = c.inGroup, addOnly = c.addOnly };
     if st.dormant or st.unattuned or st.svOff then return true; end
-    setShelfGroup(c.inGroup and c.groupId or 0, c.revision, c.count, now);
+    setShelfGroup(c.inGroup and c.groupId or 0, c.revision, c.count, now, c.addOnly);
     return true;
 end
 
@@ -1635,7 +1647,7 @@ end
 -- Take ONE piece from the shelf into the own vault: e = { shelfRowId, itemId }.
 -- onDone(ack, err) as for a share (ack = parseShelfTakeAck's table).
 function M.requestShelfTake(e, onDone)
-    if not M.shelfAvailable() or M.shelfBusy() or type(e) ~= 'table' then return false; end
+    if not M.shelfAvailable() or M.shelfAddOnly() or M.shelfBusy() or type(e) ~= 'table' then return false; end
     local rowId = math.floor(tonumber(e.shelfRowId) or 0);
     if rowId <= 0 then return false; end
     st.shelfWriteQ = { {
