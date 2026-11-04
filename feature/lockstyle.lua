@@ -456,8 +456,46 @@ local function ownsLook(rec)
     return not ok or own ~= false;
 end
 
+-- The search box matches the FULL item name too (Henrik, 11-04: "iron musket"
+-- found none of the Iron Musketeer's set). The game shortens long names --
+-- "Irn.Msk. Armet", "I.M. Cuirass +1" -- and gear.lua and the catalog both
+-- carry only the short one. The full name is the client's log name ("Iron
+-- Musketeer's cuirass +1"), read by Id from the item resources, so it is the
+-- same on every server. Resources are immutable for the session: an Id pays
+-- GetItemById once, ever (a nil resource is not remembered). A catalog browse
+-- can meet thousands of new Ids on its first keystroke (Main is 3749 rows), so
+-- one call resolves at most FULL_BUDGET of them; the rest match by short name
+-- until a later frame reaches them. Apostrophes drop out of both sides:
+-- "musketeers" finds "musketeer's", and the catalog's "Arhats Gi" answers a
+-- typed "arhat's".
+local FULL_BUDGET = 300;
+M._FULL_BUDGET = FULL_BUDGET;   -- test seam
+local _fullById = {};           -- item id -> normalized log name ('' = none)
+local function norm(s) return (string.lower(s):gsub("'", '')); end
+local function fullNameOf(id, budget)
+    local nm = _fullById[id];
+    if nm ~= nil or budget[1] <= 0 then return nm; end
+    budget[1] = budget[1] - 1;
+    pcall(function()
+        local res = AshitaCore:GetResourceManager():GetItemById(id);
+        if res == nil then return; end
+        local ln = res.LogNameSingular ~= nil and res.LogNameSingular[1] or nil;
+        nm = (type(ln) == 'string') and norm(ln) or '';
+    end);
+    if nm ~= nil then _fullById[id] = nm; end
+    return nm;
+end
+
+local function nameHit(rec, nq, budget)
+    if nq == '' or string.find(norm(rec.Name), nq, 1, true) ~= nil then return true; end
+    local id = tonumber(rec.Id);
+    local full = (id ~= nil) and fullNameOf(id, budget) or nil;
+    return full ~= nil and string.find(full, nq, 1, true) ~= nil;
+end
+
 local function listFor(slot, q, all, jobLevels)
     local out = {};
+    local nq, budget = norm(q or ''), { FULL_BUDGET };
     -- v47: only offer gear ONE of your jobs can wear at its CURRENT level
     -- (canEquipItemOnAnyJob). nil jobLevels (pre-login / no jobgate) FAILS OPEN.
     local function gateOk(rec)
@@ -468,7 +506,7 @@ local function listFor(slot, q, all, jobLevels)
             if type(rec) == 'table' and type(rec.Name) == 'string'
                and (pred == nil or pred(rec))
                and gateOk(rec) and ownsLook(rec)
-               and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
+               and nameHit(rec, nq, budget) then
                 out[#out + 1] = rec;
             end
         end
@@ -479,7 +517,7 @@ local function listFor(slot, q, all, jobLevels)
                 if (rec.Slot == slot or (slot == 'Sub' and rec.Slot == 'Main' and is1H(rec)))
                    and type(rec.Name) == 'string' and hasLook(rec)
                    and gateOk(rec)
-                   and (q == '' or string.find(string.lower(rec.Name), q, 1, true) ~= nil) then
+                   and nameHit(rec, nq, budget) then
                     out[#out + 1] = rec;
                 end
             end
@@ -813,6 +851,10 @@ local function renderPicker()
     imgui.SameLine(0, 8);
     imgui.PushItemWidth(150);
     imgui.InputText('##lssearch', ui.pick, 32);
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip("Search by name: the short one the game shows (Irn.Msk. Armet)\n"
+            .. "or the full one (Iron Musketeer's armet).");
+    end
     imgui.PopItemWidth();
     -- The browse toggle lives HERE, not in the window's button column: this list
     -- is the only thing it changes, and this is where you notice the piece you

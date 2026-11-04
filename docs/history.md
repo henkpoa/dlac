@@ -11824,6 +11824,36 @@ Trance, Afflatus Solace, Afflatus Ward, Fury and Guard for PLD etc."
 - Owed: the in-game round (steps in the PR), the AXI generator PR, and the
   DLAC wiki text into the AXI ledger with the next pin PR.
 
+## 2026-11-04: the lockstyle picker finds the full item name (`2026.11.04a`)
+
+Henrik's brother could not lockstyle the Iron Musketeer's set (NQ, +1, +2).
+Henrik: "It has abbreviations, so might be a double problem?" It was. The
+game shortens long names, and gear.lua and both catalogs carry only the short
+one: "Irn.Msk. Armet", "I.M. Cuirass +1". Searching "iron musket" found
+nothing on either server. The other half is the v47 job gate. The set is
+WAR/PLD/DRK, Lv40-52, and the server renders a style only when one of your
+jobs can wear the piece now, so the picker hides it the same way.
+
+- **The search matches the full name too.** It is the client's log name
+  ("Iron Musketeer's cuirass +1"), read by Id from the item resources, so it is
+  the same on every server. Each Id pays `GetItemById` once per session (a nil
+  resource is asked again). One `listFor` call resolves at most
+  `FULL_BUDGET` (300) new Ids. A first keystroke over Main's 3749 catalog rows
+  spreads over a few frames instead of one hitch. The gate runs before the
+  name, so gated rows cost no lookups.
+- Apostrophes drop out of both sides: "musketeers" finds "musketeer's", and
+  CEXI's apostrophe-less "Arhats Gi" answers a typed "arhat's".
+- The search box has a hover that says both names work.
+- **Not changed:** the v47 gate. The brother's agent also lifted it for
+  "Show gear I don't own", so unwearable pieces could be previewed. That
+  reverses Henrik's 07-20 ruling, and it is his call.
+- Tests: run_tests 7953 -> 7975 (ANF1-ANF22). The fixture names, Ids, levels
+  and models come from both catalogs; the log names were read out of the
+  game's item DAT (ROM/118/109.DAT). Twelve fail on main's lockstyle.lua.
+  Three mutants (no cache, no budget spend, name before gate) each fail.
+- Owed: the in-game check (search "iron musket" in Body with "Show gear I
+  don't own" ticked: the three cuirasses).
+
 ## 2026-11-04: the Shared Vault for a former member's grace month (`2026.11.04a`)
 
 Henrik, for AscensionXI's Group Ironman onboarding: a member who leaves or is

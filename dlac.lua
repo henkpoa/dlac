@@ -487,7 +487,11 @@ addon.version = '2026.11.04a';  -- date of the last shipped change (Ashita print
                                 --  AscensionXI's pet stats in the catalog;
                                 --  Stance Gates in the Behaviour popup: a
                                 --  piece worn only while Composure, Divine
-                                --  Guard ... is on you)
+                                --  Guard ... is on you;
+                                --  11.04a = the lockstyle picker's search
+                                --  finds the full item name too: "iron
+                                --  musket" finds Irn.Msk. Armet and I.M.
+                                --  Cuirass +1)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
