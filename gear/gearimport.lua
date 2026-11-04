@@ -2213,9 +2213,16 @@ end
 -- are only ever added, never removed -- removal stays /dl prune's job, on explicit command.
 -- Safe to call often -- commit is parse-validated + backed up, and this is silent whenever
 -- there's nothing to add.
+-- No gear.lua at all = a brand-new character whose first-run setup has not made
+-- the inventory yet (setupui.autoSetupNative, on the next storage beat). Waiting
+-- is the whole answer: setup kicks a sync the moment it seeds the file. Going on
+-- staged every item and failed the commit with "cannot read gear.lua" -- twice,
+-- on every new character's first login (Henrik, 2026-11-04).
 function M.sync()
     local added = 0;
     pcall(function()
+        local gpath = gearPath();
+        if gpath == nil or readFile(gpath) == nil then return; end
         local items = M.scan();
         if type(items) ~= 'table' then return; end
         local newCount = 0;
