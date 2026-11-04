@@ -11854,7 +11854,7 @@ jobs can wear the piece now, so the picker hides it the same way.
 - Owed: the in-game check (search "iron musket" in Body with "Show gear I
   don't own" ticked: the three cuirasses).
 
-## 2026-11-04: the Shared Vault for a former member's grace month (`2026.11.04a`)
+## 2026-11-04: the Shared Vault for a former member's grace month (`2026.11.04b`)
 
 Henrik, for AscensionXI's Group Ironman onboarding: a member who leaves or is
 removed keeps one month in which they "will be able to hand over valuable
