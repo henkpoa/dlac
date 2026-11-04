@@ -4772,6 +4772,126 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- ANF. lockstyle picker search -- the FULL item name (Henrik, 11-04)
+--     The game shortens long names, and gear.lua and the catalog carry only the
+--     short one: the Iron Musketeer's set is "Irn.Msk. Armet" / "I.M. Cuirass
+--     +1", so "iron musket" found nothing on either server. The full name is the
+--     client's log name, read by Id. Fixture: Names, Ids, Levels, Models and Jobs
+--     copied from the two catalogs (AXI keeps "Arhat's Gi", CEXI says "Arhats
+--     Gi"); log names read out of the game's item DAT (ROM/118/109.DAT, 11-04).
+-- ---------------------------------------------------------------------------
+(function()
+    local savedGear, savedAC = package.loaded['dlac\\gear'], _G.AshitaCore;
+    local IMJ, ARJ = { 'WAR', 'PLD', 'DRK' }, { 'MNK', 'SAM', 'NIN' };
+    local GEAR = {
+        NameToObject = {},
+        Head = { IrnMskArmet = { Name = 'Irn.Msk. Armet', Id = 12422, Level = 40, Jobs = IMJ } },
+        Body = { ArhatsGi    = { Name = "Arhat's Gi",     Id = 13795, Level = 64, Jobs = ARJ } },
+    };
+    local CAT = {
+        { Name = 'Irn.Msk. Cuirass', Id = 12550, Level = 50, Slot = 'Body', Model = 25, Jobs = IMJ },
+        { Name = 'I.M. Cuirass +1',  Id = 14342, Level = 52, Slot = 'Body', Model = 25, Jobs = IMJ },
+        { Name = 'I.M. Cuirass +2',  Id = 14343, Level = 52, Slot = 'Body', Model = 25, Jobs = IMJ },
+        { Name = 'Arhats Gi',        Id = 13795, Level = 64, Slot = 'Body', Model = 59, Jobs = ARJ },
+    };
+    local LOG = {
+        [12422] = "Iron Musketeer's armet",
+        [12550] = "Iron Musketeer's cuirass",
+        [14342] = "Iron Musketeer's cuirass +1",
+        [14343] = "Iron Musketeer's cuirass +2",
+        [13795] = "arhat's gi",
+    };
+    local asked, askedId = 0, {};
+    local function stubAC()
+        _G.AshitaCore = { GetResourceManager = function() return {
+            GetItemById = function(_, id)
+                asked = asked + 1;
+                askedId[id] = true;
+                if LOG[id] == nil then return nil; end
+                return { Name = { '?' }, LogNameSingular = { LOG[id] } };
+            end } end };
+    end
+    local function fresh(cat)
+        package.loaded['dlac\\gear'] = GEAR;
+        local m = dofile('feature/lockstyle.lua');
+        package.loaded['dlac\\gear'] = savedGear;
+        m.wire{ allEquip = function() return cat or CAT; end, ownedById = function() return nil; end };
+        asked, askedId = 0, {};
+        return m;
+    end
+    local function names(list)
+        local t = {};
+        for _, r in ipairs(list) do t[#t + 1] = r.Name; end
+        table.sort(t);
+        return table.concat(t, ',');
+    end
+    stubAC();
+
+    local ls = fresh();
+    check('ANF1 "iron musket" finds all three cuirasses in the catalog browse',
+        names(ls._listFor('Body', 'iron musket', true)), 'I.M. Cuirass +1,I.M. Cuirass +2,Irn.Msk. Cuirass');
+    check('ANF2 ...and the armet in your own gear',
+        names(ls._listFor('Head', 'iron musket')), 'Irn.Msk. Armet');
+    check('ANF3 the short name still finds them', names(ls._listFor('Body', 'i.m. cuirass', true)),
+        'I.M. Cuirass +1,I.M. Cuirass +2');
+    check('ANF4 a full name with the plus finds just that one',
+        names(ls._listFor('Body', "iron musketeer's cuirass +2", true)), 'I.M. Cuirass +2');
+    check('ANF5 apostrophes drop out: "musketeers" finds "musketeer\'s"',
+        #ls._listFor('Body', 'iron musketeers cuirass', true), 3);
+    check('ANF6 ...and a typed "arhat\'s" finds CEXI\'s apostrophe-less "Arhats Gi"',
+        names(ls._listFor('Body', "arhat's", true)), 'Arhats Gi');
+    check('ANF7 ...and "arhats" finds your "Arhat\'s Gi"', names(ls._listFor('Body', 'arhats')), "Arhat's Gi");
+    check('ANF8 a name that matches nothing still finds nothing', #ls._listFor('Body', 'iron mask', true), 0);
+    local before = asked;
+    ls._listFor('Body', 'iron musket', true);
+    ls._listFor('Body', 'nothing like it', true);
+    check('ANF9 each Id is looked up once, ever (the next frames ask nothing)', asked - before, 0);
+
+    ls = fresh();
+    ls._listFor('Body', '', true);
+    check('ANF10 an empty search looks nothing up', asked, 0);
+    ls._listFor('Body', 'cuirass', true);
+    check('ANF11 a short-name hit looks nothing up',
+        (askedId[12550] or askedId[14342] or askedId[14343]) == true, false);
+    before = asked;
+    check('ANF12 THE GATE COMES FIRST: no WAR/PLD/DRK -> the full name offers none of the set',
+        #ls._listFor('Body', 'iron musket', true, { WHM = 75 }), 0);
+    check('ANF13 ...and spends no lookups on the gated rows', asked - before, 0);
+    check('ANF14 WAR 50 is enough for the NQ, not the +1/+2 (Lv52)',
+        names(ls._listFor('Body', 'iron musket', true, { WAR = 50 })), 'Irn.Msk. Cuirass');
+
+    -- The first keystroke of a big browse: at most FULL_BUDGET lookups per call.
+    local B = ls._FULL_BUDGET;
+    local big = {};
+    for i = 1, 2 * (B or 0) + 50 do
+        LOG[70000 + i] = 'filler full name ' .. i;
+        big[i] = { Name = 'Fil. ' .. i, Id = 70000 + i, Level = 1, Slot = 'Body', Model = 1 };
+    end
+    ls = fresh(big);
+    check('ANF15 FULL_BUDGET is a real bound', type(B) == 'number' and B > 0 and B < #big, true);
+    check('ANF16 one call resolves at most FULL_BUDGET new Ids', #ls._listFor('Body', 'filler full', true), B);
+    check('ANF17 ...and asked for exactly that many', asked, B);
+    ls._listFor('Body', 'filler full', true);
+    check('ANF18 a few frames later the whole list has its full names',
+        #ls._listFor('Body', 'filler full', true), #big);
+
+    -- A nil resource is not remembered: it is asked again next time.
+    ls = fresh({ { Name = 'Lt. Piece', Id = 69999, Level = 1, Slot = 'Body', Model = 1 } });
+    check('ANF19 no resource yet -> no full-name match', #ls._listFor('Body', 'late arrival', true), 0);
+    LOG[69999] = 'late arrival';
+    check('ANF20 ...and the next search asks again and finds it', #ls._listFor('Body', 'late arrival', true), 1);
+
+    -- Headless / no AshitaCore: the short name still works, nothing throws.
+    _G.AshitaCore = nil;
+    ls = fresh();
+    check('ANF21 no AshitaCore: the full-name search finds nothing, without an error',
+        (function() local ok, r = pcall(ls._listFor, 'Body', 'iron musket', true); return ok and #r; end)(), 0);
+    check('ANF22 no AshitaCore: the short name still finds it', #ls._listFor('Body', 'irn.msk', true), 1);
+
+    _G.AshitaCore = savedAC;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- AO. setimport.importStaticSet -- the pure "Copy from static" transform (#15/ADR 0008)
 --
 --   Full-replace: only slots the static DEFINES (and that resolve to >=1 candidate)
