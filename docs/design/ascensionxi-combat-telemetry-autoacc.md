@@ -1,8 +1,34 @@
 # AscensionXI: authoritative combat telemetry and AutoAcc
 
-Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day; weapon skills for 1-Hit WS sets added 2026-10-18 (`2026.10.18a`, engine v173).** Read "Status 2026-10-18" and "Status 2026-10-05" first; the sections after them are the history of the design.
+Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day; weapon skills for 1-Hit WS sets added 2026-10-18 (`2026.10.18a`, engine v173); ranged shots, the not-engaged rule and the settings added 2026-11-06 (`2026.11.06a`, engine v176).** Read "Status 2026-11-06", "Status 2026-10-18" and "Status 2026-10-05" first; the sections after them are the history of the design.
 
 **Backend research agent:** start with the [backend research assignment](#backend-research-assignment) appended below. It defines the remaining investigation and deliverable; the operation IDs, rate budgets and APIs proposed in this document are not already implemented or agreed wire contracts.
+
+## Status 2026-11-06: ranged shots, not engaged, and the settings
+
+Owner, 2026-11-06: *"Auto Acc shouldn't overwrite every form of trigger ... if I am running around with speed belt and Virtuoso Belt (where speed belt would win due to level cap diff), then it equips virtuoso belt even if I have no target"*; then *"Please implement RACC, we're releasing ranger this sunday"* and *"I do want to be able to choose if trigger rules override autoacc"*. No server change: everything below reads what slice 1 already publishes.
+
+- **Not engaged, nothing to hit.** A Default dispatch while the player is not engaged (`ctx.player.Status`, not `nil`) sends `req.idle`. `decide` then releases every armour candidate with a fallback, without telemetry and without wanting the session (`not engaged`); weapon slots stay. Without the provider, `accResolveSet` does the same. Before this, no target meant no LIVE frame, and "unknown stays on" wore the AutoAcc piece all the time you were idle (reproduced end to end on `origin/main` with the frame-profile harness: Virtuoso Belt idle; the branch: Speed Belt idle, Virtuoso Belt engaged with no frame yet).
+- **A ranged shot decides on the ranged hand** (`Midshot`; `Preshot` still holds). The server rolls a shot as `random(100) < floor(getRangedHitRate * 100)` (`battle_entity.cpp`, `battleutils::GetRangedHitRate` calling `xi.combat.physicalHitRate.getRangedHitRate`): an integer threshold, clamped 5 % to 95 %, so it is the standing decision on context 3 (`RANGED_PROTECTED`). The frame already carries that context: AGI, ranged accuracy, Barrage's bonus and ranged food in the inputs, the distance penalty in `PolicyAcc` (`accuracyDistancePenalty`, in the server's comparison key, so a penalty change is a new frame within a tick), cap 9500, floor 500; `formula.check` has always verified it. The shot holds when:
+  - the ranged context is not APPLICABLE (`no ranged weapon in the frame outfit`, `the target is out of ranged range` beyond 25 yalms);
+  - the basis wears another Range weapon (`the ranged weapon differs from the frame outfit`): the ranged skill, the sweet spot and the penalty come from it. With no Range weapon, the thrown Ammo must match too; ammo for a bow, crossbow or gun is an ordinary modelled piece;
+  - the shot's own target (`gData.GetActionTarget().Id`, `req.targetId`) is not the frame's;
+  - the Gear Helpers switch is off (`req.allowRanged = false`).
+  A ranged decision ignores the melee hands, so a shot can release while the off hand misses the cap (AA-41). Ranged weapon skills still keep their pieces on: their `accVaries` and the WSACC terms are not modelled yet.
+- **Not engaged, the lane follows the cursor.** A Ranger shoots, and on AscensionXI weapon-skills, with the weapon sheathed (AXI #1149), but `player:getTarget()` is the battle target, which only engaging sets (`ai_container.cpp`), so the FOLLOW lane sits IDLE. While ranged decisions are wanted (`client.wantTarget()`: a Midshot `decide`, or the open accuracy box) and the player is certainly not engaged, the client binds lane 0 to the cursor's living monster: a WATCH without FOLLOW, with its id and index (the server's own non-follow lane, `echoIds.toInternal`). Engaging, or no monster on the cursor, goes back to FOLLOW. Each change is one WATCH with a new WatchGen, judged at most every 0.25 s. A bound lane's push must name its monster. The first shot after a quiet spell holds, because the frame arrives after it.
+- **The settings** (`gear/autoaccrules.lua`, `<dataDir>\autoaccrules.lua`, drawn under Gear Helpers > AutoAcc):
+
+  | Switch | Default | On | Off |
+  |---|---|---|---|
+  | Trigger rules override AutoAcc | on | a later rule's set that names the slot puts its piece there (as before) | the AutoAcc piece keeps the slot; the rule's piece becomes its fallback (the merge, while `ctx.floorPass` is up; claims still replace it) |
+  | Mode and stance entries override AutoAcc | on | an entry whose mode or stance is on now wins the slot over the AutoAcc piece (`utils.autoAccYields`) | the AutoAcc piece wins; that entry is its fallback (as before) |
+  | Level-range entries override AutoAcc | off | an entry with a level range wins over an AutoAcc piece without one | as before |
+  | AutoAcc at ranged attacks | on | a Midshot may release | every shot keeps its pieces on |
+
+  The revision is a retrace leg (`|ar`, with the engaged state as `|ae`), and `utils.rebuildSets` re-flattens on it. Not engaged is a rule, not a switch.
+- **Smaller:** `ACC_EFFECTS` gains the ranged effects (Sharpshot 72, Barrage 73, AGI Boost 83 and II 122, Prelude 200, the Geo DEX/AGI/Accuracy boosts), from the server's `data/status_effects.yaml`. AXI #1149's Decoy effects and coatings move no ranger accuracy. A decision whose guarded hands the frame did not measure now holds (`no hand the decision guards was measured`); it used to pass an empty check. Not engaged, the player's target is the cursor's monster, which counts as "a new target" only against a LIVE frame.
+- **Tests:** AA-40 to AA-50, AAD-20 to AAD-24 (and AAD-08's new pins), CL-19, UI-12 and UI-13, AS1 to AS16 in `run_tests.lua`. The sweep has 43 new mutants (R01 to R43), and nine patterns this change moved were re-pointed (A11, A24, A26, A38, A46, D01, D03, D06, I04).
+- **Owed:** an in-game round on a Ranger, engaged and sheathed: shots with an AutoAcc piece against an easy and a hard monster, the box's Ranged row, Settings > AutoAcc at ranged attacks off; and the Speed Belt case idle.
 
 ## Status 2026-10-18: weapon skills, for sets typed 1-Hit WS
 
