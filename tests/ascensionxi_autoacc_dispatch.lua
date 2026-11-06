@@ -58,6 +58,25 @@ check('AAD-01 no service: the piece is worn', pick and pick.Ring1, "Toreador's R
 check('AAD-01 and no candidate travels', meta, nil);
 check('AAD-01 the revision leg is empty', dispatchM._autoAccRev(), '');
 
+-- AAD-20 (v176): not engaged, the dormant path wears each armour slot's
+-- fallback; weapon slots, other events, an engaged or unreadable player
+-- keep the pieces on.
+local KRIS = 'dlac:AutoAcc:1:5:Kris|Iron Sword';
+local idleCtx = { event = 'Default', player = { Status = 'Idle' } };
+pick = dispatchM._accResolveSet({ Ring1 = RING, Main = KRIS }, idleCtx);
+check('AAD-20 not engaged: the fallback', pick.Ring1, 'Rajas Ring');
+check('AAD-20 a weapon stays', pick.Main, 'Kris');
+check('AAD-20 resting is not engaged either',
+    dispatchM._accResolveSet({ Ring1 = RING }, { event = 'Default', player = { Status = 'Resting' } }).Ring1, 'Rajas Ring');
+check('AAD-20 engaged: the piece',
+    dispatchM._accResolveSet({ Ring1 = RING }, { event = 'Default', player = { Status = 'Engaged' } }).Ring1, "Toreador's Ring");
+check('AAD-20 an unreadable status: the piece',
+    dispatchM._accResolveSet({ Ring1 = RING }, { event = 'Default', player = {} }).Ring1, "Toreador's Ring");
+check('AAD-20 a ranged shot is no standing set',
+    dispatchM._accResolveSet({ Ring1 = RING }, { event = 'Midshot', player = { Status = 'Idle' } }).Ring1, "Toreador's Ring");
+check('AAD-20 no fallback: the piece',
+    dispatchM._accResolveSet({ Ring1 = "dlac:AutoAcc:2:7:Toreador's Ring" }, idleCtx).Ring1, "Toreador's Ring");
+
 -- The fake provider records what the send asks.
 local asked, answer = nil, nil;
 local svc = {
@@ -193,6 +212,100 @@ package.loaded['dlac\\gear\\gearoptim'] = { setTypeOf = function(job, set) retur
 check('AAD-11 the store is asked', dispatchM._setTypeOf('WS Savage', ctx), 'THF|WS Savage');
 package.loaded['dlac\\gear\\gearoptim'] = nil;
 
+-- AAD-21 (v176): with the provider the candidates still travel when not
+-- engaged, and the send tells it so (req.idle); engaged or unreadable, not.
+ctx = { event = 'Default', planOut = {}, planAcc = {}, player = { Status = 'Idle' } };
+dispatchM._equipResolved({ Ring1 = RING }, ctx, true, 'test');
+check('AAD-21 the candidate travels', ctx.planAcc.Ring1 ~= nil, true);
+asked, answer = nil, nil;
+dispatchM._autoAccApply('Default', ctx);
+check('AAD-21 not engaged is said', asked and asked.idle, true);
+ctx.player.Status = 'Engaged';
+dispatchM._autoAccApply('Default', ctx);
+check('AAD-21 engaged is not', asked.idle, nil);
+ctx.player = nil;
+dispatchM._autoAccApply('Default', ctx);
+check('AAD-21 nor is an unread player', asked.idle, nil);
+
+-- AAD-22 (v176): a Midshot send carries the ranged switch and the shot's own
+-- target; the standing set carries neither.
+local savedRules = dispatchM._accRulesMod;
+local RULES = { triggerRules = true, conditional = true, levelRange = false, rangedAttacks = true };
+local rulesRev = 1;
+dispatchM._accRulesMod = { get = function(k) return RULES[k]; end, rev = function() return rulesRev; end };
+gData.GetActionTarget = function() return { Id = 0x010680A5, Index = 165 }; end;
+ctx = { event = 'Midshot', planOut = {}, planAcc = {}, player = { Status = 'Idle' } };
+dispatchM._equipResolved({ Ring1 = RING }, ctx, true, 'test');
+asked = nil;
+dispatchM._autoAccApply('Midshot', ctx);
+check('AAD-22 a shot asks the provider', asked and asked.event, 'Midshot');
+check('AAD-22 with the ranged switch', asked.allowRanged, true);
+check('AAD-22 and the shot\'s target', asked.targetId, 0x010680A5);
+check('AAD-22 a shot while not engaged is no idle standing set', asked.idle, nil);
+RULES.rangedAttacks = false;
+dispatchM._autoAccApply('Midshot', ctx);
+check('AAD-22 the switch off is said', asked.allowRanged, false);
+RULES.rangedAttacks = true;
+ctx.event = 'Default';
+dispatchM._autoAccApply('Default', ctx);
+check('AAD-22 the standing set: no switch', asked.allowRanged, nil);
+check('AAD-22 and no target', asked.targetId, nil);
+gData.GetActionTarget = nil;
+ctx.event = 'Weaponskill';
+dispatchM._autoAccApply('Weaponskill', ctx);
+check('AAD-22 no action target read: none sent', asked.targetId, nil);
+check('AAD-22 the settings revision', dispatchM._accRulesRev(), '1');
+
+-- AAD-23 (v176): "Trigger rules override AutoAcc" off. In the Trigger rules'
+-- pass a later rule's piece becomes the AutoAcc piece's fallback; a claim
+-- (after the pass) still replaces it; on, the rule's piece replaces it.
+RULES.triggerRules = false;
+ctx = { event = 'Default', planOut = {}, planAcc = {}, player = { Status = 'Engaged' }, floorPass = true };
+dispatchM._equipResolved({ Ring1 = RING, Neck = NECK }, ctx, true, 'the TP set');
+local SNIPER = { Name = "Sniper's Ring", AugKey = 'acc+3' };
+dispatchM._equipResolved({ Ring1 = SNIPER }, ctx, true, 'a later rule');
+check('AAD-23 the AutoAcc piece keeps the slot', ctx.planOut.Ring1, "Toreador's Ring");
+check('AAD-23 the rule\'s piece is its fallback', ctx.planAcc.Ring1 and ctx.planAcc.Ring1.fallback, "Sniper's Ring");
+answer = { release = { Ring1 = "Sniper's Ring" }, why = { Ring1 = "released for Sniper's Ring" } };
+asked = nil;
+dispatchM._autoAccApply('Default', ctx);
+local offered = nil;
+for _, c in ipairs(asked and asked.candidates or {}) do if c.slot == 'Ring1' then offered = c.fallback; end end
+check('AAD-23 the provider is offered the rule\'s piece', offered, "Sniper's Ring");
+check('AAD-23 a release wears it as the rule wrote it', ctx.planOut.Ring1, SNIPER);
+ctx = { event = 'Default', planOut = {}, planAcc = {}, player = { Status = 'Engaged' }, floorPass = true };
+dispatchM._equipResolved({ Ring1 = RING }, ctx, true, 'the TP set');
+ctx.floorPass = nil;
+dispatchM._equipResolved({ Ring1 = "Sniper's Ring" }, ctx, true, 'a claim');
+check('AAD-23 a claim still replaces it', ctx.planOut.Ring1, "Sniper's Ring");
+check('AAD-23 and drops the candidate', ctx.planAcc.Ring1, nil);
+RULES.triggerRules = true;
+ctx = { event = 'Default', planOut = {}, planAcc = {}, player = { Status = 'Engaged' }, floorPass = true };
+dispatchM._equipResolved({ Ring1 = RING }, ctx, true, 'the TP set');
+dispatchM._equipResolved({ Ring1 = "Sniper's Ring" }, ctx, true, 'a later rule');
+check('AAD-23 on: the rule\'s piece replaces it', ctx.planOut.Ring1, "Sniper's Ring");
+check('AAD-23 on: no candidate left', ctx.planAcc.Ring1, nil);
+RULES.triggerRules = false;
+ctx = { event = 'Default', planOut = {}, planAcc = {}, player = { Status = 'Engaged' }, floorPass = true };
+dispatchM._equipResolved({ Ring1 = RING }, ctx, true, 'the TP set');
+dispatchM._equipResolved({ Ring1 = "Toreador's Ring" }, ctx, true, 'a rule naming the piece itself');
+check('AAD-23 a rule wearing the piece itself makes it plain', ctx.planAcc.Ring1, nil);
+ctx = { event = 'Default', planOut = {}, planAcc = {}, player = { Status = 'Engaged' }, floorPass = true };
+dispatchM._equipResolved({ Ring1 = "Sniper's Ring" }, ctx, true, 'an earlier rule');
+dispatchM._equipResolved({ Ring1 = RING }, ctx, true, 'a later AutoAcc set');
+check('AAD-23 a later AutoAcc piece is the last writer as ever', ctx.planOut.Ring1, "Toreador's Ring");
+check('AAD-23 with its own fallback', ctx.planAcc.Ring1 and ctx.planAcc.Ring1.fallback, 'Rajas Ring');
+RULES.triggerRules = true;
+dispatchM._accRulesMod = savedRules;
+
+-- AAD-24 (v176): without the settings module every switch answers its default.
+dispatchM._accRulesMod = false;
+check('AAD-24 trigger rules override by default', dispatchM._accRule('triggerRules'), true);
+check('AAD-24 ranged shots on by default', dispatchM._accRule('rangedAttacks'), true);
+check('AAD-24 level ranges do not', dispatchM._accRule('levelRange'), false);
+check('AAD-24 no revision', dispatchM._accRulesRev(), '');
+dispatchM._accRulesMod = savedRules;
+
 -- AAD-08: the wiring at the one send and the retrace leg (source pins).
 local f = assert(io.open('dispatch.lua', 'rb')); local src = f:read('*a'); f:close();
 local applyAt = src:find('local accOut = M._autoAccApply(event, ctx);', 1, true);
@@ -202,6 +315,15 @@ check('AAD-08 the plan snapshot is taken before the release',
     src:find('local planSnap = planNames(ctx.planOut);', 1, true) < applyAt, true);
 check('AAD-08 the newest retrace leg', src:find("'|aa' .. M._autoAccRev()", 1, true) ~= nil, true);
 check('AAD-08 the collector is born with the plan', src:find('ctx.planAcc = {};', 1, true) ~= nil, true);
+-- v176: the settings and the engaged state are retrace legs, and the Trigger
+-- rules' pass is marked around the rule loop only.
+check('AAD-08 the settings leg', src:find("'|ar' .. M._accRulesRev() .. '|ae' .. (M._accNotEngaged(ctx) and '1' or '0')", 1, true) ~= nil, true);
+local passOn = src:find('ctx.floorPass = true;\n        for hi, r in ipairs(hits) do', 1, true)
+    or src:find('ctx.floorPass = true;\r\n        for hi, r in ipairs(hits) do', 1, true);
+local passOff = src:find('ctx.floorPass = nil;', 1, true);
+local claimsAt = src:find('local plan = ARB.arbitrate({ order = arbOrder, claims = claims });', 1, true);
+check('AAD-08 the rules\' pass opens at the rule loop', passOn ~= nil, true);
+check('AAD-08 and closes before the claims apply', passOff ~= nil and claimsAt ~= nil and passOn < passOff and passOff < claimsAt, true);
 
 -- AAD-09: a real Default dispatch with the provider present still runs.
 local savedEng = package.loaded['dlac\\feature\\equipengine'];

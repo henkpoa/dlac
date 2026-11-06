@@ -72,6 +72,24 @@
     off hand (its dual-wield hit) with WSACC and the flourish, and kicks,
     which a weapon skill never throws, are not asked. fTP gear's accuracy and
     accVaries are left out: both only add, so leaving them out keeps more on.
+
+    Ranged shots (2026-11-06, the Ranger release). A Midshot dispatch judges
+    the ranged context alone: the shot rolls an integer threshold against
+    getRangedHitRate (C++ battle_entity, xi.combat.physicalHitRate), capped
+    at 95 %, with the distance penalty already in the frame's PolicyAcc, so
+    it is the standing decision on another hand. A basis must wear the
+    plan's Range and Ammo as well as its weapons: the ranged skill, the
+    sweet spot and the distance penalty come from them. The shot's own
+    target must be the frame's (req.targetId), the ranged context must be
+    APPLICABLE (a ranged weapon, within 25 yalms), and the Gear Helpers
+    switch must be on (req.allowRanged). Not engaged, the battle lane has no
+    target, so the client binds the lane to the cursor monster while ranged
+    decisions are wanted (client.lua). Ranged weapon skills still keep their
+    pieces on.
+
+    Not engaged (2026-11-06). A Default dispatch while the player is not
+    engaged (req.idle) releases every armour candidate with a fallback
+    without asking the telemetry: there is nothing to hit.
     Every other non-Default dispatch keeps its pieces on.
 ]]--
 
@@ -90,6 +108,7 @@ local M = {
     FIRST_ARMOUR = 4, -- Head: equip slots 4..15 may be released in v1
     PROTECTED = { [0] = true, [1] = true, [2] = true },   -- main hand, off hand, kick
     WS_PROTECTED = { [0] = true, [1] = true },             -- a weapon skill's hits: main hand, off hand
+    RANGED_PROTECTED = { [3] = true },                     -- a ranged shot
     FIRST_HIT = 100,  -- ACC the server adds to a melee weapon skill's first hit
 };
 
@@ -101,6 +120,7 @@ M._idOf = nil;      -- (item name) -> item id
 M._data = nil;      -- () -> { gearsets?, levelscaling, latentstats, itemscripts }
 M._want = nil;      -- () a decision is wanted (the client keeps its session)
 M._ask = nil;       -- (kind) 'republish': a frame in the outfit worn now; 'renew': what landed
+M._wantTarget = nil; -- () ranged decisions are wanted: not engaged, the lane follows the cursor monster
 
 -- Equip slot ids by the names dispatch's plans use (gear/equipcore.lua order).
 M.SLOTS = { Main = 0, Sub = 1, Range = 2, Ammo = 3, Head = 4, Body = 5, Hands = 6, Legs = 7, Feet = 8,
@@ -120,21 +140,25 @@ for _, key in pairs(SKILL_STAT) do HIT_STATS[key] = true; end
 -- Status ids whose gain lowers accuracy (Blindness, Accuracy Down, Flash).
 M.ACC_DEBUFFS = { [5] = true, [146] = true, [156] = true };
 
--- Status ids whose loss can lower a melee accuracy input (DEX, ACC, a combat
--- skill) on AscensionXI: food, the accuracy songs, the playable jobs'
+-- Status ids whose loss can lower an accuracy input (DEX, AGI, ACC, RACC, a
+-- combat skill) on AscensionXI: food, the accuracy songs, the playable jobs'
 -- accuracy abilities, item and weapon effects, trust and Grounds of Valor
 -- auras, and the custom Monk Resonance (server modules/custom/lua/
 -- mnk_mantra.lua). A new server effect that adds accuracy belongs here.
+-- The ranged ones (2026-11-06) are the server's data/status_effects.yaml ids.
 M.ACC_EFFECTS = {
     [58] = true,  [59] = true,                   -- Aggressor, Focus
+    [72] = true,  [73] = true,                   -- Sharpshot, Barrage
     [81] = true,  [120] = true, [90] = true,     -- DEX Boost, DEX Boost II, Accuracy Boost
+    [83] = true,  [122] = true,                  -- AGI Boost, AGI Boost II
     [162] = true,                                -- Enchantment (an item's use)
-    [199] = true, [215] = true,                  -- Madrigal, Etude
+    [199] = true, [200] = true, [215] = true,    -- Madrigal, Prelude, Etude
     [251] = true,                                -- Food
     [270] = true, [271] = true, [272] = true, [273] = true,   -- Aftermath
     [275] = true,                                -- Auspice
     [320] = true,                                -- Hunter's Roll
     [375] = true,                                -- Building Flourish
+    [543] = true, [545] = true, [553] = true,    -- Geo DEX, AGI and Accuracy Boost
     [783] = true, [810] = true,                  -- Prowess (ACC/RACC), trust ACC aura
     [817] = true,                                -- Resonance (Monk Mantra)
 };
@@ -578,7 +602,12 @@ end
 -- see that may lower accuracy before the next frame (research 3.3).
 local function conservative()
     local at, p = st.at or {}, playerNow();
-    if p.target ~= nil and st.latest ~= nil and p.target ~= st.latest.targetId then return 'a new target'; end
+    -- (A frame that is not LIVE names no target and decides nothing anyway:
+    -- not engaged, the cursor's monster is no "new target" against it.)
+    if p.target ~= nil and st.latest ~= nil and st.latest.laneState == wire.laneState.LIVE
+       and p.target ~= st.latest.targetId then
+        return 'a new target';
+    end
     if p.mainJob ~= at.mainJob or p.mainLevel ~= at.mainLevel or p.subJob ~= at.subJob or p.subLevel ~= at.subLevel then
         return 'a level or job change';
     end
@@ -628,15 +657,19 @@ end
 -- The decision (research 2.13)
 -- ---------------------------------------------------------------------------
 
--- ws: the hits of a 1-Hit WS set's weapon skill instead of the standing
--- swings. acc and threshold stay the standing ones either way: the
--- prediction check compares them with the server's frame for the outfit.
-local function evaluate(frame, base, ids, level, ws)
+-- mode: nil for the standing swings, 'ws' for the hits of a 1-Hit WS set's
+-- weapon skill, 'ranged' for a ranged shot (the ranged context alone, its
+-- standing threshold). acc and threshold stay the standing ones either way:
+-- the prediction check compares them with the server's frame for the outfit.
+-- An empty metrics list means no guarded context was measured: decide()
+-- holds on it (2026-11-06: an empty check used to pass).
+local function evaluate(frame, base, ids, level, mode)
+    local ws = mode == 'ws';
     local x = { skills = {} };
     local mine = gearSums(ids, level, true);
     for _, k in ipairs(INPUTS) do x[k] = (frame[k .. 'Live'] or 0) + mine[k] - base[k]; end
     local metrics, allMeet = {}, true;
-    local guard = ws and M.WS_PROTECTED or M.PROTECTED;
+    local guard = ws and M.WS_PROTECTED or ((mode == 'ranged') and M.RANGED_PROTECTED or M.PROTECTED);
     for _, ctx in ipairs(frame.contexts or {}) do
         if guard[ctx.kind] and ctx.applicability == wire.applicability.APPLICABLE then
             local skill = (ctx.skillLive or 0) + (mine.skills[ctx.skillType] or 0) - (base.skills[ctx.skillType] or 0);
@@ -723,13 +756,23 @@ end
 -- weapon skill set that swaps the weapon was judged by the old one's frame).
 local WEAPONS_DIFFER = 'the weapons differ from the frame outfit';
 
+-- A ranged shot's skill, sweet spot and distance penalty come from the
+-- Range weapon (or, with none, the thrown Ammo), so a ranged decision's
+-- basis must wear the plan's (2026-11-06). Ammo for a bow, crossbow or gun
+-- is a piece like any other.
+local RANGED_DIFFER = 'the ranged weapon differs from the frame outfit';
+
 -- The newest basis whose outfit differs from the baseline only in modelled,
 -- verified pieces; else nil and why the newest one cannot speak.
-local function basisFor(ids, aug)
+-- ranged: the plan is a ranged shot's.
+local function basisFor(ids, aug, ranged)
     local first = nil;
     for i = #st.baseOrder, 1, -1 do
         local b = st.bases[st.baseOrder[i]];
         local why = (ids[0] ~= b.outfit.ids[0] or ids[1] ~= b.outfit.ids[1]) and WEAPONS_DIFFER or nil;
+        if why == nil and ranged and (ids[2] ~= b.outfit.ids[2] or (ids[2] == 0 and ids[3] ~= b.outfit.ids[3])) then
+            why = RANGED_DIFFER;
+        end
         for slot = 0, 15 do
             if why ~= nil then break; end
             if ids[slot] ~= b.outfit.ids[slot] or aug[slot] ~= b.outfit.aug[slot] then
@@ -775,23 +818,64 @@ end
 
 local NOT_WS1 = 'its weapon skill set is not typed 1-Hit WS';
 
+-- The reasons the readout (monitor.lua) words for a player.
+M.WHY = {
+    NOT_ENGAGED  = 'not engaged',
+    ONLY         = 'only the standing set, ranged shots and 1-Hit WS sets release',
+    RANGED_OFF   = 'ranged shots are off in the AutoAcc settings',
+    OTHER_TARGET = 'the action targets another monster than the frame',
+    RANGED_DIFFER = RANGED_DIFFER,
+    NO_HAND      = 'no hand the decision guards was measured',
+};
+
+-- Why a ranged shot cannot be judged from a frame's ranged context.
+local NO_RANGED = {
+    [wire.applicability.NO_WEAPON] = 'no ranged weapon in the frame outfit',
+    [wire.applicability.OUT_OF_RANGE] = 'the target is out of ranged range',
+};
+M.WHY.NO_RANGED = NO_RANGED;
+
 -- req = { plan = { [slotName] = item name }, augmented = { [slotName] = true }
 --         for a plan entry pinned to an augmented copy, candidates = { { slot,
 --         typed, fallback, prio, setType = the Set Type of the set it came
---         from } }, event = dispatch kind, rangedWs = a ranged weapon skill }.
+--         from } }, event = dispatch kind, rangedWs = a ranged weapon skill,
+--         idle = a Default dispatch while not engaged, allowRanged = the
+--         ranged switch (Midshot), targetId = the action's own target }.
 -- Returns { release = { [slotName] = fallback }, why = { [slotName] = text },
 --   typed = { [slotName] = the AutoAcc piece }, metrics }.
 function M.decide(req)
     local out = { release = {}, why = {}, typed = {}, metrics = nil };
     local cands = req.candidates or {};
     if #cands == 0 then return out; end
+    if req.idle then
+        -- Not engaged (2026-11-06): nothing to hit, so every armour piece
+        -- with a fallback wears it. No telemetry is asked, and none is
+        -- wanted: an idle player keeps no session alive.
+        local key = 'idle|' .. planKey(req);
+        if st.memo ~= nil and st.memo.key == key then return st.memo.out; end
+        for _, c in ipairs(cands) do
+            local slot = slotId(c.slot);
+            local why = M.WHY.NOT_ENGAGED;
+            if slot == nil or slot < M.FIRST_ARMOUR then why = 'weapon slots stay';
+            elseif c.fallback == nil then why = 'no fallback';
+            else out.release[c.slot] = c.fallback; end
+            out.why[c.slot], out.typed[c.slot] = why, c.typed;
+        end
+        retire('the pieces went back on before the server measured it');
+        st.memo, st.lastDecision, st.lastBasis = { key = key, out = out }, out, nil;
+        return out;
+    end
     st.wantedAt = M._clock();
     if type(M._want) == 'function' then pcall(M._want); end
+    local ranged = req.event == 'Midshot';
+    -- A ranged shot while not engaged has no battle target: the client binds
+    -- its lane to the cursor monster while ranged decisions are wanted.
+    if ranged and type(M._wantTarget) == 'function' then pcall(M._wantTarget); end
     local latest = st.latest;
     local trigger = (latest ~= nil) and conservative() or nil;
     local wornHash = rememberWorn(false) or st.wornHash;
     local key = planKey(req) .. '|' .. tostring(req.event) .. '|' .. tostring(st.rev) .. '|' .. tostring(trigger)
-        .. '|' .. tostring(wornHash);
+        .. '|' .. tostring(wornHash) .. '|' .. tostring(req.allowRanged) .. '|' .. tostring(req.targetId);
     if st.memo ~= nil and st.memo.key == key then return st.memo.out; end
     local function hold(why)
         for _, c in ipairs(cands) do out.why[c.slot], out.typed[c.slot] = why, c.typed; end
@@ -800,7 +884,8 @@ function M.decide(req)
         return out;
     end
     local ws = req.event == 'Weaponskill';
-    if req.event ~= nil and req.event ~= 'Default' and not ws then return hold('only the standing Default set releases'); end
+    if req.event ~= nil and req.event ~= 'Default' and not ws and not ranged then return hold(M.WHY.ONLY); end
+    if ranged and req.allowRanged == false then return hold(M.WHY.RANGED_OFF); end
     if ws then
         if req.rangedWs then return hold('a ranged weapon skill has no first-hit bonus'); end
         local typed = false;
@@ -809,6 +894,9 @@ function M.decide(req)
     end
     if latest == nil then return hold(st.why or 'no telemetry yet'); end
     if trigger ~= nil then return hold('held until the next frame: ' .. trigger); end
+    if req.targetId ~= nil and latest.targetId ~= nil and req.targetId ~= latest.targetId then
+        return hold(M.WHY.OTHER_TARGET);
+    end
 
     -- The baseline: the composed plan with every AutoAcc piece on; absent
     -- slots keep what is worn.
@@ -830,7 +918,7 @@ function M.decide(req)
 
     -- Every piece that differs between a basis's outfit and the baseline
     -- must be modelled, or that frame cannot speak for the baseline.
-    local basis, whyNot = basisFor(ids, aug);
+    local basis, whyNot = basisFor(ids, aug, ranged);
     if basis == nil then
         askFrame(wornHash);
         return hold(whyNot or st.why or 'no frame speaks for this outfit');
@@ -838,10 +926,18 @@ function M.decide(req)
     st.lastBasis = basis.frame;
     local frame, frameOutfit = basis.frame, basis.outfit;
     local level = frame.mainLevel or 0;
+    local mode = ws and 'ws' or (ranged and 'ranged' or nil);
+    if ranged then
+        local rc = contextOf(frame, wire.context.RANGED);
+        if rc == nil or rc.applicability ~= wire.applicability.APPLICABLE then
+            return hold(NO_RANGED[rc and rc.applicability or -1] or 'the server sent no ranged numbers');
+        end
+    end
 
     local frameSums = gearSums(frameOutfit.ids, level, true);
-    local meets, metrics = evaluate(frame, frameSums, ids, level, ws);
+    local meets, metrics = evaluate(frame, frameSums, ids, level, mode);
     out.metrics = metrics;
+    if #metrics == 0 then return hold(M.WHY.NO_HAND); end
     if not meets then return hold('the full set does not reach the cap'); end
 
     table.sort(cands, function(a, b)
@@ -875,7 +971,7 @@ function M.decide(req)
             local trial = {};
             for k, v in pairs(accepted) do trial[k] = v; end
             trial[slot] = fallbackId;
-            local ok, m = evaluate(frame, frameSums, trial, level, ws);
+            local ok, m = evaluate(frame, frameSums, trial, level, mode);
             if ok then
                 accepted = trial;
                 out.release[c.slot] = c.fallback;

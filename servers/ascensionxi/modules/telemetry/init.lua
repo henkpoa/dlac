@@ -31,6 +31,38 @@ client._onFrame  = function(frame) autoacc.noteFrame(frame); end;
 autoacc._clock = transport._clock;
 autoacc._want  = client.want;
 autoacc._ask   = client.ask;
+autoacc._wantTarget = client.wantTarget;
+
+-- Engaged? (nil when the player cannot be read.)
+local function engaged()
+    local ok, on = pcall(function()
+        local mm = AshitaCore:GetMemoryManager();
+        local me = mm:GetParty():GetMemberTargetIndex(0);
+        if me == nil then return nil; end
+        return mm:GetEntity():GetStatus(me) == 1;
+    end);
+    if not ok then return nil; end
+    return on;
+end
+
+-- The cursor's living monster (spawn flag 0x10, feature\mobtag's test), as
+-- { id = server id, index }, or nil.
+local function cursorMonster()
+    local out = nil;
+    pcall(function()
+        local mm = AshitaCore:GetMemoryManager();
+        local index = mm:GetTarget():GetTargetIndex(0);
+        if type(index) ~= 'number' or index <= 0 then return; end
+        local ent = mm:GetEntity();
+        local flags = ent:GetSpawnFlags(index);
+        if type(flags) ~= 'number' or math.floor(flags / 16) % 2 ~= 1 then return; end
+        local hp = ent:GetHPPercent(index);
+        if type(hp) ~= 'number' or hp <= 0 then return; end
+        out = { id = ent:GetServerId(index), index = index };
+    end);
+    return out;
+end
+client._engaged, client._cursorTarget = engaged, cursorMonster;
 
 -- The model's view of the world. Everything below is guarded: headless,
 -- there is no AshitaCore and the readers answer nil.
@@ -64,7 +96,8 @@ end;
 
 -- Jobs, levels and buffs as the client sees them, and the battle target's
 -- server id while engaged (the cursor target is the battle target unless the
--- player tabbed away; a mismatch only ever holds pieces on).
+-- player tabbed away; a mismatch only ever holds pieces on). Not engaged,
+-- the cursor's monster: the lane the client binds for a ranged shot.
 autoacc._player = function()
     local out = { buffs = {} };
     pcall(function()
@@ -80,6 +113,9 @@ autoacc._player = function()
         if me ~= nil and ent:GetStatus(me) == 1 then
             local index = mm:GetTarget():GetTargetIndex(0);
             if type(index) == 'number' and index > 0 then out.target = ent:GetServerId(index); end
+        else
+            local mob = cursorMonster();
+            if mob ~= nil then out.target = mob.id; end
         end
     end);
     return out;
@@ -117,7 +153,9 @@ local _charId = nil;
 client._charId = function() return _charId; end;
 
 local monitor = require(base .. 'monitor');
-monitor._client, monitor._autoacc, monitor._want = client, autoacc, client.want;
+-- An open box is demand for the cursor's monster too: not engaged, it shows
+-- (and AutoAcc learns) your numbers against what you target.
+monitor._client, monitor._autoacc, monitor._want = client, autoacc, client.wantTarget;
 monitor._targetName = function(frame)
     local name = nil;
     pcall(function() name = AshitaCore:GetMemoryManager():GetEntity():GetName(frame.targetIndex or 0); end);

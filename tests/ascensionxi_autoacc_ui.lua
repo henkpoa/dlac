@@ -29,6 +29,11 @@ local IM = {
     IsItemHovered = function() return true; end,
     SetTooltip = function(s) tips[#tips + 1] = tostring(s); if last ~= nil then tipFor[last] = tostring(s); end end,
     SmallButton = function(label) last = label; return press ~= nil and label:find(press, 1, true) ~= nil; end,
+    Checkbox = function(label, v)
+        last = label; texts[#texts + 1] = label;
+        if press ~= nil and label:find(press, 1, true) ~= nil then v[1] = not v[1]; return true; end
+        return false;
+    end,
     SetNextWindowSize = function() sizeCalls = sizeCalls + 1; end,
     Begin = function(_, _, flags) beginFlags = flags; depth.win = depth.win + 1; return true; end,
     End = function() depth.win = depth.win - 1; end,
@@ -151,7 +156,7 @@ check('UI-02 cap-at cell', has(('|%d|'):format(main.liveAcc + mainToCap)), true)
 check('UI-02 main hand spare', has(('%d spare'):format(-mainToCap)), true);
 check('UI-02 the vectors: 11 spare at the cap of ACC 372', has('11 spare') and has('|372|'), true);
 check('UI-02 off hand short', has('needs 50'), true);
-check('UI-02 ranged is for reference, in its hover', tipHas(('needs %d'):format(rangedToCap), 'AutoAcc decides on melee only'), true);
+check('UI-02 ranged: AutoAcc decides shots on it, in its hover', tipHas(('needs %d'):format(rangedToCap), 'AutoAcc decides your ranged attacks'), true);
 check('UI-02 the off hand has no hover', tipFor['needs 50'], nil);
 check('UI-02 food in the ACC hover, escaped', tipHas('ACC', 'Your food adds ' .. tv05.foodAccPct .. '%% ACC, up to ' .. tv05.foodAccCap), true);
 check('UI-02 the headers are underlined', underlined['ACC'] and underlined['Cap at'], true);
@@ -252,7 +257,7 @@ local idle = tv05Frame();
 idle.laneState = wire.laneState.IDLE;
 rep = { usable = false, why = 'the lane is not live (state 0)', frame = idle, frameAt = 10.0 };
 render();
-check('UI-06 no target', drew('No target') and tipHas('No target', 'Engage a monster'), true);
+check('UI-06 no target', drew('No target') and tipHas('No target', 'Engage or target a monster'), true);
 check('UI-06 no table', has('Cap at'), false);
 clientState = { phase = 'hello', stats = {} };
 rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0 };
@@ -322,7 +327,16 @@ local f = assert(io.open('servers/ascensionxi/modules/telemetry/autoacc.lua', 'r
 local modelSource = f:read('*a'); f:close();
 local REASONS = {
     { 'the full set does not reach the cap', "you don't reach the cap even with it" },
-    { 'only the standing Default set releases', 'only swaps pieces in your standing set and in 1-Hit WS sets' },
+    { 'only the standing set, ranged shots and 1-Hit WS sets release',
+      'only swaps pieces in your standing set, your ranged attack set and 1-Hit WS sets' },
+    { 'not engaged', "you're not engaged" },
+    { 'ranged shots are off in the AutoAcc settings', 'AutoAcc at ranged attacks is off' },
+    { 'the action targets another monster than the frame', 'numbers are for another monster' },
+    { 'the ranged weapon differs from the frame outfit', 'numbers for this ranged weapon' },
+    { 'no ranged weapon in the frame outfit', 'sees no ranged weapon' },
+    { 'the target is out of ranged range', 'too far for a ranged attack' },
+    { 'the server sent no ranged numbers', 'sent no ranged numbers' },
+    { 'no hand the decision guards was measured', 'no numbers for the hands it needs' },
     { 'its weapon skill set is not typed 1-Hit WS', "Set Type isn't 1-Hit WS" },
     { 'a ranged weapon skill has no first-hit bonus', 'no first-hit accuracy bonus' },
     { 'the weapons differ from the frame outfit', 'numbers for these weapons' },
@@ -354,6 +368,38 @@ for _, r in ipairs(REASONS) do
     check('UI-11 ' .. r[1], tipHas('Head piece', r[2]), true);
     check('UI-11 the model says "' .. (r[3] or r[1]) .. '"', modelSource:find(r[3] or r[1], 1, true) ~= nil, true);
 end
+
+-- UI-12 (2026-11-06): not engaged, a released slot says why in its hover.
+rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0,
+        decision = { release = { Waist = 'Speed Belt' }, typed = { Waist = 'Virtuoso Belt' }, why = { Waist = 'not engaged' } } };
+render();
+check('UI-12 the normal pick is shown', drew('Speed Belt'), true);
+check('UI-12 why, in its hover', tipFor['Speed Belt'], "Speed Belt is on: you're not engaged.");
+
+-- UI-13 (2026-11-06): the panel carries the four AutoAcc settings, each a
+-- checkbox with its hover; a click sets that switch and nothing else.
+local setCalls, vals = {}, { triggerRules = true, conditional = true, levelRange = false, rangedAttacks = true };
+monitor._rules = { get = function(k) return vals[k]; end,
+                   set = function(k, on) setCalls[#setCalls + 1] = k .. '=' .. tostring(on); vals[k] = on; end };
+render(monitor.panel);
+check('UI-13 the settings header is underlined', underlined['Settings'], true);
+for _, s in ipairs(monitor.SETTINGS) do
+    local lbl = s.label .. '##aarule_' .. s.key;
+    check('UI-13 drawn: ' .. s.key, drew(lbl), true);
+    check('UI-13 hover: ' .. s.key, tipFor[lbl] ~= nil and tipFor[lbl]:find('On:', 1, true) ~= nil, true);
+end
+check('UI-13 four switches', #monitor.SETTINGS, 4);
+check('UI-13 nothing set by drawing', #setCalls, 0);
+press = 'Trigger rules override AutoAcc';
+render(monitor.panel);
+press = nil;
+check('UI-13 a click sets that switch', table.concat(setCalls, ','), 'triggerRules=false');
+press = 'AutoAcc at ranged attacks';
+render(monitor.panel);
+press = nil;
+check('UI-13 and the ranged one', setCalls[2], 'rangedAttacks=false');
+check('UI-13 the floating window has no settings', (function() render(monitor.drawBody); return drew('Settings'); end)(), false);
+monitor._rules = nil;
 
 -- UI-10: across every render above, nothing a player read named the
 -- service's internals (owner: "You don't need to give out super detailed
