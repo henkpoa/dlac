@@ -281,11 +281,15 @@ that must (or must not) be on you, picked from a searchable list of every buff a
 in the game. Stack them with any other condition: an emergency set below 50% HP, movement
 gear only while Flee is up, gear that swaps in while you're Asleep. These gates rank just
 under a mode toggle in priority, so they win over ordinary rules when both match.</p>
-<p>Two more conditions worth knowing: <b>inTown</b> is true while you stand in a town
+<p>A few more conditions worth knowing: <b>inTown</b> is true while you stand in a town
 zone — the classic use is <i>status = Idle + inTown → TownGear</i>, so you show off your
 favourite look in Jeuno and switch back to real idle gear the moment you zone out. And
 <b>target = Self</b> fires only when the action is aimed at you — a self-cast Cure can
-wear different gear than the same Cure on a party member.</p>
+wear different gear than the same Cure on a party member. Every category also offers
+<b>inNationControl</b>: true in a conquest region your nation holds, false in one it
+doesn't (and in the cities, which no nation holds). It's the same rule as gear that
+works "in areas under (or outside) your nation's control". That gear also needs Signet
+on you, so add <i>Has(De)Buff = Signet</i> to the rule too.</p>
 <p>Rules also take <b>AND / OR logic</b>: <b>+ &amp; condition</b> adds to the AND group
 (all must be true), <b>+ | condition</b> adds to the OR group (any one is enough). A rule
 matches when <i>all</i> its &amp; conditions hold <i>or any</i> of its | conditions does.

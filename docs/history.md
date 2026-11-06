@@ -11951,3 +11951,50 @@ choose if trigger rules override autoacc though."
   unchanged. Sweep: 43 new mutants and the nine re-pointed ones, all killed.
 - Owed: an in-game Ranger round (engaged and sheathed, easy and hard monster,
   the switch off) and the Speed Belt case idle.
+
+## 2026-11-06: inNationControl, a conquest region your nation holds (`2026.11.06b`, engine v177)
+
+Henrik: "Can you add a condition to all categories for Inside Area of Nation
+Control. Which means if you are inside an area of nations control, or outside
+an area of nations control. So DLAC needs to know the nation of player, and
+the nation's owner of the region to know this. Condition should then be True
+or False."
+
+- **The condition**, engine v177: `inNationControl = true / false`, tier 95
+  beside `inTown`. Every handler offers it in the Triggers tab, as a
+  false / true dropdown with the live `[on now]` marker.
+- **It is the server's gear latent.** Latent 53 `nation_control` ("in areas
+  under / outside own nation's control", `latent_effect_container.cpp`) is the
+  same code on AscensionXI and CatsEyeXI, and it settles what "outside" means:
+  - true: a conquest region, Ronfaure to the Tavnazian Archipelago (0-18),
+    that your nation holds.
+  - false: a conquest region another nation, the beastmen or nobody holds,
+    AND the regions no nation ever holds (19-27: the three cities, Jeuno,
+    Dynamis, the Tavnazian Safehold, Promyvion, Lumoria, Limbus;
+    `IsAlwaysOutOfNationControl`). Your own city is false.
+  - neither: Aht Urhgan, the Crystal War past, Abyssea, Adoulin (the latent
+    never fires there), and a conquest region before the session's first
+    conquest packet.
+  The latent also needs Signet, Sanction or Sigil on you. The condition leaves
+  that out, the weatherMatch precedent: a rule adds `buff = Signet` itself.
+- **Where the facts come from** (`feature/conquest.lua`): your nation from
+  `GetPlayer():GetNation()`; the zone's region from `M.REGION`, the server's
+  `zoneutils::GetCurrentRegion` switch (161 zones in regions 0-27; AscensionXI
+  and CatsEyeXI agree on every one, they differ only on two Aht Urhgan zones);
+  each region's owner from the conquest packet 0x05E, the owner byte at
+  0x1A + 4 * region + 3 (the server's `GP_SERV_COMMAND_CONQUEST` and Windower's
+  `packets/fields.lua` agree). The client requests 0x05E itself (0x05A; the
+  server's note says "after a fixed period of time") and the server pushes one
+  at the weekly tally, so dlac only listens and sends nothing. After a login
+  or an addon reload the condition matches neither polarity until the next
+  one arrives. How soon that is has not been measured: it is the first thing
+  the in-game round checks.
+- Tests: run_tests 7995 -> 8048 (NC1-NC49: the region table checked against
+  both packs' zone names, the decoder, every answer class, the live path off
+  function-valued reads, the matcher, tier, round trip, and the startup list);
+  smoke_ui 1772 -> 1778 (TB65-TB70: every handler offers it, picked through the
+  real chooser, saved as a boolean, loaded at 95, edited back). A headless
+  boot of `dlac.lua` with a 0x05E through `packet_in` passed too.
+- Owed: an in-game round. How long after a login and after `/addon reload dlac`
+  the marker lights; then with Signet, a region your nation holds and one it
+  does not.
