@@ -1112,7 +1112,9 @@ research already recorded. In rough priority order:
   `docs/design/ascensionxi-combat-telemetry-autoacc.md`: what was built, the ten changes
   from the agreed design (10 is the minimal accuracy box), the Native-engine boundary,
   the mutation sweep, and what is still open. The status of T1–T8 is the table under
-  "Order" in that design doc.
+  "Order" in that design doc. Since 2026-11-06 (`2026.11.06a`, engine v176) it also
+  decides ranged shots, wears every fallback while not engaged, and has its settings
+  (Gear Helpers > AutoAcc, `gear/autoaccrules.lua`): read "Status 2026-11-06" there.
 
 0. **THE LUASHITACAST PURGE — EXECUTED, ALL FIVE PHASES, 2026-07-27** on `dev`
    (Henrik: *"Can't you just go all the way to phase 5, I really just want this to

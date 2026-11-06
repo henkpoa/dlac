@@ -498,6 +498,15 @@ addon.version = '2026.11.06b';  -- date of the last shipped change (Ashita print
                                 --  11.04c = a new character's first login says
                                 --  "New profile created" instead of printing
                                 --  "cannot read gear.lua" errors;
+                                --  11.06a = AutoAcc at ranged attacks
+                                --  (engine v176): a ranged attack's set
+                                --  takes its AutoAcc pieces off once the
+                                --  ranged hit rate reaches the cap without
+                                --  them, engaged or not; not engaged, every
+                                --  AutoAcc slot wears its normal pick; and
+                                --  Gear Helpers > AutoAcc > Settings chooses
+                                --  whether Trigger rules, mode and stance
+                                --  entries and level ranges override it;
                                 --  11.06b = a trigger condition on every
                                 --  handler: inNationControl, true in a
                                 --  conquest region your nation holds, false

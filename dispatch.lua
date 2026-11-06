@@ -3051,6 +3051,45 @@ function M._setTypeOf(setName, ctx)
     return (ok2 and type(t) == 'string') and t or 'normal';
 end
 
+-- AutoAcc's settings (v176, gear\autoaccrules -- Gear Helpers > AutoAcc):
+-- the module's answer, or the default when it cannot load (headless).
+-- The module is looked up once (false: it cannot load, so a headless suite
+-- does not search the path on every dispatch).
+M._ACC_RULE_DEFAULTS = { triggerRules = true, conditional = true, levelRange = false, rangedAttacks = true };
+function M._accRulesModule()
+    if M._accRulesMod == nil then
+        local ok, r = pcall(require, 'dlac\\gear\\autoaccrules');
+        M._accRulesMod = (ok and type(r) == 'table' and type(r.get) == 'function') and r or false;
+    end
+    return M._accRulesMod or nil;
+end
+function M._accRule(name)
+    local r = M._accRulesModule();
+    if r ~= nil then
+        local ok, v = pcall(r.get, name);
+        if ok and type(v) == 'boolean' then return v; end
+    end
+    return M._ACC_RULE_DEFAULTS[name];
+end
+
+-- The settings' revision, a retrace leg ('' without the module).
+function M._accRulesRev()
+    local r = M._accRulesModule();
+    if r == nil or type(r.rev) ~= 'function' then return ''; end
+    local ok, rev = pcall(r.rev);
+    return ok and tostring(rev) or '';
+end
+
+-- v176: a Default dispatch while the player is not engaged has nothing to
+-- hit, so every AutoAcc piece in an armour slot wears its fallback. An
+-- unreadable status (nil) is not 'not engaged': the pieces stay on.
+M._ACC_KEEP_SLOTS = { main = true, sub = true, range = true, ammo = true };
+function M._accNotEngaged(ctx)
+    if type(ctx) ~= 'table' or ctx.event ~= 'Default' or type(ctx.player) ~= 'table' then return false; end
+    local s = ctx.player.Status;
+    return s ~= nil and s ~= 'Engaged';
+end
+
 -- Decisions for one set table: { [slot] = item name } covering every AutoAcc
 -- marker in it (the piece itself, or its fallback when released); nil when the
 -- set carries none. Locked slots are skipped (the lock branch strips them).
@@ -3072,6 +3111,17 @@ local function accResolveSet(s, ctx)
         end
     end
     if cands == nil then return nil; end
+    -- v176: not engaged, nothing to hit. Without a provider the dormant path
+    -- wears each armour slot's fallback here; with one, the candidates travel
+    -- and the provider answers the same at the send, so the readout says why.
+    if M._autoAccService() == nil and M._accNotEngaged(ctx) then
+        local pick = {};
+        for _, c in ipairs(cands) do
+            local keep = M._ACC_KEEP_SLOTS[string.lower(tostring(c.slot))] == true or c.fallback == nil;
+            pick[c.slot] = keep and c.name or c.fallback;
+        end
+        return pick;
+    end
     if M._autoAccService() ~= nil then
         local pick, meta = {}, {};
         for _, c in ipairs(cands) do
@@ -3149,11 +3199,23 @@ function M._autoAccApply(event, ctx)
         local id = (type(ctx.action) == 'table') and tonumber(ctx.action.Id) or nil;
         req.rangedWs = id ~= nil and (M._ammoWs.consume[id] or M._ammoWs.free[id]) == true;
     end
+    -- v176: not engaged (Default), the ranged switch (Midshot), and the
+    -- action's own target, which the provider holds against its frame's.
+    if M._accNotEngaged(ctx) then req.idle = true; end
+    if event == 'Midshot' then req.allowRanged = M._accRule('rangedAttacks'); end
+    if event ~= 'Default' then
+        local ok, t = pcall(function() return gData.GetActionTarget(); end);
+        req.targetId = (ok and type(t) == 'table') and tonumber(t.Id) or nil;
+    end
     local ok, res = pcall(svc.decide, req);
     if not ok or type(res) ~= 'table' then return nil; end
     for slot, fallback in pairs(res.release or {}) do
         local meta = cands[slot];
-        if meta ~= nil and nameOf(ctx.planOut[slot]) == meta.typed then ctx.planOut[slot] = fallback; end
+        if meta ~= nil and nameOf(ctx.planOut[slot]) == meta.typed then
+            -- A Trigger rule's piece kept as the fallback (v176) goes on as the
+            -- rule wrote it (an augment-pinned entry keeps its pin).
+            ctx.planOut[slot] = (meta.fallbackValue ~= nil and meta.fallback == fallback) and meta.fallbackValue or fallback;
+        end
     end
     M._lastAutoAcc = { event = event, release = res.release, why = res.why, metrics = res.metrics };
     return res;
@@ -4388,13 +4450,27 @@ local function equipResolved(s, ctx, respectLocks, who)
     if type(ctx) == 'table' and type(ctx.planOut) == 'table' then
         for slot, v in pairs(fin) do
             if string.sub(tostring(slot), 1, 2) ~= '__' then
-                ctx.planOut[slot] = v;
                 -- v170: the slot's last writer decides whether it holds an
                 -- AutoAcc candidate the send may release.
                 if type(ctx.planAcc) == 'table' then
                     local meta = (accMeta ~= nil) and accMeta[slot] or nil;
                     local name = (type(v) == 'table') and tostring(v.Name or v[1]) or tostring(v);
-                    ctx.planAcc[slot] = (meta ~= nil and name == meta.typed) and meta or nil;
+                    local prior = ctx.planAcc[slot];
+                    if meta ~= nil and name == meta.typed then
+                        ctx.planOut[slot], ctx.planAcc[slot] = v, meta;
+                    elseif prior ~= nil and ctx.floorPass == true and name ~= prior.typed
+                           and M._accRule('triggerRules') == false then
+                        -- v176, "Trigger rules override AutoAcc" off: a later
+                        -- rule's piece does not replace the AutoAcc piece, it
+                        -- becomes the piece's fallback (what the slot wears
+                        -- once the accuracy is not needed). Claims still
+                        -- replace it: they apply after the floor pass.
+                        prior.fallback, prior.fallbackValue, prior.by = name, v, ctx.setName;
+                    else
+                        ctx.planOut[slot], ctx.planAcc[slot] = v, nil;
+                    end
+                else
+                    ctx.planOut[slot] = v;
                 end
             end
         end
@@ -7341,7 +7417,8 @@ function M.dispatch(event)
         sig = event .. ':' .. table.concat(sig, ',') .. '|' .. table.concat(lk, ',')
               .. '|' .. table.concat(legs, '|') .. '|sr' .. tostring(M.modesRev or 0)
               .. '|ao' .. table.concat(arbOrder, ',')
-              .. '|aa' .. M._autoAccRev();
+              .. '|aa' .. M._autoAccRev()
+              .. '|ar' .. M._accRulesRev() .. '|ae' .. (M._accNotEngaged(ctx) and '1' or '0');
         local old = _trace[event];
         local retrace = (old == nil) or (old.sig ~= sig) or (event ~= 'Default');
         local lines = retrace and {} or old.lines;
@@ -7632,6 +7709,10 @@ function M.dispatch(event)
             ctx.reserveGlobal = true;
         end
 
+        -- v176: the Trigger rules' own pass. While it is up, a rule writing an
+        -- AutoAcc piece's slot may only become that piece's fallback
+        -- ("Trigger rules override AutoAcc" off); the claims below never may.
+        ctx.floorPass = true;
         for hi, r in ipairs(hits) do
             -- The winning case, named for /dl why (issue #125): '[via <case>]'
             -- rides right after the rule label. A case-less rule has no `|` leg,
@@ -7673,6 +7754,7 @@ function M.dispatch(event)
                 end
             end
         end
+        ctx.floorPass = nil;
         -- (Stage 4: the verdict no longer retires here -- it is the ONE
         --  reservation authority and rides through the claim applies below,
         --  clearing after the arbitration's plan has been executed.)

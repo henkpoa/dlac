@@ -11915,6 +11915,43 @@ natural."
   unchanged.
 - Owed: an in-game first login on a fresh character.
 
+## 2026-11-06: AutoAcc at ranged attacks, not engaged, and its settings (`2026.11.06a`)
+
+Henrik: "Auto Acc shouldn't overwrite every form of trigger. I think it does
+now, right? So if I am running around with speed belt and Virtuoso Belt (where
+speed belt would win due to level cap diff), then it equips virtuoso belt even
+if I have no target enabled." After the diagnosis: "Please implement RACC,
+we're releasing ranger this sunday, so it's important. I do want to be able to
+choose if trigger rules override autoacc though."
+
+- **The diagnosis.** In one slot list an AutoAcc entry always took the slot (its
+  own pool; the normal pick was only its fallback, whatever its level, range or
+  mode). Only the server's proof of the cap released it, and with no target
+  there is no LIVE frame, so the piece stayed on whenever you were idle. Other
+  Trigger rules' sets and every claim already replaced it (last writer).
+- **Not engaged, nothing to hit (engine v176).** A Default dispatch while not
+  engaged gives every armour AutoAcc piece its fallback; the provider answers
+  without telemetry and keeps no session alive. Reproduced end to end with the
+  frame-profile harness on `origin/main` (Virtuoso Belt idle) and fixed on the
+  branch (Speed Belt idle, Virtuoso Belt engaged with no frame yet).
+- **Ranged shots.** A Midshot decides on the ranged context alone (an integer
+  roll, 95 % cap, the distance penalty already in the frame); the basis must
+  wear the plan's Range weapon; the shot's own target must be the frame's.
+  Not engaged, the client binds the lane to the cursor's monster while ranged
+  decisions are wanted (AXI lets a Ranger shoot and weapon-skill sheathed,
+  #1149). Ranged weapon skills still keep their pieces on.
+- **Settings** (Gear Helpers > AutoAcc, `gear/autoaccrules.lua`): Trigger rules
+  override AutoAcc (on; off = the rule's piece becomes the fallback), mode and
+  stance entries override it (on), level-range entries (off), AutoAcc at ranged
+  attacks (on).
+- The ranged accuracy effects joined `ACC_EFFECTS`; a decision whose guarded
+  hands the frame did not measure holds instead of passing an empty check.
+- Tests: run_tests 7995 -> 8025 (AS1-AS16); the AutoAcc suites wire 90, client
+  111 -> 135, model 166 -> 209, dispatch 55 -> 93, box 296 -> 367; smoke_ui 1772
+  unchanged. Sweep: 43 new mutants and the nine re-pointed ones, all killed.
+- Owed: an in-game Ranger round (engaged and sheathed, easy and hard monster,
+  the switch off) and the Speed Belt case idle.
+
 ## 2026-11-06: inNationControl, a conquest region your nation holds (`2026.11.06b`, engine v177)
 
 Henrik: "Can you add a condition to all categories for Inside Area of Nation
