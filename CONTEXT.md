@@ -130,6 +130,10 @@ _Avoid_: day match / weather match / favourability for these (those test the ACT
 What an avatar's Blood Pact: Rage deals — Physical, Magic, Hybrid (physical AND magic damage: Burning Strike, Flaming Crush) or Breath (Nether Blast) — the PetAction `rageType` condition (engine v175). The server's pact scripts are the source (`dispatch.RAGE_TYPE`); neither LAC nor the client carries it. A rage that deals no damage has none.
 _Avoid_: Rage vs Ward (that is the pact's *kind* — `abilityType = Blood Pact: Rage` — not what it deals; Meteor Strike and Predator Claws are both Rage; the Triggers tab's **Avatar-Ward** entry on PetAction is `abilityType = Blood Pact: Ward`, any ward, 2026-11-03); element (a pact's element says nothing about physical or magic)
 
+**Nation control**:
+Whether the conquest region you stand in is held by YOUR nation — the `inNationControl` condition (engine v177, `feature/conquest.lua`), on every handler. It follows the server's gear latent "in areas under / outside own nation's control": true in a conquest region (Ronfaure to the Tavnazian Archipelago) your nation holds; false in one held by another nation, the beastmen or nobody, and in the regions no nation ever holds (the cities, Jeuno, Dynamis, the Safehold, Promyvion, Lumoria, Limbus). Aht Urhgan, the past, Abyssea and Adoulin are neither. The latent also needs Signet (or Sanction / Sigil); the condition does not, so a rule adds that as a buff condition.
+_Avoid_: in town / home nation (your own city is NOT under your nation's control here — it reads false); Signet (the buff the latent also needs, not part of this condition)
+
 **Claim**:
 A feature's declared wish to dress one or more slots (wear this item, or keep what's worn), registered with the Arbiter instead of equipped directly. Slots are contested one by one — losing a contest costs a claimant only that slot.
 _Avoid_: pin (the floatgear feature — one claimant among many), override, hijack

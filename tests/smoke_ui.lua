@@ -4781,6 +4781,79 @@ end)();
                     check('TB64b the Avatar-Ward popups stayed balanced', depth.popup, 0);
                 end
             end
+
+            -- TB65-70. inNationControl (engine v177) on EVERY handler (Henrik:
+            -- "add a condition to all categories"): a true/false dropdown,
+            -- picked through the real chooser, saved, loaded by the engine,
+            -- and edited back -- false included, the value a flag cannot hold.
+            if type(DEFS) == 'table' then
+                local D = require('dlac\\dispatch');
+                local function ncDef(h)
+                    for i, d in ipairs(DEFS[h] or {}) do
+                        if d.key == 'inNationControl' then return i, d; end
+                    end
+                    return nil;
+                end
+                local missing = {};
+                for _, h in ipairs({ 'Default', 'Precast', 'Midcast', 'Ability', 'Item',
+                                     'Weaponskill', 'Preshot', 'Midshot', 'PetAction' }) do
+                    local _, d = ncDef(h);
+                    if d == nil or d.kind ~= 'boolean' or table.concat(d.items or {}, ',') ~= 'false,true' then
+                        missing[#missing + 1] = h;
+                    end
+                end
+                check('TB65 every handler offers inNationControl = false / true', table.concat(missing, ','), '');
+
+                local savedBP, savedBC = IM.BeginPopup, IM.BeginCombo;
+                local bad, dropped = {}, {};
+                for _, case in ipairs({ { 'Precast', 'false', false }, { 'Default', 'true', true } }) do
+                    local h, label, want = case[1], case[2], case[3];
+                    local ni = ncDef(h);
+                    -- the chooser: the entry is a plain Selectable
+                    IM.BeginPopup = function(id)
+                        local s = tostring(id);
+                        if s == '##dlac_trigadd' or s == '##trgcondmenu' then depth.popup = depth.popup + 1; return true; end
+                        return false;
+                    end
+                    trig.data = {};
+                    trig.addFor, trig.addConds, trig._addDef = h, {}, 1;
+                    trig._addValSel = nil; trig.addValText[1] = ''; trig.addSet = 'Signet';
+                    trig.addNote, trig.addSwap = nil, nil;
+                    trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+                    frame('inNationControl##trgct' .. tostring(ni));
+                    IM.BeginPopup = savedBP;
+                    if trig._addDef ~= ni then bad[#bad + 1] = h .. ' not picked'; end
+                    -- the value: the true/false combo, then + & and Add rule
+                    IM.BeginCombo = function(id) return id == '##trgcondval'; end;
+                    frame(label .. '##trgcv' .. (want and 2 or 1));
+                    IM.BeginCombo = savedBC;
+                    frame('+ & condition##trgac');
+                    frame('Add rule###trgaddgo');
+                    local r = trig.data[h] and trig.data[h][1];
+                    local got = (type(r) == 'table') and (r.when or {}).innationcontrol;
+                    if got ~= want then bad[#bad + 1] = h .. '=' .. tostring(got); end
+                    local norm, warns = D._normalize({ [h] = { r } });
+                    local nr = ((norm or {})[h] or {})[1];
+                    if nr == nil or #(warns or {}) ~= 0 or nr.prio ~= 95 then dropped[#dropped + 1] = h; end
+                end
+                check('TB66 picked through the chooser, saved as a boolean', table.concat(bad, ','), '');
+                check('TB67 ...and the engine loads it at 95', table.concat(dropped, ','), '');
+
+                -- 'e' on a pending row reloads the entry with its value.
+                local ni = ncDef('Midshot');
+                trig.data = {};
+                trig.addFor, trig._addDef = 'Midshot', 1;
+                trig.addConds = { { key = 'innationcontrol', value = false } };
+                trig.addNote, trig.addSwap = nil, nil;
+                frame('e##trgce1');
+                check('TB68 editing inNationControl = false reloads it',
+                    tostring(trig._addDef == ni) .. '/' .. tostring(trig._addValSel) .. '/' .. tostring(#trig.addConds),
+                    'true/false/0');
+                check('TB69 the inNationControl popups stayed balanced', depth.popup, 0);
+                local _, nd = ncDef('Default');
+                check('TB70 its hint names the Signet the latent needs',
+                    (nd and nd.hint or ''):find('Signet', 1, true) ~= nil, true);
+            end
         end
     end
 

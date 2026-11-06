@@ -138,6 +138,11 @@ local MODE_COND = { key = 'mode', kind = 'mode',
 local MOB_TAGGED_COND = { key = 'mobTagged', kind = 'boolean', items = { 'false', 'true' },
     hint = 'you have landed a successful hostile action on the current mob,\nincluding hits, debuffs and abilities. Misses, resists, aggro and other\nplayers do not count. Use mobTagged = false for TH gear on an untagged mob.\nRemembers target switches; clears on death, disappearance, zoning or reload.\nTracks observed actions, not the server\'s actual TH level.' };
 
+-- inNationControl (engine v177), offered on EVERY handler (Henrik: "add a
+-- condition to all categories"), appended below beside Player and Pet.
+local NATION_CONTROL_COND = { key = 'inNationControl', kind = 'boolean', items = { 'false', 'true' },
+    hint = 'true = you stand in a conquest region your nation holds (Ronfaure to\nthe Tavnazian Archipelago). false = a region it does not hold, and the\ncities, Jeuno, Dynamis and the Safehold, which no nation ever holds.\nThe server\'s gear latent "in areas under / outside own nation\'s\ncontrol". That latent also needs Signet (or Sanction / Sigil) on you:\nadd Player > Has(De)Buff = Signet to the rule. Aht Urhgan, Adoulin,\nAbyssea and the past match neither. Who holds each region comes from\nthe game\'s own conquest update, so right after a login or a reload it\nmatches neither until that arrives.' };
+
 local SPELL_CONDS = {
     { key = 'skill',     kind = 'list', items = { 'Divine Magic', 'Healing Magic', 'Enhancing Magic', 'Enfeebling Magic', 'Elemental Magic', 'Dark Magic', 'Summoning', 'Ninjutsu', 'Singing', 'Blue Magic', 'Geomancy' } },
     { key = 'magicType', kind = 'list', items = { 'White Magic', 'Black Magic', 'Bard Song', 'Ninjutsu', 'Summoning', 'Blue Magic' } },
@@ -285,11 +290,12 @@ local CASCADES = {
     rage   = { title = 'Avatar-Rage', params = RAGE_PARAMS,   slot = '_addRage' },
 };
 do
-    -- Append the shared player/pet pickers once per defs table.
+    -- Append the shared nation-control/player/pet pickers once per defs table.
     local seenDef = {};
     for _, defs in pairs(COND_DEFS) do
         if not seenDef[defs] then
             seenDef[defs] = true;
+            defs[#defs + 1] = NATION_CONTROL_COND;   -- engine v177
             defs[#defs + 1] = { key = 'player', kind = 'player', label = 'Player' };
             defs[#defs + 1] = { key = 'pet', kind = 'pet', label = 'Pet' };   -- engine v63
         end
@@ -1874,6 +1880,7 @@ end
 local COND_COLORS = {
     status = { 0.55, 0.75, 1.00, 1.0 },  moving = { 0.55, 0.75, 1.00, 1.0 },
     intown = { 0.50, 0.82, 0.92, 1.0 },   -- location gate (v84): a teal-blue beside status/moving
+    innationcontrol = { 0.50, 0.82, 0.92, 1.0 },   -- the other location gate (v177): inTown's colour
     mobtagged = { 0.95, 0.78, 0.35, 1.0 },
     mode = { 0.80, 0.60, 1.00, 1.0 },
     skill = { 0.55, 0.85, 0.55, 1.0 },
@@ -1957,6 +1964,9 @@ local PSTATE_KEYS = {
     -- engine's own matcher (zoneOf does GetMemberZone on the addon side), so you
     -- can watch it light up as you walk into a city while building the rule.
     intown = true,
+    -- inNationControl (engine v177) the same way: its matcher reads the zone,
+    -- your nation and feature\conquest's region owners on this side too.
+    innationcontrol = true,
     mobtagged = true,
 };
 -- LAC's EntityStatus resolution (constants.lua:236 via ResolveString's +1):

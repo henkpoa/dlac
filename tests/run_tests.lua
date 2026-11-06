@@ -6476,6 +6476,182 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- NC. inNationControl (engine v177): is the conquest region I stand in held by
+--     MY nation? feature\conquest answers off three facts -- GetNation(), the
+--     zone's region (M.REGION, the server's GetCurrentRegion) and the owners
+--     the last 0x05E carried -- the way the server's gear latent 53 does
+--     (latent_effect_container.cpp NationControl), minus its Signet clause:
+--     true = a region 0-18 my nation holds; false = one it does not, and the
+--     never-held regions 19-27 (the cities, Jeuno, Dynamis, the Safehold,
+--     Promyvion, Lumoria, Limbus); nil (matches NEITHER polarity) everywhere
+--     else and before the first 0x05E.
+-- ---------------------------------------------------------------------------
+(function()
+    local CQ = dofile('feature/conquest.lua');
+    package.loaded['dlac\\feature\\conquest'] = CQ;   -- dispatch requires it at call time
+
+    -- The region table against the ZONE NAMES of both packs' data/zones.lua:
+    -- the names come from the server's zone_settings, not from the generator
+    -- that wrote M.REGION, so a wrong id here cannot agree with itself.
+    local NAMED = {
+        { 'West Ronfaure', 0 }, { 'Ghelsba Outpost', 0 }, { 'Selbina', 1 }, { 'Valkurm Dunes', 1 },
+        { 'Jugner Forest', 2 }, { 'North Gustaberg', 3 }, { 'Rolanberry Fields', 4 },
+        { 'West Sarutabaruta', 5 }, { 'Mhaura', 6 }, { 'Sauromugue Champaign', 7 },
+        { 'Beaucedine Glacier', 8 }, { 'Xarcabard', 9 }, { 'Qufim Island', 10 },
+        { 'The Sanctuary of ZiTah', 11 }, { 'Rabao', 12 }, { 'Eastern Altepa Desert', 12 },
+        { 'Cape Teriggan', 13 }, { 'Kazham', 14 }, { 'Norg', 14 }, { 'Yuhtunga Jungle', 14 },
+        { 'Yhoator Jungle', 15 },
+        { 'Temple of Uggalepih', 15 }, { 'RuAun Gardens', 16 }, { 'Oldton Movalpolos', 17 },
+        { 'Lufaise Meadows', 18 }, { 'Southern San dOria', 19 }, { 'Chateau dOraguille', 19 },
+        { 'Bastok Markets', 20 }, { 'Windurst Waters', 21 }, { 'Heavens Tower', 21 },
+        { 'RuLude Gardens', 22 }, { 'Dynamis-Jeuno', 23 }, { 'Tavnazian Safehold', 24 },
+        { 'Promyvion-Holla', 25 }, { 'AlTaieu', 26 }, { 'Temenos', 27 },
+        -- never a conquest region: no entry at all
+        { 'Aht Urhgan Whitegate', nil }, { 'Nashmau', nil }, { 'Wajaom Woodlands', nil },
+        { 'Western Adoulin', nil }, { 'Abyssea-Konschtat', nil }, { 'East Ronfaure [S]', nil },
+        { 'Mog Garden', nil },
+    };
+    for _, pack in ipairs({ 'cexi', 'ascensionxi' }) do
+        local Z = dofile('servers/' .. pack .. '/data/zones.lua');
+        local byName = {};
+        for id, z in pairs(Z) do byName[z.n] = id; end
+        local bad = {};
+        for _, p in ipairs(NAMED) do
+            local id = byName[p[1]];
+            if id == nil then bad[#bad + 1] = p[1] .. '(no such zone)';
+            elseif CQ.REGION[id] ~= p[2] then bad[#bad + 1] = p[1] .. '=' .. tostring(CQ.REGION[id]); end
+        end
+        check('NC1 ' .. pack .. ': named zones sit in their regions', table.concat(bad, ', '), '');
+        local orphan = {};
+        for id in pairs(CQ.REGION) do if Z[id] == nil then orphan[#orphan + 1] = id; end end
+        check('NC2 ' .. pack .. ': every listed zone exists', #orphan, 0);
+    end
+    local n, per = 0, {};
+    for _, r in pairs(CQ.REGION) do n = n + 1; per[r] = (per[r] or 0) + 1; end
+    check('NC3 161 zones across the 28 counted regions', n, 161);
+    local empty = {};
+    for r = 0, 27 do if per[r] == nil then empty[#empty + 1] = r; end end
+    check('NC4 no counted region is empty', table.concat(empty, ','), '');
+
+    -- A 0x05E as the wire carries it: header + Balance/Alliance + 20 zero bytes,
+    -- then 4 bytes per region, the owner in the 4th (Windower fields.lua:
+    -- "Bitpacked Ronfaure Info -- 1A", "Fourth Byte: Ownership"; the server's
+    -- GP_SERV_COMMAND_CONQUEST writes nation + 1 there). The other three bytes
+    -- carry influence and are filled with noise on purpose.
+    local function conquestPacket(owner, len)
+        local b = {};
+        for i = 1, (len or 0xB4) do b[i] = 0x5A; end
+        b[1], b[2] = 0x5E, 0x5A;
+        for r = 0, 18 do b[0x1A + 4 * r + 4] = owner[r] or 0; end
+        local out = {};
+        for i = 1, (len or 0xB4) do out[i] = string.char(b[i]); end   -- cut at len: a short packet stays short
+        return table.concat(out);
+    end
+    -- Owners for the scenario: San d'Oria holds Ronfaure, Bastok Gustaberg,
+    -- Windurst Sarutabaruta, the beastmen Valdeaunia, nobody Tavnazia.
+    local OWN = { [0] = 1, [1] = 1, [2] = 2, [3] = 2, [4] = 3, [5] = 3, [6] = 3, [7] = 1,
+                  [8] = 2, [9] = 4, [10] = 1, [11] = 2, [12] = 3, [13] = 1, [14] = 2,
+                  [15] = 3, [16] = 4, [17] = 2, [18] = 0 };
+    local d = CQ.decode(conquestPacket(OWN));
+    local wrong = {};
+    for r = 0, 18 do if d == nil or d[r] ~= OWN[r] then wrong[#wrong + 1] = r; end end
+    check('NC5 decode reads each region\'s owner byte', table.concat(wrong, ','), '');
+    check('NC6 a packet one byte short of Tavnazia is refused', CQ.decode(conquestPacket(OWN, 0x1A + 4 * 19 - 1)), nil);
+    check('NC6b ...the exact length is enough', CQ.decode(conquestPacket(OWN, 0x1A + 4 * 19)) ~= nil, true);
+    check('NC6c non-string data is refused', CQ.decode(nil), nil);
+
+    local SANDY, BASTOK, WINDY = 0, 1, 2;
+    local A = CQ.answer;
+    check('NC7 Sandy in Ronfaure (Sandy holds it)',   A(100, SANDY, d), true);
+    check('NC8 Bastok in Ronfaure',                   A(100, BASTOK, d), false);
+    check('NC9 Bastok in Gustaberg (Bastok holds it)',A(106, BASTOK, d), true);
+    check('NC10 Windurst in a beastman region',       A(5, WINDY, d), false);
+    check('NC11 a region nobody holds is outside',    A(24, SANDY, d), false);
+    check('NC12 your own city is outside (server rule)', A(230, SANDY, d), false);
+    check('NC13 Jeuno is outside',                    A(243, BASTOK, d), false);
+    check('NC14 Dynamis is outside',                  A(185, WINDY, d), false);
+    check('NC15 a city needs no owner data',          A(238, WINDY, nil), false);
+    check('NC16 a conquest region before any 0x05E is unknown', A(100, SANDY, nil), nil);
+    check('NC17 Aht Urhgan is neither',               A(50, SANDY, d), nil);
+    check('NC18 an unlisted zone is neither',         A(999, SANDY, d), nil);
+    check('NC19 no zone is neither',                  A(nil, SANDY, d), nil);
+    check('NC20 an unread nation is neither',         A(100, nil, d), nil);
+    check('NC21 a nation outside 0-2 is neither',     A(100, 3, d), nil);
+
+    -- The live path, off FUNCTION-valued reads (the injected-reads rule).
+    local savedReads = CQ.reads;
+    local nat, zid = BASTOK, 106;
+    CQ.reads = { nation = function() return nat; end, zone = function() return zid; end };
+    CQ.reset();
+    check('NC22 nothing heard yet: unknown', CQ.inNationControl(), nil);
+    CQ.onPacket(0x05F, conquestPacket(OWN));
+    check('NC23 another packet id teaches nothing', CQ.owners(), nil);
+    CQ.onPacket(0x05E, conquestPacket(OWN));
+    check('NC24 Bastok in Gustaberg, live', CQ.inNationControl(), true);
+    zid = 100;
+    check('NC25 ...walks into Ronfaure', CQ.inNationControl(), false);
+    check('NC26 a passed zone beats the read', CQ.inNationControl(107), true);
+    CQ.onPacket(0x05E, conquestPacket(OWN, 0x40));
+    check('NC27 a torn 0x05E keeps the last owners', CQ.inNationControl(106), true);
+    local tally = {}; for r = 0, 18 do tally[r] = OWN[r]; end
+    tally[3] = 1;   -- the tally hands Gustaberg to San d'Oria
+    CQ.onPacket(0x05E, conquestPacket(tally));
+    check('NC28 the tally\'s 0x05E replaces the owners', CQ.inNationControl(106), false);
+    CQ.reads = { nation = function() error('no player'); end, zone = function() return 106; end };
+    check('NC29 a throwing read is unknown, not an error', CQ.inNationControl(), nil);
+
+    -- Through the engine: the matcher, both polarities, unknown matches neither.
+    local mm = dispatchM._matchers;
+    CQ.reads = { nation = function() return BASTOK; end, zone = function() return nil; end };
+    CQ.onPacket(0x05E, conquestPacket(OWN));
+    check('NC30 true fires in a region Bastok holds',  mm.innationcontrol(true,  { zone = 106 }), true);
+    check('NC31 false quiet there',                    mm.innationcontrol(false, { zone = 106 }), false);
+    check('NC32 false fires in Ronfaure',              mm.innationcontrol(false, { zone = 100 }), true);
+    check('NC33 true quiet in Ronfaure',               mm.innationcontrol(true,  { zone = 100 }), false);
+    check('NC34 false fires in Bastok Markets',        mm.innationcontrol(false, { zone = 235 }), true);
+    check('NC35 Whitegate: true quiet',                mm.innationcontrol(true,  { zone = 50 }), false);
+    check('NC36 Whitegate: false quiet too',           mm.innationcontrol(false, { zone = 50 }), false);
+    CQ.reset();
+    check('NC37 unheard owners: true quiet',           mm.innationcontrol(true,  { zone = 106 }), false);
+    check('NC38 unheard owners: false quiet',          mm.innationcontrol(false, { zone = 106 }), false);
+    CQ.onPacket(0x05E, conquestPacket(OWN));
+    local memo = { zone = 106 };
+    mm.innationcontrol(true, memo);
+    check('NC39 the answer is memoized on the dispatch', memo.nationCtl, true);
+    memo.nationCtl = false;
+    check('NC40 ...and the memo is what answers',      mm.innationcontrol(true, memo), false);
+
+    -- Tier, vocabulary and the loader, on Default and on an action handler.
+    check('NC41 inNationControl sits at 95', dispatchM.defaultPriority({ inNationControl = true }), 95);
+    check('NC42 mode still outranks it',
+        dispatchM.defaultPriority({ mode = 'DT' }) > dispatchM.defaultPriority({ inNationControl = false }), true);
+    local mt = dispatchM._matches;
+    local rule = { when = { status = 'Idle', innationcontrol = true } };
+    check('NC43 idle + held region fires', mt(rule, { player = { Status = 'Idle' }, zone = 106 }), true);
+    check('NC44 idle + another nation\'s region quiet', mt(rule, { player = { Status = 'Idle' }, zone = 100 }), false);
+    local src = {
+        Default = { { when = { status = 'Idle', inNationControl = true }, set = 'Signet' } },
+        Midcast = { { when = { skill = 'Healing Magic', inNationControl = false }, set = 'Abroad' } },
+    };
+    local text = dispatchM.serializeTriggers(src);
+    check('NC45 serializes PRETTY-case', text:find('inNationControl', 1, true) ~= nil, true);
+    check('NC46 round-trip byte-stable', dispatchM.serializeTriggers((loadstring or load)(text)()) == text, true);
+    local norm = dispatchM._normalize(src);
+    check('NC47 normalize keeps the Default rule at 95', norm.Default and norm.Default[1] and norm.Default[1].prio, 95);
+    check('NC48 ...and the Midcast rule, false intact',
+        norm.Midcast and norm.Midcast[1] and norm.Midcast[1].when.innationcontrol, false);
+
+    -- Loaded at startup, so the zone-in 0x05E is heard before any dispatch.
+    local f = io.open('dlac.lua', 'r');
+    local main = f and f:read('*a') or '';
+    if f then f:close(); end
+    check('NC49 dlac.lua loads feature\\conquest', main:find("'feature\\\\conquest'", 1, true) ~= nil, true);
+
+    CQ.reset();
+    CQ.reads = savedReads;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- weatherMatch (engine v121): a spell-handler flag -- true when the CURRENT
 -- weather's element equals the action's element. NOT the day+weather net
 -- (dayWeatherBonus): no day, no opposition, a plain weather match -- the gate
