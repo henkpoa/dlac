@@ -11998,3 +11998,25 @@ or False."
 - Owed: an in-game round. How long after a login and after `/addon reload dlac`
   the marker lights; then with Signet, a region your nation holds and one it
   does not.
+
+## 2026-11-06: the + Add popup loses its title and usage line (`2026.11.06c`)
+
+Henrik, on Sets > Main > + Add: "Inexcusably bad UX when it comes to usage of
+space. Remove flavor text. Move the circled content up a level to make use of
+new available space." The circled content was "Show gear I don't own" and the
+Type filter. It affects AscensionXI and CatsEyeXI alike (`ui/gearui.lua`).
+
+- **Gone:** the "Add usable item to <slot>:" title and the dim "stays open --
+  add several; Esc / click outside closes" hint (the 07-14 multi-add note
+  above). The slot is the row you clicked + Add on.
+- **Row 1:** Sort, "Show gear I don't own", Type. **Row 2:** Search,
+  Available only, Hide teleport/exp items. The gated-add line ("@mode -- every
+  piece added is gated on this mode") still prints, now above row 1.
+- The candidate pool is still built before the Type combo (its buckets come
+  from the pool); nothing between the Sort combo and the SameLine after the
+  pool submits a widget, so it sits between them unchanged.
+- Width, read off the screenshot: the popup was about 1170 px wide for a
+  620 px list; row 2 (about 720 px) is now the widest line.
+- Tests: no suite renders this popup. smoke_ui 1778 and run_tests 8078
+  unchanged and green, the percent-literal check passes.
+- Owed: a look in game -- Main (Type shows) and a Ring (no Type).

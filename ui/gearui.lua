@@ -4126,17 +4126,19 @@ local function renderAddPopup(job, level)
     if ui.setSelected == nil then
         imgui.TextColored(COL.DIM, 'No slot selected.');
     else
-        imgui.TextColored(COL.HEADER, 'Add usable item to ' .. ui.setSelected .. ':');
-        imgui.SameLine(0, 10); renderSortCombo('add');
-        imgui.SameLine(0, 10);
-        imgui.TextColored(COL.DIM, 'stays open -- add several; Esc / click outside closes');
         -- Gated add (a section's "Add more"): say so loudly -- every click below
         -- stamps this mode gate on the new row.
         if ui._addGate ~= nil then
             imgui.TextColored(COL.JOBS, '@' .. fmt.esc(tostring(ui._addGate)) .. '  -- every piece added is gated on this mode');
         end
+        -- No title and no usage line (Henrik 2026-11-06): the slot is the row you
+        -- clicked + Add on, and the two stretched the popup to nearly twice the
+        -- list's width. Row 1 = Sort, "Show gear I don't own" and Type; row 2 =
+        -- Search and the two hide ticks. Nothing between the sort combo and the
+        -- SameLine after the pool submits a widget, so the pool is built in between.
+        renderSortCombo('add');
         -- Candidate pool first (the weapon-type filter's buckets derive from it, so it
-        -- has to exist before the filter row renders). Sub takes the full paired pool.
+        -- has to exist before row 1's Type combo renders). Sub takes the full paired pool.
         local gearKey = GEAR_OF[ui.setSelected] or ui.setSelected;
         local list = M.working[ui.setSelected] or {};
         -- Keyed Name + AugKey, not Name alone: adding one roll of an augment-
@@ -4172,30 +4174,7 @@ local function renderAddPopup(job, level)
         local blocked = pairedBlockedIds(ui.setSelected, true, availOnly);
         cands = sortForDisplay(cands);
 
-        -- Filter row: name search + hide gear parked in unavailable containers
-        -- + hide the Teleports-menu utility items (ON by default -- Henrik: they
-        -- bloat the Ear/Ring lists without adding set value).
-        ui.addSearch = ui.addSearch or { '' };
-        ui.addAvail  = ui.addAvail  or { false };
-        ui.addHideTravel = ui.addHideTravel or { true };
         ui.addTypeFilter = ui.addTypeFilter or {};   -- weapon-type marks (F2a/F2b); {} = "All"
-        imgui.TextColored(COL.DIM, 'Search:'); imgui.SameLine(0, 4);
-        imgui.PushItemWidth(240);
-        imgui.InputText('##addsearch', ui.addSearch, 48);
-        imgui.PopItemWidth();
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(aliases work: matk finds MAB gear). Comma = AND:\n"hmp, refresh" shows only pieces carrying BOTH.');
-        end
-        imgui.SameLine(0, 14);
-        imgui.Checkbox('Available only', ui.addAvail);
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).\nA piece its partner slot already uses (Ring1/Ring2, Ear1/Ear2,\nMain/Sub) is offered only when the second copy is in your bags too.');
-        end
-        imgui.SameLine(0, 14);
-        imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, Shadow\nLord Shirt, teleport earrings/rings, exp rings) -- no combat stats, they\nonly bloat the Ear/Ring lists. Untick to add one to a set deliberately.');
-        end
         imgui.SameLine(0, 14);
         imgui.Checkbox("Show gear I don't own##addall", ui.addShowAll);
         if imgui.IsItemHovered() then
@@ -4240,6 +4219,30 @@ local function renderAddPopup(job, level)
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('Show only the marked weapon types. "All" (default) shows everything;\nmark one or more types to narrow the list. Resets to "All" each open.\nView only -- what is eligible never changes.');
             end
+        end
+
+        -- Filter row: name search + hide gear parked in unavailable containers
+        -- + hide the Teleports-menu utility items (ON by default -- Henrik: they
+        -- bloat the Ear/Ring lists without adding set value).
+        ui.addSearch = ui.addSearch or { '' };
+        ui.addAvail  = ui.addAvail  or { false };
+        ui.addHideTravel = ui.addHideTravel or { true };
+        imgui.TextColored(COL.DIM, 'Search:'); imgui.SameLine(0, 4);
+        imgui.PushItemWidth(240);
+        imgui.InputText('##addsearch', ui.addSearch, 48);
+        imgui.PopItemWidth();
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Matches item names AND stats -- try HMP, Refresh, FastCast\n(aliases work: matk finds MAB gear). Comma = AND:\n"hmp, refresh" shows only pieces carrying BOTH.');
+        end
+        imgui.SameLine(0, 14);
+        imgui.Checkbox('Available only', ui.addAvail);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Hide gear parked in a container you cannot equip from\n(the red names -- Safe, Storage, Locker, Satchel...).\nA piece its partner slot already uses (Ring1/Ring2, Ear1/Ear2,\nMain/Sub) is offered only when the second copy is in your bags too.');
+        end
+        imgui.SameLine(0, 14);
+        imgui.Checkbox('Hide teleport/exp items', ui.addHideTravel);
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Hide the Teleports-menu utility items (Warp / Provenance Ring, Shadow\nLord Shirt, teleport earrings/rings, exp rings) -- no combat stats, they\nonly bloat the Ear/Ring lists. Untick to add one to a set deliberately.');
         end
 
         -- Apply the popup filters up front so the name column sizes to what shows.

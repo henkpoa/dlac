@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.06b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.06c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -510,7 +510,11 @@ addon.version = '2026.11.06b';  -- date of the last shipped change (Ashita print
                                 --  11.06b = a trigger condition on every
                                 --  handler: inNationControl, true in a
                                 --  conquest region your nation holds, false
-                                --  in one it does not)
+                                --  in one it does not;
+                                --  11.06c = Sets > + Add drops its title and
+                                --  usage line; "Show gear I don't own" and
+                                --  Type sit beside Sort, so the popup is about
+                                --  as wide as its list)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
