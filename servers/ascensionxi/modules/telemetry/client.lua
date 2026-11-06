@@ -24,6 +24,15 @@
     The session follows demand: no HELLO goes until AutoAcc asks for a
     decision (want()), and IDLE_AFTER seconds without a question end it with
     STOP, so a player without AutoAcc pieces costs the server nothing.
+
+    Not engaged, the server has no battle target to follow, yet a Ranger
+    shoots (and, on AscensionXI, weapon-skills) with the weapon sheathed
+    (2026-11-06). While ranged decisions are wanted (wantTarget(), from a
+    ranged shot's decision or the open accuracy box) and the player is not
+    engaged, the battle lane is bound to the cursor's monster instead (a
+    WATCH without FOLLOW, the server's own non-follow lane); engaging, or
+    no monster on the cursor, goes back to FOLLOW. Each change of intention
+    is one WATCH with a new WatchGen, judged at most every BIND_EVERY.
 ]]--
 
 local wire = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\wire');
@@ -36,6 +45,7 @@ local M = {
     BACKOFF  = 30,     -- after UNAVAILABLE (route without the module)
     CONTEXTS = 0x000F, -- main, off hand, kick, ranged
     IDLE_AFTER = 300,  -- seconds without an AutoAcc question before the session ends
+    BIND_EVERY = 0.25, -- seconds between looks at the engaged state and the cursor
 };
 
 M._clock    = os.clock; -- replaced by the transport's wall clock
@@ -45,19 +55,27 @@ M._abandon  = nil;      -- (op, seq): give the shared slot back
 M._direct   = nil;      -- (packet): bypasses the gate (the unload STOP)
 M._charId   = nil;      -- () -> the character's server id, or nil
 M._battleTarget = nil;  -- () -> the server id of the player's battle target, or nil
+M._engaged  = nil;      -- () -> true / false, or nil when it cannot be read
+M._cursorTarget = nil;  -- () -> { id = server id, index } of the cursor's living monster, or nil
 M._onFrame  = nil;      -- (frame) after a SNAPSHOT is accepted
 M._onState  = nil;      -- () after the session or lane state changed
 
 local st;               -- every field below; reset() builds it
 local seqCounter, nonceCounter;
 local wantedAt = nil;   -- the last AutoAcc question; outlives reset() and zoning
+local targetWantedAt = nil;   -- the last ranged question (wantTarget)
 
 local function now() return M._clock(); end
 
 -- AutoAcc asks for a decision: the session is wanted.
 function M.want() wantedAt = now(); end
 
+-- A ranged decision (or the open box) asks: not engaged, watch the cursor's
+-- monster. It wants the session too.
+function M.wantTarget() targetWantedAt = now(); wantedAt = targetWantedAt; end
+
 local function wanted(t) return wantedAt ~= nil and t - wantedAt < M.IDLE_AFTER; end
+local function targetWanted(t) return targetWantedAt ~= nil and t - targetWantedAt < M.IDLE_AFTER; end
 
 -- T8: nonces from the wall clock and this instance's own address, never
 -- from math.random (dlac does not seed it, so a reload would repeat them).
@@ -98,6 +116,8 @@ function M.reset()
         pending   = nil,      -- { op, seq, nonce, payload, sentAt, tries, kind }
         queued    = nil,      -- the next request wanted (latest intention wins)
         watchGen  = 0,        -- the battle lane's latest intention
+        bound     = nil,      -- { id, index }: the lane watches this monster (nil: FOLLOW)
+        boundAt   = nil,      -- when the intention was last judged
         confirmed = 0,        -- the WatchGen the server acknowledged
         laneState = wire.laneState.IDLE,
         lastRev   = 0,
@@ -165,8 +185,11 @@ local function build(kind)
     if kind == 'hello' then
         return wire.op.HELLO, wire.encodeHello({ nonce = nonce, caps = wire.CLIENT_CAPS, build = 20261005 }), nonce;
     elseif kind == 'watch' then
+        -- FOLLOW the battle target, or (bound) watch the cursor's monster.
+        local b = st.bound;
         return wire.op.WATCH, wire.encodeWatch({ session = st.session, nonce = nonce, lane = 0,
-            flags = wire.watchFlag.FOLLOW, contextMask = M.CONTEXTS, watchGen = st.watchGen }), nonce;
+            flags = (b == nil) and wire.watchFlag.FOLLOW or 0, contextMask = M.CONTEXTS, watchGen = st.watchGen,
+            targetId = b and b.id or 0, targetIndex = b and b.index or 0 }), nonce;
     elseif kind == 'renew' or kind == 'republish' then
         return wire.op.RESYNC, wire.encodeResync({ session = st.session, nonce = nonce,
             mode = (kind == 'republish') and wire.resyncMode.REPUBLISH or wire.resyncMode.RENEW,
@@ -194,6 +217,31 @@ local function startRequest(kind)
     if not transmit(p) then return false; end
     st.pending = p;
     return true;
+end
+
+-- The lane's intention: the cursor's monster while ranged decisions are
+-- wanted and the player is certainly not engaged; else nil (FOLLOW).
+local function intention(t)
+    if not targetWanted(t) or type(M._engaged) ~= 'function' or type(M._cursorTarget) ~= 'function' then return nil; end
+    local ok, engaged = pcall(M._engaged);
+    if not ok or engaged ~= false then return nil; end
+    local ok2, c = pcall(M._cursorTarget);
+    if not ok2 or type(c) ~= 'table' then return nil; end
+    local id, index = tonumber(c.id), tonumber(c.index);
+    if id == nil or id == 0 or index == nil or index <= 0 then return nil; end
+    return { id = id, index = index };
+end
+
+-- A changed intention is a new WatchGen, which the pump then sends.
+local function rebind(t)
+    if st.boundAt ~= nil and t - st.boundAt < M.BIND_EVERY then return; end
+    st.boundAt = t;
+    local want, have = intention(t), st.bound;
+    if want == nil and have == nil then return; end
+    if want ~= nil and have ~= nil and want.id == have.id and want.index == have.index then return; end
+    st.bound = want;
+    st.watchGen = st.watchGen + 1;
+    changed();
 end
 
 -- Called every frame (the servermods pump).
@@ -231,6 +279,7 @@ function M.pump()
     if st.due ~= nil and t < st.due then return; end
     if st.phase == 'live' then
         if not wanted(t) then queue('stop'); end
+        rebind(t);
         if st.queued == nil and st.confirmed ~= st.watchGen then queue('watch'); end
         if st.queued == nil and st.lastTraffic ~= nil and t - st.lastTraffic >= st.renewAfter then queue('renew'); end
     end
@@ -365,8 +414,10 @@ local function onPush(f)
     if s.lane ~= 0 then return reject('lane'); end
     if s.watchGen ~= st.watchGen then return reject('watchGen'); end
     if s.rev <= st.lastRev then return reject('rev'); end
-    if s.laneState == wire.laneState.LIVE and type(M._battleTarget) == 'function' then
-        local target = M._battleTarget();
+    if s.laneState == wire.laneState.LIVE then
+        -- A bound lane names its monster; a FOLLOW lane the battle target.
+        local target = (st.bound ~= nil) and st.bound.id or nil;
+        if target == nil and type(M._battleTarget) == 'function' then target = M._battleTarget(); end
         if target ~= nil and target ~= s.targetId then return reject('target'); end
     end
     s.key = wire.snapshotKey(f.payload);
@@ -412,12 +463,12 @@ function M.state()
         phase = st.phase, why = st.why, session = st.session, laneState = st.laneState,
         watchGen = st.watchGen, confirmed = st.confirmed, lastRev = st.lastRev,
         pending = st.pending and st.pending.kind or nil, stats = st.stats,
-        wanted = wanted(now()),
+        wanted = wanted(now()), bound = st.bound,
     };
 end
 
 -- test seams
 function M._state() return st; end
-function M._unwant() wantedAt = nil; end
+function M._unwant() wantedAt = nil; targetWantedAt = nil; end
 
 return M;

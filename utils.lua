@@ -209,6 +209,7 @@ end
 local _lastModesRev = nil;
 local _lastDW = nil;
 local _stanceRb = { sig = nil, ver = nil };   -- what the last flatten saw of the watched stances
+local _lastAccRulesRev = nil;
 function M.rebuildSets(sets)
     local player = gData.GetPlayer();
     if player == nil then return sets; end
@@ -219,6 +220,13 @@ function M.rebuildSets(sets)
     if mrev ~= nil and mrev ~= _lastModesRev then
         shouldRebuild = true;
         _lastModesRev = mrev;
+    end
+    -- The AutoAcc settings (v176): two of them decide what a slot with an
+    -- AutoAcc piece flattens to (M.autoAccYields).
+    local arev = M.accRulesRev();
+    if arev ~= _lastAccRulesRev then
+        shouldRebuild = true;
+        _lastAccRulesRev = arev;
     end
     -- The Dual Wield trait bit is a rebuild signal of its own: dw-ruled entries
     -- and the Sub off-hand pairing both flatten against it, and it can flip
@@ -721,6 +729,51 @@ function M.slotLadder(slotTable, slotName, currentMain, cctx)
     return out;
 end
 
+-- The AutoAcc settings (v176, gear\autoaccrules -- Gear Helpers > AutoAcc),
+-- looked up once; without the module (headless) every switch answers its
+-- default.
+local ACC_RULE_DEFAULTS = { triggerRules = true, conditional = true, levelRange = false, rangedAttacks = true };
+local _accRules = nil;
+M._accRulesOverride = nil;   -- test seam: a settings table (or false: none)
+local function accRulesModule()
+    if M._accRulesOverride ~= nil then return M._accRulesOverride or nil; end
+    if _accRules == nil then
+        local ok, r = pcall(require, 'dlac\\gear\\autoaccrules');
+        _accRules = (ok and type(r) == 'table' and type(r.get) == 'function') and r or false;
+    end
+    return _accRules or nil;
+end
+function M.accRule(name)
+    local r = accRulesModule();
+    if r ~= nil then
+        local ok, v = pcall(r.get, name);
+        if ok and type(v) == 'boolean' then return v; end
+    end
+    return ACC_RULE_DEFAULTS[name];
+end
+function M.accRulesRev()
+    local r = accRulesModule();
+    if r == nil or type(r.rev) ~= 'function' then return ''; end
+    local ok, rev = pcall(r.rev);
+    return ok and tostring(rev) or '';
+end
+
+-- Does a slot's normal pick (item rung) win the slot over its AutoAcc piece
+-- (acc rung)? Two of the AutoAcc settings say so (2026-11-06, Henrik: "Auto
+-- Acc shouldn't overwrite every form of trigger"): 'conditional' (default
+-- on) -- an entry tied to a mode or a stance that is on now outranks an
+-- AutoAcc piece without one; 'levelRange' (default off) -- an entry with a
+-- level range outranks one without. Otherwise the AutoAcc piece wins and the
+-- normal pick is only its fallback.
+function M.autoAccYields(item, acc)
+    if type(item) ~= 'table' or type(acc) ~= 'table' then return false; end
+    if M.accRule('conditional') then
+        if (item.modeTier or 0) ~= (acc.modeTier or 0) then return (item.modeTier or 0) > (acc.modeTier or 0); end
+        if (item.stanceTier or 0) ~= (acc.stanceTier or 0) then return (item.stanceTier or 0) > (acc.stanceTier or 0); end
+    end
+    return M.accRule('levelRange') == true and (item.rank or 0) > (acc.rank or 0);
+end
+
 -- The flatten's pick, derived from a ladder (stage 1: the ONE composition
 -- site -- the 'marker|fallback' and 'dlac:AutoAcc:prio:acc:Name|fallback'
 -- encodings live here and nowhere else). Returns (head, mainObj):
@@ -754,7 +807,8 @@ function M.flattenHead(ladder, slotName)
                 mainObj = { Name = ladder.virt, Type = 'Staff', OneHanded = false, Level = 0 };
             end
         end
-    elseif type(ladder.accs) == 'table' and ladder.accs[1] ~= nil then
+    elseif type(ladder.accs) == 'table' and ladder.accs[1] ~= nil
+           and not M.autoAccYields(itemHead, ladder.accs[1]) then
         -- Type automation (AutoAcc): compose the marker the engine budgets
         -- with at equip time. Name goes LAST in the marker half so the
         -- parser survives any item name; prio/acc are baked here because
@@ -824,7 +878,9 @@ function M.workingPick(list, slotName, currentMain, cctx)
         end
     end
     local head = (type(lad.accs) == 'table') and lad.accs[1] or nil;
-    if head == nil then head = (type(lad.items) == 'table') and lad.items[1] or nil; end
+    local item = (type(lad.items) == 'table') and lad.items[1] or nil;
+    -- The AutoAcc settings' in-slot rule, as flattenHead applies it (v176).
+    if head == nil or M.autoAccYields(item, head) then head = item; end
     if head ~= nil then return list[head.ord], lad; end
     return nil, lad;
 end

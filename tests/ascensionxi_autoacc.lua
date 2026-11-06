@@ -226,7 +226,9 @@ check('AA-10 and the weapon skill after that still keeps them', aa.decide({ plan
 check('AA-10 why: its set is not typed 1-Hit WS', aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).why.Ring1,
     'its weapon skill set is not typed 1-Hit WS');
 check('AA-10 a spell keeps them too', aa.decide({ plan = plan(), candidates = { RING }, event = 'Midcast' }).why.Ring1,
-    'only the standing Default set releases');
+    'only the standing set, ranged shots and 1-Hit WS sets release');
+check('AA-10 and so does a Preshot', aa.decide({ plan = plan(), candidates = { RING }, event = 'Preshot' }).why.Ring1,
+    'only the standing set, ranged shots and 1-Hit WS sets release');
 fresh();
 check('AA-10 before any frame, the reason is still the Set Type',
     aa.decide({ plan = plan(), candidates = { RING }, event = 'Weaponskill' }).why.Ring1, 'its weapon skill set is not typed 1-Hit WS');
@@ -761,6 +763,169 @@ d = ws({ RING_WS }, { plan = plan({ Sub = 'Kris' }) });
 check('AA-38 a 1-Hit WS set swapping the off hand too', d.why.Ring1, 'the weapons differ from the frame outfit');
 d = aa.decide({ plan = plan({ Main = 'Kris', Sub = 'Iron Sword' }), candidates = { RING }, event = 'Default' });
 check('AA-38 naming the worn weapons is no swap', d.release.Ring1, 'Rajas Ring');
+
+-- AA-40..AA-48 (2026-11-06, the Ranger release; Henrik: "Please implement
+-- RACC"). TV-05's ranged context: a Shortbow and Wooden Arrows, ACC 240
+-- (Peacock Amulet's 10 ranged accuracy inside), level correction -12,
+-- against EVA 320: 28 %, 132 short of the 95 % cap.
+local NECK = { slot = 'Neck', typed = 'Peacock Amulet', fallback = 'Spike Necklace', prio = 5 };
+local function rangedCtx(f)
+    for _, c in ipairs(f.contexts) do if c.kind == wire.context.RANGED then return c; end end
+end
+-- The ranged context against an easier monster; the threshold is the one the
+-- formula composes (95 % at the cap), so the frame still passes its checks.
+local function rangedAgainst(eva)
+    local f = frameOf('TV-05');
+    local c = rangedCtx(f);
+    c.targetEva = eva;
+    local _, _, threshold = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\formula').compose(f, c);
+    c.thresholdBp = threshold;
+    return f;
+end
+local function shot(cands, extra)
+    local req = { plan = plan(), candidates = cands, event = 'Midshot', allowRanged = true };
+    for k, v in pairs(extra or {}) do req[k] = v; end
+    return aa.decide(req);
+end
+
+-- AA-40: TV-05 as published: the shot misses the cap even with every piece.
+fresh();
+aa.noteFrame(frameOf('TV-05'));
+d = shot({ RING, NECK });
+check('AA-40 a shot short of the cap keeps them', d.release.Neck, nil);
+check('AA-40 why', d.why.Neck, 'the full set does not reach the cap');
+check('AA-40 only the ranged hand is measured', #d.metrics == 1 and d.metrics[1].kind, wire.context.RANGED);
+
+-- AA-41: against EVA 170 the shot has 18 to spare. It judges the ranged hand
+-- alone, so the off hand's 70 % (TV-05 as published) does not hold it, and
+-- Peacock Amulet's 10 ranged accuracy can go: it lands at 95 % still.
+fresh();
+aa.noteFrame(rangedAgainst(170));
+check('AA-41 the eased frame passes its checks', aa.report().usable, true);
+d = shot({ RING, NECK });
+check('AA-41 Peacock Amulet goes for Spike Necklace', d.release.Neck, 'Spike Necklace');
+check('AA-41 Toreador\'s Ring (no ranged accuracy) goes too', d.release.Ring1, 'Rajas Ring');
+-- 18 spare less the amulet's 10 and the 1 its share of the ranged food's 10 %
+-- took with it.
+check('AA-41 the ranged hand after: 7 to spare', d.metrics[1].accToCap, -7);
+check('AA-41 the standing set on the same frame is held by the off hand',
+    aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' }).why.Ring1, 'the full set does not reach the cap');
+-- 6 to spare: the amulet's 10 are needed, the ring's are not.
+fresh();
+aa.noteFrame(rangedAgainst(182));
+d = shot({ RING, NECK });
+check('AA-41 6 to spare: the amulet is needed', d.why.Neck, 'needed for the cap');
+check('AA-41 and the ring still goes', d.release.Ring1, 'Rajas Ring');
+
+-- AA-42: the Gear Helpers switch off keeps every piece on for a shot.
+fresh();
+aa.noteFrame(rangedAgainst(170));
+d = shot({ RING, NECK }, { allowRanged = false });
+check('AA-42 the ranged switch off holds', d.release.Ring1, nil);
+check('AA-42 why', d.why.Ring1, 'ranged shots are off in the AutoAcc settings');
+check('AA-42 and on again releases (the memo keeps them apart)', shot({ RING }).release.Ring1, 'Rajas Ring');
+
+-- AA-43: the shot's own target must be the frame's (TV-05: 0x010680A5).
+fresh();
+aa.noteFrame(rangedAgainst(170));
+d = shot({ RING }, { targetId = 0x01068001 });
+check('AA-43 a shot at another monster holds', d.release.Ring1, nil);
+check('AA-43 why', d.why.Ring1, 'the action targets another monster than the frame');
+check('AA-43 at the frame\'s monster it releases', shot({ RING }, { targetId = 0x010680A5 }).release.Ring1, 'Rajas Ring');
+
+-- AA-44: a ranged context that does not apply decides nothing.
+local function rangedApplicability(appl)
+    fresh();
+    local f = rangedAgainst(170);
+    rangedCtx(f).applicability = appl;
+    aa.noteFrame(f);
+    return shot({ RING });
+end
+d = rangedApplicability(wire.applicability.OUT_OF_RANGE);
+check('AA-44 out of range holds', d.release.Ring1, nil);
+check('AA-44 why', d.why.Ring1, 'the target is out of ranged range');
+check('AA-44 no ranged weapon', rangedApplicability(wire.applicability.NO_WEAPON).why.Ring1, 'no ranged weapon in the frame outfit');
+check('AA-44 anything else', rangedApplicability(wire.applicability.UNSUPPORTED).why.Ring1, 'the server sent no ranged numbers');
+
+-- AA-45: the Range weapon sets the ranged skill, the sweet spot and the
+-- distance penalty: a shot's plan with another one finds no basis. Ammo for
+-- a bow is a piece like any other.
+fresh();
+aa.noteFrame(rangedAgainst(170));
+d = shot({ RING }, { plan = plan({ Range = 'Kris' }) });
+check('AA-45 another Range weapon holds', d.release.Ring1, nil);
+check('AA-45 why', d.why.Ring1, 'the ranged weapon differs from the frame outfit');
+check('AA-45 other ammo for the same bow does not', shot({ RING }, { plan = plan({ Ammo = 'Brass Ring' }) }).release.Ring1,
+    'Rajas Ring');
+check('AA-45 the standing set ignores the Range weapon',
+    aa.decide({ plan = plan({ Range = 'Kris' }), candidates = { RING }, event = 'Default' }).why.Ring1,
+    'the full set does not reach the cap');
+
+-- AA-46: not engaged (req.idle): nothing to hit, so every armour piece with a
+-- fallback wears it -- with no telemetry at all, and wanting none.
+fresh();
+local wantedTargets = 0;
+aa._wantTarget = function() wantedTargets = wantedTargets + 1; end;
+d = aa.decide({ plan = plan({ Main = 'Kris' }), event = 'Default', idle = true, candidates = { RING,
+    { slot = 'Main', typed = 'Kris', fallback = 'Iron Sword', prio = 1 },
+    { slot = 'Neck', typed = 'Peacock Amulet', prio = 1 } } });
+check('AA-46 the ring goes without a frame', d.release.Ring1, 'Rajas Ring');
+check('AA-46 why', d.why.Ring1, 'not engaged');
+check('AA-46 a weapon stays', d.release.Main, nil);
+check('AA-46 why the weapon', d.why.Main, 'weapon slots stay');
+check('AA-46 no fallback, no release', d.why.Neck, 'no fallback');
+check('AA-46 nothing is wanted from the server', aa.report().wanted, false);
+check('AA-46 the readout sees the decision', aa.report().decision, d);
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+check('AA-46 engaged again, the frame decides', aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' }).why.Ring1,
+    'released for Rajas Ring');
+check('AA-46 and idle again answers idle (the memo keeps them apart)',
+    aa.decide({ plan = plan(), candidates = { RING }, event = 'Default', idle = true }).why.Ring1, 'not engaged');
+
+-- AA-47: a ranged shot asks the client for the cursor's monster (not
+-- engaged, the lane has no battle target); the standing set does not.
+check('AA-47 the standing set asked for no target', wantedTargets, 0);
+shot({ RING });
+check('AA-47 a shot did', wantedTargets, 1);
+aa._wantTarget = nil;
+
+-- AA-48: a decision whose guarded hands the frame did not measure holds
+-- (it used to pass an empty check and release everything).
+fresh();
+local noHands = frameOf('TV-05');
+for _, c in ipairs(noHands.contexts) do
+    if c.kind ~= wire.context.RANGED then c.applicability = wire.applicability.NOT_AVAILABLE; end
+end
+aa.noteFrame(noHands);
+d = aa.decide({ plan = plan(), candidates = { RING }, event = 'Default' });
+check('AA-48 no measured hand holds', d.release.Ring1, nil);
+check('AA-48 why', d.why.Ring1, 'no hand the decision guards was measured');
+
+-- AA-49: losing a ranged accuracy effect holds a shot until the next frame
+-- (Sharpshot, the server's status id 72).
+fresh();
+player.buffs = { [251] = true, [72] = true };
+aa.noteFrame(rangedAgainst(170));
+player.buffs[72] = nil;
+time = time + 0.2;
+d = shot({ RING });
+check('AA-49 Sharpshot wearing off holds', d.release.Ring1, nil);
+check('AA-49 says so', (d.why.Ring1 or ''):find('held until the next frame', 1, true) ~= nil, true);
+check('AA-49 the ranged effects are listed', aa.ACC_EFFECTS[72] and aa.ACC_EFFECTS[73] and aa.ACC_EFFECTS[83]
+    and aa.ACC_EFFECTS[122] and aa.ACC_EFFECTS[200], true);
+
+-- AA-50: not engaged, the player's target is the cursor's monster; against a
+-- frame that is not LIVE (an idle FOLLOW lane) that is no "new target".
+fresh();
+local idleLane = frameOf('TV-05');
+idleLane.laneState = wire.laneState.IDLE;
+aa.noteFrame(idleLane);
+player.target = 0x01068001;
+time = time + 0.2;
+check('AA-50 an idle lane holds no new-target trigger', aa.report().trigger, nil);
+aa.noteFrame(mainOnly(frameOf('TV-05')));
+time = time + 0.2;
+check('AA-50 a LIVE frame for another monster still does', aa.report().trigger, 'a new target');
 
 print(('ascensionxi_autoacc: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

@@ -3177,11 +3177,114 @@ do
     check('AC30 its mode off: the normal pick, no AutoAcc', waistAt(75, gated), 'Speed Belt');
     _G.__acModeOn = true;
     check('AC31 its mode on: AutoAcc', waistAt(75, gated), 'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+
+    -- AS1-AS9 (v176, the AutoAcc settings; Henrik 2026-11-06: "Auto Acc
+    -- shouldn't overwrite every form of trigger"). In a slot list, an entry
+    -- tied to a mode (or stance) that is on now beats the AutoAcc piece unless
+    -- 'conditional' is off; an entry with a level range beats it only with
+    -- 'levelRange' on. The AutoAcc piece's own gate keeps it level.
+    local RULES = { triggerRules = true, conditional = true, levelRange = false, rangedAttacks = true };
+    local rulesRev = 1;
+    utils._accRulesOverride = { get = function(k) return RULES[k]; end, rev = function() return rulesRev; end };
+    local function waist(list)
+        local s = utils.BuildDynamicSets({ Dynamic = { TP = { Waist = list } } });
+        return s.TP and s.TP.Waist;
+    end
+    local plainTyped = { gear = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12 };
+    local modeSpeed = { gear = speed, mode = 'AccTest' };
+    check('AS1 a mode entry that is on beats the AutoAcc piece', waist({ plainTyped, modeSpeed }), 'Speed Belt');
+    _G.__acModeOn = false;
+    check('AS2 its mode off: the AutoAcc piece, nothing to fall to', waist({ plainTyped, modeSpeed }),
+        'dlac:AutoAcc:1:12:Virtuoso Belt');
+    _G.__acModeOn = true;
+    RULES.conditional = false;
+    check('AS3 conditional off: the AutoAcc piece, the mode entry its fallback', waist({ plainTyped, modeSpeed }),
+        'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    RULES.conditional = true;
+    check('AS4 a mode-gated AutoAcc piece meets a mode entry level: the AutoAcc piece',
+        waist({ gated, modeSpeed }), 'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    local rangedSpeed = { gear = speed, minLevel = 50 };
+    check('AS5 a level-range entry does not beat it by default', waist({ plainTyped, rangedSpeed }),
+        'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    RULES.levelRange = true;
+    check('AS6 levelRange on: it does', waist({ plainTyped, rangedSpeed }), 'Speed Belt');
+    check('AS6b unless the AutoAcc piece has a range of its own',
+        waist({ { gear = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12, minLevel = 50 }, rangedSpeed }),
+        'dlac:AutoAcc:1:12:Virtuoso Belt|Speed Belt');
+    RULES.levelRange = false;
+    -- The rule itself, on rungs (the stance tier rides the same switch).
+    local Y = utils.autoAccYields;
+    check('AS7 a stance entry that is on beats it', Y({ modeTier = 0, stanceTier = 1, rank = 0 }, { modeTier = 0, stanceTier = 0, rank = 0 }), true);
+    check('AS7b a mode outranks a stance', Y({ modeTier = 0, stanceTier = 1, rank = 0 }, { modeTier = 1, stanceTier = 0, rank = 0 }), false);
+    check('AS7c a plain entry never does', Y({ modeTier = 0, stanceTier = 0, rank = 0 }, { modeTier = 0, stanceTier = 0, rank = 0 }), false);
+    check('AS7d no normal pick, nothing to yield to', Y(nil, { modeTier = 0 }), false);
+    -- The Sets tab's preview picks the same.
+    local wp = utils.workingPick({
+        { rec = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12 },
+        { rec = speed, mode = 'AccTest' } }, 'Waist', nil, { mjLevel = 75, modeOk = function() return true; end });
+    check('AS8 the preview shows the mode entry', wp and wp.rec.Name, 'Speed Belt');
+    RULES.conditional = false;
+    wp = utils.workingPick({
+        { rec = virtuoso, autoType = 'AutoAcc', removePrio = 1, acc = 12 },
+        { rec = speed, mode = 'AccTest' } }, 'Waist', nil, { mjLevel = 75, modeOk = function() return true; end });
+    check('AS8b conditional off: the AutoAcc piece', wp and wp.rec.Name, 'Virtuoso Belt');
+    RULES.conditional = true;
+    -- A changed setting re-flattens (rebuildSets keys on the revision).
+    local builds, realBuild = 0, utils.BuildDynamicSets;
+    utils.BuildDynamicSets = function(s) builds = builds + 1; return s; end;
+    local store = { Dynamic = {} };
+    utils.rebuildSets(store);
+    builds = 0;
+    utils.rebuildSets(store);
+    check('AS9 nothing moved: no re-flatten', builds, 0);
+    rulesRev = rulesRev + 1;
+    utils.rebuildSets(store);
+    check('AS9b a setting moved: one re-flatten', builds, 1);
+    utils.BuildDynamicSets = realBuild;
+    utils._accRulesOverride = nil;
+
     _G.__acModeOn = nil;
     dispatchM.modeActive = savedModeActive;
 
     dispatchM._accStateOverride = nil;
     dispatchM._accReset();
+end
+
+-- AS10-AS16 (v176): gear\autoaccrules, the settings' store. Defaults before
+-- login, in memory; a set writes the character's file and moves the
+-- revision; another session reads it back; a broken or foreign file falls
+-- back to the defaults key by key; unknown switches are refused.
+do
+    local R = dofile('gear/autoaccrules.lua');
+    R._dir = function() return nil; end;
+    check('AS10 before login: the defaults', R.get('triggerRules') and R.get('conditional') and R.get('rangedAttacks'), true);
+    check('AS10b and level ranges off', R.get('levelRange'), false);
+    local r0 = R.rev();
+    check('AS11 a set before login holds in memory', R.set('levelRange', true) == false and R.get('levelRange'), true);
+    check('AS11b and moves the revision', R.rev() > r0, true);
+    local tmp = os.tmpname();
+    R._dir = function() return ''; end;
+    R.FILE = tmp;
+    check('AS12 a character dir reads its own file (none yet: defaults)', R.get('levelRange'), false);
+    local r1 = R.rev();
+    check('AS13 a set saves', R.set('triggerRules', false), true);
+    check('AS13b and reads back', R.get('triggerRules'), false);
+    check('AS13c the revision moved', R.rev() > r1, true);
+    local r2 = R.rev();
+    check('AS13d the same value again moves nothing', R.set('triggerRules', false) and R.rev() == r2, true);
+    check('AS14 an unknown switch is refused', R.set('nonsense', true), false);
+    local R2 = dofile('gear/autoaccrules.lua');
+    R2._dir, R2.FILE = R._dir, tmp;
+    check('AS15 another session reads the file', R2.get('triggerRules'), false);
+    check('AS15b and the rest stay their defaults', R2.get('rangedAttacks') and R2.get('conditional'), true);
+    local f = io.open(tmp, 'wb'); f:write('return { triggerRules = "no", rangedAttacks = false, levelRange = true }\n'); f:close();
+    R2._reset();
+    check('AS16 a non-boolean falls back to its default', R2.get('triggerRules'), true);
+    check('AS16b the booleans are read', R2.get('rangedAttacks') == false and R2.get('levelRange') == true, true);
+    f = io.open(tmp, 'wb'); f:write('this is not lua'); f:close();
+    R2._reset();
+    check('AS16c a broken file: every default', R2.get('rangedAttacks'), true);
+    os.remove(tmp);
 end
 
 -- (The accwatch custom-mob family tests -- section AD -- live on

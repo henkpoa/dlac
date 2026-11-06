@@ -76,8 +76,10 @@ local PIECE_X = COLUMNS[2].x;   -- an AutoAcc row's piece lines up with the ACC 
 
 local AUTOACC_TIP = 'AutoAcc wears your AutoAcc pieces only while you need the accuracy:\n'
     .. 'once every hand reaches the cap without one, its slot wears its normal pick.\n'
+    .. 'A ranged attack\'s set does the same on your ranged hit rate.\n'
     .. 'A weapon skill set with the Set Type 1-Hit WS also counts the +100 accuracy\n'
-    .. 'the server adds to the first hit.';
+    .. 'the server adds to the first hit.\n'
+    .. 'While you\'re not engaged, every AutoAcc slot wears its normal pick.';
 local WAITING = 'AutoAcc is waiting for the server\'s numbers';
 local KEPT_ON = 'AutoAcc keeps your accuracy pieces on';
 
@@ -87,7 +89,16 @@ local KEPT_ON = 'AutoAcc keeps your accuracy pieces on';
 local PLAIN = {
     ['needed for the cap'] = 'you need it to reach the cap',
     ['the full set does not reach the cap'] = 'you don\'t reach the cap even with it',
-    ['only the standing Default set releases'] = 'AutoAcc only swaps pieces in your standing set and in 1-Hit WS sets',
+    ['not engaged'] = 'you\'re not engaged',
+    ['only the standing set, ranged shots and 1-Hit WS sets release'] =
+        'AutoAcc only swaps pieces in your standing set, your ranged attack set and 1-Hit WS sets',
+    ['ranged shots are off in the AutoAcc settings'] = 'AutoAcc at ranged attacks is off (Settings below)',
+    ['the action targets another monster than the frame'] = 'the server\'s numbers are for another monster',
+    ['the ranged weapon differs from the frame outfit'] = 'the server hasn\'t sent numbers for this ranged weapon yet',
+    ['no ranged weapon in the frame outfit'] = 'the server sees no ranged weapon',
+    ['the target is out of ranged range'] = 'the monster is too far for a ranged attack',
+    ['the server sent no ranged numbers'] = 'the server sent no ranged numbers',
+    ['no hand the decision guards was measured'] = 'the server sent no numbers for the hands it needs',
     ['its weapon skill set is not typed 1-Hit WS'] = 'this weapon skill set\'s Set Type isn\'t 1-Hit WS (Sets tab)',
     ['a ranged weapon skill has no first-hit bonus'] = 'a ranged weapon skill gets no first-hit accuracy bonus',
     ['the weapons differ from the frame outfit'] = 'the server hasn\'t sent numbers for these weapons yet',
@@ -208,7 +219,7 @@ local function drawTarget(col, r, phase, frame)
         return;
     end
     if phase ~= 'live' then label(col.DIM, 'Starting', 'Connecting to the server.'); return; end
-    if frame == nil then label(col.DIM, 'No target', 'Engage a monster to see your numbers against it.'); return; end
+    if frame == nil then label(col.DIM, 'No target', 'Engage or target a monster to see your numbers against it.'); return; end
     local failed = r.formulaOk == false or r.mismatch ~= nil;
     local age = frameAge(r);
     local tip = { (age ~= nil) and ('Updated %.1f s ago. '):format(age) or '' };
@@ -260,7 +271,7 @@ local function drawTable(col, frame)
             imgui.TextColored(c[2], esc(c[1]));
         end
         imgui.SameLine(TAIL_X);
-        local tip = (ctx.kind == wire.context.RANGED) and 'Shown for reference: AutoAcc decides on melee only.' or nil;
+        local tip = (ctx.kind == wire.context.RANGED) and 'AutoAcc decides your ranged attacks on this row.' or nil;
         if toCap <= 0 then
             cell(col.HAVE, ('%d spare'):format(-toCap), tip);
         else
@@ -309,6 +320,9 @@ end
 -- A slot's hover: the piece it wears and why, in a player's words.
 local function rowTip(piece, fallback, why)
     local name = (piece ~= nil) and tostring(piece) or 'The accuracy piece';
+    if fallback ~= nil and why == 'not engaged' then
+        return ('%s is on: you\'re not engaged.'):format(tostring(fallback));
+    end
     if fallback ~= nil then
         return ('%s is on: you reach the cap without %s.'):format(tostring(fallback), (piece ~= nil) and tostring(piece) or 'it');
     end
@@ -378,7 +392,45 @@ function M.drawBody()
     drawAutoAcc(col, r);
 end
 
--- The Gear Helpers panel: the box, and a button for the floating window.
+-- The AutoAcc settings (core gear\autoaccrules, 2026-11-06), one checkbox
+-- each, worded as what overrides what; the hover says what on and off do.
+local THEN_FALLBACK = '\nOff: the AutoAcc piece wins, and that piece becomes what the slot wears\n'
+    .. 'once you reach the cap without the AutoAcc piece.';
+M.SETTINGS = {
+    { key = 'triggerRules', label = 'Trigger rules override AutoAcc',
+      tip = 'On: when a later Trigger rule\'s set puts its own piece in a slot that holds\n'
+         .. 'an AutoAcc piece, the rule\'s piece goes on.' .. THEN_FALLBACK },
+    { key = 'conditional', label = 'Mode and stance entries override AutoAcc',
+      tip = 'On: in a set\'s slot list, an entry tied to a mode or a stance that is on\n'
+         .. 'right now wins the slot over the AutoAcc piece.' .. THEN_FALLBACK },
+    { key = 'levelRange', label = 'Level-range entries override AutoAcc',
+      tip = 'On: in a set\'s slot list, an entry with a level range wins the slot\n'
+         .. 'over the AutoAcc piece.' .. THEN_FALLBACK },
+    { key = 'rangedAttacks', label = 'AutoAcc at ranged attacks',
+      tip = 'On: a ranged attack\'s set takes its AutoAcc pieces off when your ranged\n'
+         .. 'hit rate reaches the cap without them.\nOff: they stay on for every shot.' },
+};
+
+M._rules = nil;   -- test seam: the settings module
+local function rules()
+    if M._rules ~= nil then return M._rules; end
+    return try('dlac\\gear\\autoaccrules');
+end
+
+local function drawSettings(col)
+    local r = rules();
+    if r == nil or type(r.get) ~= 'function' then return; end
+    label(col.HEADER, 'Settings', 'Which of your own rules AutoAcc gives way to.\n'
+        .. 'While you\'re not engaged, every AutoAcc slot wears its normal pick either way.');
+    for _, s in ipairs(M.SETTINGS) do
+        local box = { r.get(s.key) == true };
+        if imgui.Checkbox(s.label .. '##aarule_' .. s.key, box) then r.set(s.key, box[1]); end
+        if imgui.IsItemHovered() then imgui.SetTooltip(esc(s.tip)); end
+    end
+end
+
+-- The Gear Helpers panel: the box, a button for the floating window, and
+-- the settings.
 function M.panel()
     if imgui == nil then return; end
     local col = palette();
@@ -391,6 +443,8 @@ function M.panel()
     if imgui.IsItemHovered() then imgui.SetTooltip('This box in its own window. /dl accuracy opens and closes it too.'); end
     imgui.Separator();
     M.drawBody();
+    imgui.Separator();
+    drawSettings(col);
 end
 
 -- The floating window: gearui's d3d_present calls this while M.visible.

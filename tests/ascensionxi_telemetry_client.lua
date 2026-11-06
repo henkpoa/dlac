@@ -357,7 +357,9 @@ check('CL-17 /dl autoacc closes it again', monitor.visible, false);
 local e3 = { command = '/dl accuracyx' };
 cmd(e3);
 check('CL-17 another word is not ours', e3.blocked, nil);
-check('CL-17 the box wants the session through the client', monitor._want, client.want);
+check('CL-17 the box wants the session (and the cursor\'s monster) through the client', monitor._want, client.wantTarget);
+check('CL-17 a ranged decision asks the client for the cursor\'s monster',
+    require('dlac\\servers\\ascensionxi\\modules\\telemetry\\autoacc')._wantTarget, client.wantTarget);
 
 -- CL-18: the pack mounts the module, and the Gear Helpers row is on.
 local modules = dofile('servers/ascensionxi/modules.lua');
@@ -365,6 +367,95 @@ local mounted = false;
 for _, name in ipairs(modules) do if name == 'telemetry' then mounted = true; end end
 check('CL-18 the pack mounts telemetry', mounted, true);
 check('CL-18 the AutoAcc helper row is enabled', dofile('servers/ascensionxi/features.lua').helpers.autoacc, true);
+
+-- CL-19 (2026-11-06, the Ranger release): not engaged, the server has no
+-- battle target; while ranged decisions are wanted the lane is bound to the
+-- cursor's monster (a WATCH without FOLLOW), and engaging -- or no monster
+-- on the cursor -- goes back to FOLLOW. Each change is one new WatchGen.
+local engagedNow, cursor = true, { id = 0x01000ABC, index = 188 };
+-- CL-13 ran init.lua, which put the real transport's seams in: the fakes again.
+client._clock = function() return time; end;
+client._send = function(p) if busy then return false; end sent[#sent + 1] = p; return true; end;
+client._received = function(op, seq) received[#received + 1] = { op = op, seq = seq }; end;
+client._abandon = function(op, seq) abandoned[#abandoned + 1] = { op = op, seq = seq }; end;
+client._charId = function() return 21828; end;
+client._onFrame = function(f) frames[#frames + 1] = f; end;
+busy = false;
+client._engaged = function() return engagedNow; end;
+client._cursorTarget = function() return cursor; end;
+client._battleTarget = nil;
+client.IDLE_AFTER = 1e9;
+client._unwant();
+client.want();
+client.reset();
+client.zoneIn();
+pumpFor(client.SETTLE + 0.1);
+client.onFrame(helloReply(lastSent(), SESSION));
+pumpFor(0.1);
+local w19 = lastSent();
+check('CL-19 a FOLLOW WATCH first', wire.u8(payloadOf(w19), 13), wire.watchFlag.FOLLOW);
+client.onFrame(watchReply(w19, 0, wire.u32(payloadOf(w19), 16)));
+local gen0 = client.state().watchGen;
+engagedNow = false;
+pumpFor(1);
+check('CL-19 not engaged, no ranged question: still FOLLOW', client.state().watchGen, gen0);
+check('CL-19 and nothing bound', client.state().bound, nil);
+engagedNow = true;
+client.wantTarget();
+pumpFor(1);
+check('CL-19 engaged, a ranged question changes nothing', client.state().watchGen, gen0);
+engagedNow = false;
+pumpFor(0.5);
+local wb = lastSent();
+local wbp = payloadOf(wb);
+check('CL-19 not engaged: a WATCH', opOf(wb), wire.op.WATCH);
+check('CL-19 without FOLLOW', wire.u8(wbp, 13), 0);
+check('CL-19 naming the cursor\'s monster', wire.u32(wbp, 20), cursor.id);
+check('CL-19 and its index', wire.u16(wbp, 24), cursor.index);
+check('CL-19 a new generation', wire.u32(wbp, 16), gen0 + 1);
+check('CL-19 bound', client.state().bound and client.state().bound.id, cursor.id);
+client.onFrame(watchReply(wb, 0, gen0 + 1));
+local function aimed(rev, gen, id)
+    local s = snapshot(rev, gen);
+    s.payload = s.payload:sub(1, 40) .. wire.w32(id) .. s.payload:sub(45);
+    return s;
+end
+local rev19 = client.state().lastRev;
+check('CL-19 a push for another monster is refused', client.onFrame(aimed(rev19 + 1, gen0 + 1, 0x01000DEF)), false);
+check('CL-19 counted as target', client.state().stats.rejected.target, 1);
+check('CL-19 the bound monster\'s push lands', client.onFrame(aimed(rev19 + 2, gen0 + 1, cursor.id)), true);
+local nSent = #sent;
+pumpFor(1);
+check('CL-19 the same monster asks nothing again', #sent, nSent);
+cursor = { id = 0x01000DEF, index = 201 };
+pumpFor(0.5);
+check('CL-19 another monster on the cursor: rebound', wire.u32(payloadOf(lastSent()), 20), cursor.id);
+check('CL-19 a generation further', client.state().watchGen, gen0 + 2);
+client.onFrame(watchReply(lastSent(), 0, gen0 + 2));
+cursor = nil;
+pumpFor(0.5);
+check('CL-19 no monster on the cursor: FOLLOW again', wire.u8(payloadOf(lastSent()), 13), wire.watchFlag.FOLLOW);
+check('CL-19 and no target in it', wire.u32(payloadOf(lastSent()), 20), 0);
+client.onFrame(watchReply(lastSent(), 0, gen0 + 3));
+cursor = { id = 0x01000ABC, index = 188 };
+pumpFor(0.5);
+check('CL-19 a monster again: bound again', client.state().bound and client.state().bound.id, cursor.id);
+client.onFrame(watchReply(lastSent(), 0, gen0 + 4));
+engagedNow = true;
+pumpFor(0.5);
+check('CL-19 engaging goes back to FOLLOW', wire.u8(payloadOf(lastSent()), 13), wire.watchFlag.FOLLOW);
+check('CL-19 unbound', client.state().bound, nil);
+client.onFrame(watchReply(lastSent(), 0, gen0 + 5));
+engagedNow = nil;
+client.wantTarget();
+pumpFor(0.5);
+check('CL-19 an unreadable status binds nothing', client.state().bound, nil);
+engagedNow = false;
+client._unwant();
+client.want();
+pumpFor(0.5);
+check('CL-19 the ranged question expired: nothing binds', client.state().bound, nil);
+client._engaged, client._cursorTarget = nil, nil;
 
 print(('ascensionxi_telemetry_client: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end
