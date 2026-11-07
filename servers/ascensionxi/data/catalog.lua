@@ -15308,6 +15308,19 @@ return {
                     MagicAccuracy = 2,
                 }
             },
+            GMSaber = {
+                Name = "GM Saber",
+                Level = 1,
+                Id = 20010,
+                Model = 471,
+                Jobs = {"All"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 6,
+                    Delay = 231,
+                }
+            },
             Galenus = {
                 Name = "Galenus",
                 Level = 94,
@@ -18118,7 +18131,7 @@ return {
                 Name = "Save the Queen",
                 Level = 65,
                 Id = 16604,
-                Model = 252,
+                Model = 1195,
                 Jobs = {"PLD"},
                 OneHanded = true,
                 Type = "Sword",
@@ -64852,6 +64865,19 @@ return {
                     RangedAccuracy = 15,
                 }
             },
+            ForsakenBow = {
+                Name = "Forsaken Bow",
+                Level = 10,
+                Id = 20011,
+                Model = 82,
+                Jobs = {"RNG"},
+                Type = "Archery",
+                Pair = "25:0",
+                Stats = {
+                    DMG = 16,
+                    Delay = 540,
+                }
+            },
             FreeswordsBow = {
                 Name = "Freesword's Bow",
                 Level = 10,
@@ -65972,6 +65998,22 @@ return {
                     RangedAccuracy = 3,
                 }
             },
+            RekindledBow = {
+                Name = "Rekindled Bow",
+                Level = 10,
+                Id = 20012,
+                Model = 112,
+                Jobs = {"RNG"},
+                Type = "Archery",
+                Pair = "25:0",
+                Stats = {
+                    DMG = 32,
+                    Delay = 540,
+                    AGI = 2,
+                    RangedAccuracy = 2,
+                    RangedAttack = 10,
+                }
+            },
             RelicBow = {
                 Name = "Relic Bow",
                 Level = 75,
@@ -65983,6 +66025,38 @@ return {
                 Stats = {
                     DMG = 1,
                     Delay = 999,
+                }
+            },
+            RkndlBow_1 = {
+                Name = "Rkndl. Bow +1",
+                Level = 20,
+                Id = 20013,
+                Model = 112,
+                Jobs = {"RNG"},
+                Type = "Archery",
+                Pair = "25:0",
+                Stats = {
+                    DMG = 45,
+                    Delay = 540,
+                    AGI = 3,
+                    RangedAccuracy = 3,
+                    RangedAttack = 14,
+                }
+            },
+            RkndlBow_2 = {
+                Name = "Rkndl. Bow +2",
+                Level = 30,
+                Id = 20014,
+                Model = 112,
+                Jobs = {"RNG"},
+                Type = "Archery",
+                Pair = "25:0",
+                Stats = {
+                    DMG = 57,
+                    Delay = 540,
+                    AGI = 4,
+                    RangedAccuracy = 4,
+                    RangedAttack = 18,
                 }
             },
             Rosenbogen = {
@@ -66246,16 +66320,18 @@ return {
             },
             SnipingBow = {
                 Name = "Sniping Bow",
-                Level = 41,
+                Level = 40,
                 Id = 17188,
                 Model = 43,
                 Jobs = {"RNG"},
                 Type = "Archery",
                 Pair = "25:4",
                 Stats = {
-                    DMG = 27,
+                    DMG = 36,
                     Delay = 360,
-                    AGI = 4,
+                    AGI = 5,
+                    RangedAccuracy = 5,
+                    RangedAttack = 5,
                 }
             },
             Sparrow = {
@@ -91933,15 +92009,16 @@ return {
         },
         HuntersBeret = {
             Name = "Hunter's Beret",
-            Level = 54,
+            Level = 50,
             Id = 12518,
             Model = 84,
             Jobs = {"RNG"},
             Type = "Head",
             Stats = {
-                DEF = 21,
-                HP = 13,
-                INT = 3,
+                DEF = 22,
+                HP = 15,
+                AGI = 4,
+                RangedAccuracy = 4,
                 RangedAttack = 5,
                 RapidShot = 5,
             }
@@ -100499,9 +100576,10 @@ return {
             Jobs = {"RNG"},
             Type = "Head",
             Stats = {
-                DEF = 24,
+                DEF = 25,
                 HP = 15,
-                MND = 4,
+                AGI = 4,
+                RangedAccuracy = 5,
                 Enmity = -3,
                 Recycle = 25,
             }
@@ -130143,15 +130221,15 @@ return {
         },
         HuntersJerkin = {
             Name = "Hunter's Jerkin",
-            Level = 58,
+            Level = 50,
             Id = 12648,
             Model = 84,
             Jobs = {"RNG"},
             Type = "Body",
             Stats = {
-                DEF = 41,
-                HP = 20,
-                VIT = 3,
+                DEF = 42,
+                HP = 22,
+                AGI = 3,
                 RangedAccuracy = 10,
                 CamouflageDuration = 30,
             }
@@ -139381,11 +139459,13 @@ return {
             Jobs = {"RNG"},
             Type = "Body",
             Stats = {
-                DEF = 45,
+                DEF = 46,
                 HP = 23,
-                DEX = 4,
+                AGI = 4,
+                RangedAttack = 8,
                 Enmity = -3,
                 RapidShot = 5,
+                Snapshot = 3,
             }
         },
         ScpBreastplate = {
@@ -154656,15 +154736,17 @@ return {
         },
         HuntersBracers = {
             Name = "Hunter's Bracers",
-            Level = 52,
+            Level = 50,
             Id = 13971,
             Model = 84,
             Jobs = {"RNG"},
             Type = "Hands",
             Stats = {
-                DEF = 10,
-                HP = 10,
-                DEX = 3,
+                DEF = 11,
+                HP = 12,
+                STR = 3,
+                AGI = 3,
+                RangedAttack = 5,
                 DarkResistance = 10,
                 ShadowBindDuration = 10,
             }
@@ -162320,11 +162402,12 @@ return {
             Jobs = {"RNG"},
             Type = "Hands",
             Stats = {
-                DEF = 14,
+                DEF = 15,
                 HP = 13,
                 AGI = 5,
-                Evasion = 7,
+                RangedAccuracy = 5,
                 Enmity = -2,
+                BarrageAcc = 10,
             }
         },
         ScpGauntlets = {
@@ -192913,7 +192996,7 @@ return {
         },
         GarrisonHose = {
             Name = "Garrison Hose",
-            Level = 21,
+            Level = 20,
             Id = 14314,
             Model = 105,
             Jobs = {"All"},
@@ -194795,15 +194878,16 @@ return {
         },
         HuntersBraccae = {
             Name = "Hunter's Braccae",
-            Level = 56,
+            Level = 50,
             Id = 14224,
             Model = 84,
             Jobs = {"RNG"},
             Type = "Legs",
             Stats = {
-                DEF = 27,
-                HP = 15,
-                MND = 5,
+                DEF = 28,
+                HP = 17,
+                STR = 3,
+                RangedAttack = 8,
                 Sharpshot = 10,
             }
         },
@@ -202411,11 +202495,12 @@ return {
             Jobs = {"RNG"},
             Type = "Legs",
             Stats = {
-                DEF = 32,
+                DEF = 33,
                 HP = 18,
+                STR = 4,
                 RangedAccuracy = 7,
+                RangedAttack = 7,
                 Enmity = -2,
-                ParryingSkill = 10,
             }
         },
         ScpSubligar_1 = {
@@ -216912,15 +216997,16 @@ return {
         },
         HuntersSocks = {
             Name = "Hunter's Socks",
-            Level = 60,
+            Level = 50,
             Id = 14099,
             Model = 84,
             Jobs = {"RNG"},
             Type = "Feet",
             Stats = {
-                DEF = 12,
-                HP = 10,
-                AGI = 4,
+                DEF = 13,
+                HP = 12,
+                AGI = 5,
+                RangedAccuracy = 4,
                 Evasion = 5,
                 ScavengeEffect = 5,
             }
@@ -224738,9 +224824,10 @@ return {
             Jobs = {"RNG"},
             Type = "Feet",
             Stats = {
-                DEF = 16,
+                DEF = 17,
                 HP = 12,
-                VIT = 5,
+                STR = 3,
+                AGI = 3,
                 RangedAttack = 10,
                 Enmity = -3,
             }
