@@ -15084,10 +15084,10 @@ end)();
     check('GB1a the giftboxes classify under their REAL names, smallest first',
         table.concat({ gb.classify('Gob. Giftbox (sm)'), gb.classify('Gob. Giftbox (md)'),
                        gb.classify('Gob. Giftbox (lg)'), gb.classify('Gob. Giftbox (gr)') }, ','),
-        '25,27,29,31');
+        '27,29,31,33');
     check('GB1 the long spelling is carried too, in case the client differs',
-        gb.classify('Goblin Giftbox (Small)'), 26);
-    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 29);
+        gb.classify('Goblin Giftbox (Small)'), 28);
+    check('GB1b ...case-insensitively', gb.classify('GOB. GIFTBOX (LG)'), 31);
     check('GB1c the grand box is the top rung', gb.classify('Grand Giftbox'), #gb.LADDER);
     -- The substring match is what makes this survive the next box CatsEyeXI adds.
     check('GB1d an UNKNOWN giftbox is still ours, sorted last',
@@ -15199,6 +15199,22 @@ end)();
         gb.classify('Pluton Case') or gb.classify('Boulder Case') or gb.classify('Museum Case')
         or gb.classify('Jewelry Case') or gb.classify('Ointment Case'), nil);
 
+    -- The Domain Coffers (2026-11-07, items 6552 / 6553 -- `domain` is exactly
+    -- these two on the live table). One fragment takes both; a bare `coffer`
+    -- is 101 items, the dungeon Coffer KEYS among them, so the negatives are
+    -- the point again. Names below are the live API's, not this file's.
+    check('GB1zg the Domain Coffers are ours, plain then +1',
+        table.concat({ gb.classify('Domain Coffer'), gb.classify('Domain Coffer +1') }, ','),
+        '25,26');
+    check('GB1zh ...ranked between the Old Case and the giftboxes',
+        gb.classify('Old Case') < (gb.classify('Domain Coffer') or 0)
+        and (gb.classify('Domain Coffer +1') or math.huge) < gb.classify('Gob. Giftbox (sm)'), true);
+    check('GB1zi a Coffer Key is NOT a box (it is a key)',
+        gb.classify('Bdx. Coffer Key') or gb.classify('Davoi Coffer Key'), nil);
+    check('GB1zj nor is any other coffer in the table',
+        gb.classify('Coffer') or gb.classify('Coffer (pluton)') or gb.classify('Aurum Coffer')
+        or gb.classify('Abyssdivers Coffer') or gb.classify('Dream Coffer'), nil);
+
     local FOUND = {
         { name = 'Gob. Giftbox (gr)', rank = 14, count = 1 },
         { name = 'Gob. Giftbox (sm)', rank = 8,  count = 2 },
@@ -15249,6 +15265,8 @@ end)();
     -- opens to, so it must NOT be in M.NEED yet; a cheap guess here is how a
     -- payout gets lost to "you cannot carry any more" lines.
     check('GB5e3 the Old Case, unpriced, needs the strict 6', gb.needFor('Old Case'), 6);
+    check('GB5e4 the Domain Coffers, unpriced, need the strict 6',
+        table.concat({ gb.needFor('Domain Coffer'), gb.needFor('Domain Coffer +1') }, ','), '6,6');
 
     local PURSES = { { name = 'Ctn. Purse (alx.)', rank = gb.classify('Ctn. Purse (alx.)'), count = 4 } };
     local pP2, cP2 = gb.plan(PURSES, 2);
