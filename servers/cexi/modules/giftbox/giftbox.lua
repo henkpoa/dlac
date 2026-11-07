@@ -209,6 +209,7 @@ M.SCAN_EVERY = 2.0;
 --   tackleboxes 5110 / 5946 / 5112 · gatherbox 6345
 --   troves 6554 / 6555 / 6556      · giftboxes 5109 / 5111 / 6264 / 6558
 --   creels 5810 / 5811             · old case 6614
+--   domain coffers 6552 / 6553
 M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'goblin gatherbox',
              'mamool ja trove', 'lamia trove', 'troll trove',
@@ -221,6 +222,7 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
              'frgtn. pouch (feet)',  'forgotten pouch (feet)',
              'moat carp creel', 'forest carp creel',
              'old case',
+             'domain coffer', 'domain coffer +1',
              'gob. giftbox (sm)', 'goblin giftbox (small)',
              'gob. giftbox (md)', 'goblin giftbox (medium)',
              'gob. giftbox (lg)', 'goblin giftbox (large)',
@@ -285,8 +287,21 @@ M.LADDER = { 'tiny tacklebox', 'timeworn tacklebox', 'titanic tacklebox',
 -- gets. It is laddered (below the giftboxes, above the creels) purely so it
 -- cannot sort last and take the tray icon off the grand giftbox (GB1q). When
 -- a field log shows what it pays, M.NEED['old case'] is the one line to add.
+--
+-- `DOMAIN COFFER` (2026-11-07, Henrik: "Allow Domain coffer and domain coffer
+-- +1") is the Old Case rule again. Priced against the live item API the same
+-- day: `domain` is exactly TWO items, 6552 Domain Coffer and 6553 Domain
+-- Coffer +1 (both usable, stack to 99), and the one fragment `domain coffer`
+-- catches both. A bare `coffer` returns 101 -- the NM coffers, the Oboro
+-- currency coffers, the furniture Coffer (49) and the dungeon Coffer KEYS --
+-- and a key in your bag would take an `/item` that never confirms and end
+-- the run. Payout UNPRICED for both, so neither is in M.NEED and both take
+-- the strict 6. Laddered plain then +1, between the Old Case and the
+-- giftboxes, for the same reason the Old Case is: off the bottom of the
+-- ladder, where an unranked box would take the tray icon (GB1q).
 M.MATCH  = { 'giftbox', 'gatherbox', 'tacklebox', 'trove',
-             'purse', 'frgtn. pouch', 'forgotten pouch', 'creel', 'old case' };
+             'purse', 'frgtn. pouch', 'forgotten pouch', 'creel', 'old case',
+             'domain coffer' };
 
 -- Is this item name one of ours, and where does it sort? nil = not a box.
 function M.classify(name)
