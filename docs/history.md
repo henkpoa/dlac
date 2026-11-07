@@ -12020,3 +12020,25 @@ Type filter. It affects AscensionXI and CatsEyeXI alike (`ui/gearui.lua`).
 - Tests: no suite renders this popup. smoke_ui 1778 and run_tests 8078
   unchanged and green, the percent-literal check passes.
 - Owed: a look in game -- Main (Type shows) and a Ring (no Type).
+
+## 2026-11-07: the November 8 AscensionXI refresh, Ranger's gear (`2026.11.07b`)
+
+Henrik: "Can you run the recatalogue process for AXI? We will be launching a
+new prod deploy tomorrow. Another agent is doing Nexus."
+
+- The pack regenerated from AscensionXI main `e8c6ae9893` (after #1167),
+  with no generator change: 15,485 records (5 added, 13 changed, none
+  removed), 884 latent-stat items (15 changed), 5 icons. Ranger's Artifact
+  and relic gear, Sniping Bow and the four Onslaught bows (20011-20014) come
+  from #1167. The 15 Hostile Herbivores rings' latents read `HP_OVER_PERCENT`
+  75 (#1123). The GM Saber (#1132), Save the Queen's model (#1127) and Garrison
+  Hose at 20 (#1118) are the rest. Details are in
+  `docs/reference/ascensionxi-catalog-refresh.md`.
+- No new stat names: `BarrageAcc` and `Snapshot` were already registered.
+  Pet stats (491 items, #1128's generator) come back identical to the
+  `2026.11.03a` pack.
+- Hand-kept tables checked against the server: `stances.lua` (no stance
+  latent changed), and the Avatar-Rage table (Spring Water's script changed,
+  but it is a Ward).
+- Not done: the stock-only ability picker still lacks Ranger's Decoy Mark,
+  Decoy Shots and Arrow Coating (#1149) and Paladin's Rebuke (#1156).

@@ -4,6 +4,45 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, November 8, 2026
+
+DLAC `2026.11.07b` regenerates the complete pack from AscensionXI main
+`e8c6ae9893` (after #1167). The generator needed no change, and the
+`tools/dlac-pack` tests pass (61). 15,485 records (5 added, 13 changed, none
+removed), 884 latent-stat items (15 changed), 5 new icons. Pet stats (491
+items) and the 27 dig zones are unchanged.
+
+- **Ranger's Artifact and relic gear (#1167):** Sniping Bow at 40 (DMG 36,
+  AGI+5, Ranged Accuracy+5, Ranged Attack+5). All five Hunter's pieces drop to
+  level 50, with new lines built on AGI, STR, Ranged Accuracy and Ranged
+  Attack. The five Scout's pieces keep their levels and get new lines too:
+  Snapshot+3 on the Jerkin, and Barrage Acc+10 with Ranged Accuracy+5 on the
+  Bracers.
+- **Ranger's Onslaught bows (#1167):** Forsaken Bow and Rekindled Bow (Lv10),
+  Rkndl. Bow +1 (Lv20) and +2 (Lv30), ids 20011-20014, each with its icon.
+- **Hostile Herbivores rings (#1123):** the 15 job rings' latents read
+  `HP_OVER_PERCENT` 75 instead of `HP_UNDER_TP_UNDER_100`. The Sorcerer's
+  Ring's threshold moves from 76 to 75. DLAC evaluates neither condition, so
+  only the item card's data changes.
+- **GM Saber (#1132):** id 20010, a GM-only level-1 sword, with its icon.
+- **Save the Queen (#1127):** model 1195, its own sword.
+- **Garrison Hose (#1118):** level 20 instead of 21.
+
+Every stat key is one DLAC already names, including `BarrageAcc` and
+`Snapshot`. Hand-kept tables checked: `stances.lua` (no stance latent changed)
+and the Avatar-Rage table (the only pet ability script that changed, Spring
+Water, is a Ward). Every other generated file is identical apart from line
+endings.
+
+Still not in DLAC:
+
+- `abilities.lua` and `spells.lua` read stock SQL only. Ranger's Decoy Mark,
+  Decoy Shots and Arrow Coating (#1149) and Paladin's Rebuke (#1156) are
+  missing from the Triggers browse list, like the earlier Paladin and
+  Summoner kits. Typed names still work.
+
+---
+
 # AscensionXI catalog refresh, November 1, 2026
 
 DLAC `2026.10.31c` regenerates the complete pack from AscensionXI main
