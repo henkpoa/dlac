@@ -511,6 +511,10 @@ addon.version = '2026.11.07a';  -- date of the last shipped change (Ashita print
                                 --  handler: inNationControl, true in a
                                 --  conquest region your nation holds, false
                                 --  in one it does not;
+                                --  11.06c = Sets > + Add drops its title and
+                                --  usage line; "Show gear I don't own" and
+                                --  Type sit beside Sort, so the popup is about
+                                --  as wide as its list;
                                 --  11.07a = CEXI /dl giftbox opens the
                                 --  Domain Coffer and Domain Coffer +1)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
