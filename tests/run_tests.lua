@@ -15207,8 +15207,8 @@ end)();
         table.concat({ gb.classify('Domain Coffer'), gb.classify('Domain Coffer +1') }, ','),
         '25,26');
     check('GB1zh ...ranked between the Old Case and the giftboxes',
-        gb.classify('Old Case') < gb.classify('Domain Coffer')
-        and gb.classify('Domain Coffer +1') < gb.classify('Gob. Giftbox (sm)'), true);
+        gb.classify('Old Case') < (gb.classify('Domain Coffer') or 0)
+        and (gb.classify('Domain Coffer +1') or math.huge) < gb.classify('Gob. Giftbox (sm)'), true);
     check('GB1zi a Coffer Key is NOT a box (it is a key)',
         gb.classify('Bdx. Coffer Key') or gb.classify('Davoi Coffer Key'), nil);
     check('GB1zj nor is any other coffer in the table',
