@@ -401,6 +401,33 @@ check('UI-13 and the ranged one', setCalls[2], 'rangedAttacks=false');
 check('UI-13 the floating window has no settings', (function() render(monitor.drawBody); return drew('Settings'); end)(), false);
 monitor._rules = nil;
 
+-- UI-14 (2026-11-09): while the client backs off after the server let a
+-- HELLO round fail, the box and the row say the server isn't answering
+-- instead of "Starting" for good; the retry itself still says so.
+for _, phase in ipairs({ 'hello', 'settling' }) do
+    clientState = { phase = phase, why = 'no answer', retrying = true, stats = {} };
+    rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0 };
+    render();
+    check('UI-14 ' .. phase .. ': not Starting', texts[1], 'Unavailable');
+    check('UI-14 ' .. phase .. ': underlined, why in its hover',
+        underlined['Unavailable'] and tipHas('Unavailable', "isn't answering") and tipHas('Unavailable', 'keeps asking'), true);
+    check('UI-14 ' .. phase .. ': AutoAcc keeps the pieces on', tipHas('Unavailable', 'keeps your accuracy pieces on'), true);
+    check('UI-14 ' .. phase .. ': no table', has('Cap at'), false);
+    check('UI-14 ' .. phase .. ': not the client\'s reason', anyTip('no answer'), false);
+    level, text = monitor.status();
+    check('UI-14 ' .. phase .. ': row level', level, 0);
+    check('UI-14 ' .. phase .. ': row', text, 'off -- the server is not answering');
+end
+clientState = { phase = 'hello', retrying = false, stats = {} };
+render();
+check('UI-14 a first try is still Starting', texts[1], 'Starting');
+level, text = monitor.status();
+check('UI-14 and the row says starting', text, 'starting');
+clientState = { phase = 'live', laneState = wire.laneState.LIVE, retrying = true, stats = {} };
+rep = { usable = true, bases = 1, frame = tv05, frameAt = 10.0 };
+render();
+check('UI-14 live wins over an old failure', drew('Unavailable'), false);
+
 -- UI-10: across every render above, nothing a player read named the
 -- service's internals (owner: "You don't need to give out super detailed
 -- server statistics").

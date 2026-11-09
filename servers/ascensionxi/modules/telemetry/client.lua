@@ -33,6 +33,14 @@
     WATCH without FOLLOW, the server's own non-follow lane); engaging, or
     no monster on the cursor, goes back to FOLLOW. Each change of intention
     is one WATCH with a new WatchGen, judged at most every BIND_EVERY.
+
+    A dlac loaded after the zone-in (a slow load at login, a reload or a
+    load in game) sees no 0x00A until the next zone line, so the client also
+    starts once per load when it finds the player in game (2026-11-09, a prod
+    report: the box said "Starting" for a whole session). And no automatic
+    HELLO repeats on a timer: every one after a failed round waits a backoff
+    that doubles up to a minute (the owner's condition: "as long as it
+    doesn't spam the server if there is a real problem").
 ]]--
 
 local wire = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\wire');
@@ -43,9 +51,12 @@ local M = {
     TRIES    = 3,      -- sends of one request before it escalates
     BUSY_WAIT = 1.2,   -- the server's per-second request budgets
     BACKOFF  = 30,     -- after UNAVAILABLE (route without the module)
+    HELLO_BACKOFF = 5, -- the wait before a HELLO after a failed round; doubles each round
+    HELLO_BACKOFF_MAX = 60, -- up to this: a silent server hears at most TRIES HELLOs a minute
     CONTEXTS = 0x000F, -- main, off hand, kick, ranged
     IDLE_AFTER = 300,  -- seconds without an AutoAcc question before the session ends
     BIND_EVERY = 0.25, -- seconds between looks at the engaged state and the cursor
+    LOOK_EVERY = 1,    -- seconds between looks for the player in game (the start without a zone-in)
 };
 
 M._clock    = os.clock; -- replaced by the transport's wall clock
@@ -57,6 +68,8 @@ M._charId   = nil;      -- () -> the character's server id, or nil
 M._battleTarget = nil;  -- () -> the server id of the player's battle target, or nil
 M._engaged  = nil;      -- () -> true / false, or nil when it cannot be read
 M._cursorTarget = nil;  -- () -> { id = server id, index } of the cursor's living monster, or nil
+M._inGame   = nil;      -- () -> true when a character is in game and not mid-zone
+M._note     = nil;      -- (text): one line in the wire log
 M._onFrame  = nil;      -- (frame) after a SNAPSHOT is accepted
 M._onState  = nil;      -- () after the session or lane state changed
 
@@ -64,6 +77,8 @@ local st;               -- every field below; reset() builds it
 local seqCounter, nonceCounter;
 local wantedAt = nil;   -- the last AutoAcc question; outlives reset() and zoning
 local targetWantedAt = nil;   -- the last ranged question (wantTarget)
+local zoneSeen = false; -- a zone-in or zone-out since load: from then on the zone edges start the client
+local lookedAt = nil;   -- the last look for the player in game
 
 local function now() return M._clock(); end
 
@@ -101,12 +116,20 @@ local function changed()
     if type(M._onState) == 'function' then pcall(M._onState); end
 end
 
+local function note(text)
+    if type(M._note) == 'function' then pcall(M._note, text); end
+end
+
+-- The client as dlac loads it: no zone edge seen yet.
 function M.reset()
     seedCounters();
+    zoneSeen, lookedAt = false, nil;
     st = {
         phase     = 'off',    -- off | settling | hello | live | dormant
         due       = nil,      -- when the next HELLO may go
         why       = nil,      -- why the client is dormant or waiting
+        failures  = 0,        -- HELLOs re-sent since the last accepted one (the backoff's count)
+        failing   = false,    -- the server let a HELLO round fail: the box says so
         session   = 0,
         caps      = 0,
         lease     = 45,
@@ -136,16 +159,19 @@ M.reset();
 
 -- A zone change ends the server's session with the character entity
 -- (research 3.5): forget it, and HELLO again once the zone settles.
+-- The backoff starts again with it.
 function M.zoneIn()
     if st.phase == 'dormant' and st.why ~= 'unavailable' then return; end
     local keep = st.stats;
     M.reset();
     st.stats = keep;
+    zoneSeen = true;
     st.phase, st.due = 'settling', now() + M.SETTLE;
     changed();
 end
 
 function M.zoneOut()
+    zoneSeen = true;
     if st.phase == 'dormant' then return; end
     st.phase, st.due, st.pending, st.queued, st.frame = 'off', nil, nil, nil, nil;
     st.session = 0;
@@ -169,6 +195,21 @@ local function idle()
     changed();
 end
 
+-- No zone-in since load: start the way a zone-in does, once something wants
+-- the session and the player is in game (init.lua's _inGame: a main job, not
+-- mid-zone). Once a zone edge has been seen the edges start the client, so
+-- a zone-out never leads to a start before its zone-in.
+local function startInGame(t)
+    if zoneSeen or not wanted(t) or type(M._inGame) ~= 'function' then return; end
+    if lookedAt ~= nil and t - lookedAt < M.LOOK_EVERY then return; end
+    lookedAt = t;
+    local ok, inGame = pcall(M._inGame);
+    if not ok or inGame ~= true then return; end
+    st.phase, st.due = 'settling', t + M.SETTLE;
+    note('started in game: no zone-in since dlac loaded');
+    changed();
+end
+
 -- ---------------------------------------------------------------------------
 -- Requests
 -- ---------------------------------------------------------------------------
@@ -178,6 +219,23 @@ local function queue(kind)
     -- STOP > WATCH > RESYNC.
     local rank = { stop = 3, hello = 2, watch = 2, republish = 1, renew = 0 };
     if st.queued == nil or (rank[kind] or 0) >= (rank[st.queued] or 0) then st.queued = kind; end
+end
+
+-- Every automatic HELLO goes through here: after a round the server did not
+-- answer, an answer for another character, or NO_SESSION. The next round
+-- waits HELLO_BACKOFF, doubled for each failure since the last accepted
+-- HELLO, up to HELLO_BACKOFF_MAX: a server that never answers hears TRIES
+-- HELLOs a minute from a client, not one every RETRY. An accepted HELLO or a
+-- zone-in starts the count again; demand never does. `failing`: the box
+-- says the server isn't answering (NO_SESSION is an answer).
+local function helloAgain(why, failing)
+    st.failures = st.failures + 1;
+    local wait = math.min(M.HELLO_BACKOFF_MAX, M.HELLO_BACKOFF * 2 ^ (st.failures - 1));
+    st.phase, st.why, st.due = 'hello', why, now() + wait;
+    if failing then st.failing = true; end
+    queue('hello');
+    note(('%s: HELLO again in %d s'):format(why, math.floor(wait)));
+    changed();
 end
 
 local function build(kind)
@@ -247,6 +305,7 @@ end
 -- Called every frame (the servermods pump).
 function M.pump()
     local t = now();
+    if st.phase == 'off' then startInGame(t); end
     if st.phase == 'dormant' or st.phase == 'off' then return; end
 
     -- A request in flight goes first, whatever the phase: an idle session's
@@ -256,11 +315,12 @@ function M.pump()
         if p.sentAt ~= nil and t - p.sentAt < M.RETRY then return; end
         if p.sentAt ~= nil and type(M._abandon) == 'function' then pcall(M._abandon, p.op, p.seq); end
         if p.tries >= M.TRIES then
-            -- Escalate: a lost WATCH asks what landed; a lost RESYNC or HELLO starts over.
+            -- Escalate: a lost WATCH asks what landed; a lost RESYNC or HELLO
+            -- starts over, after the backoff.
             st.pending = nil;
             if p.kind == 'watch' then queue('renew');
             elseif p.kind == 'stop' then return;
-            else st.phase = 'hello'; queue('hello'); end
+            else helloAgain('no answer', true); end
         else
             st.stats.retries = st.stats.retries + 1;
             if not transmit(p) then p.sentAt = nil; end   -- busy: try on a later frame
@@ -333,6 +393,8 @@ local function onHelloReply(f)
     end
     if f.status == wire.status.UNAVAILABLE then
         st.phase, st.why, st.due = 'settling', 'unavailable', now() + M.BACKOFF;
+        st.failing = true;
+        note(('unavailable: HELLO again in %d s'):format(M.BACKOFF));
         changed();
         return;
     end
@@ -348,8 +410,10 @@ local function onHelloReply(f)
     end
     if type(M._charId) == 'function' then
         local id = M._charId();
-        if id ~= nil and h.charId ~= id then return; end   -- another character's answer
+        -- Another character's answer: a failed round, never a stall.
+        if id ~= nil and h.charId ~= id then helloAgain('another character', true); return; end
     end
+    st.failures, st.failing = 0, false;
     st.session, st.caps, st.rulesRev = h.session, h.caps, h.rulesRev;
     st.lease, st.renewAfter = h.leaseSeconds, h.renewAfterSeconds;
     st.phase, st.why, st.due = 'live', nil, nil;
@@ -363,7 +427,7 @@ end
 local function onWatchReply(f)
     local r = decodeReply(wire.decodeWatchReply, f.payload);
     if f.status ~= wire.status.OK or r == nil then return; end
-    if r.result == wire.result.NO_SESSION then st.phase = 'hello'; queue('hello'); return; end
+    if r.result == wire.result.NO_SESSION then helloAgain('no session', false); return; end
     if r.result == wire.result.STALE_GEN then
         st.watchGen = math.max(st.watchGen, r.watchGen or 0) + 1;
         queue('watch');
@@ -380,7 +444,7 @@ local function onResyncReply(f)
     local r = decodeReply(wire.decodeResyncReply, f.payload);
     if f.status == wire.status.BUSY then st.due = now() + M.BUSY_WAIT; return; end
     if f.status ~= wire.status.OK or r == nil then return; end
-    if r.result == wire.result.NO_SESSION then st.phase = 'hello'; queue('hello'); return; end
+    if r.result == wire.result.NO_SESSION then helloAgain('no session', false); return; end
     if r.result ~= wire.result.OK then return; end
     accepted();
     if r.battleWatchGen ~= st.watchGen then
@@ -458,12 +522,17 @@ end
 -- The latest accepted battle-lane frame, and when it arrived.
 function M.frame() return st.frame, st.frameAt; end
 
+-- retrying: the server let a HELLO round fail (no answer, another
+-- character's answer, UNAVAILABLE) and the client will ask again, so the box
+-- says so instead of "Starting"; only while the session is wanted.
 function M.state()
+    local t = now();
     return {
         phase = st.phase, why = st.why, session = st.session, laneState = st.laneState,
         watchGen = st.watchGen, confirmed = st.confirmed, lastRev = st.lastRev,
         pending = st.pending and st.pending.kind or nil, stats = st.stats,
-        wanted = wanted(now()), bound = st.bound,
+        wanted = wanted(t), bound = st.bound, failures = st.failures,
+        retrying = st.failing and (st.phase == 'settling' or st.phase == 'hello') and wanted(t),
     };
 end
 

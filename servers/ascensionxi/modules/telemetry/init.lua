@@ -149,8 +149,34 @@ if transport._clock == os.time then
     client.refuse('no socket.gettime: telemetry needs a wall clock finer than a second');
 end
 
+-- The character's server id: the zone-in packet's, or for a dlac loaded
+-- after that packet the party's own entry (the same id).
 local _charId = nil;
-client._charId = function() return _charId; end;
+local _zoning = false;   -- a 0x00B seen, its 0x00A not yet
+local function memoryId()
+    local id = nil;
+    pcall(function() id = AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0); end);
+    return (type(id) == 'number' and id ~= 0) and id or nil;
+end
+client._charId = function() return _charId or memoryId(); end;
+
+-- In game: a main job (the vault's test: 0 before login) and an id, and not
+-- mid-zone, by the packets and by GetIsZoning (it may return bool or number).
+client._inGame = function()
+    if _zoning then return false; end
+    local job, zoning = nil, false;
+    pcall(function()
+        local pl = AshitaCore:GetMemoryManager():GetPlayer();
+        job = pl:GetMainJob();
+        if pl.GetIsZoning ~= nil then
+            local z = pl:GetIsZoning();
+            zoning = z == true or (type(z) == 'number' and z ~= 0);
+        end
+    end);
+    if zoning or type(job) ~= 'number' or job == 0 then return false; end
+    return memoryId() ~= nil;
+end;
+client._note = function(text) transport.note(wire.op.HELLO, 'combat telemetry: ' .. text); end;
 
 local monitor = require(base .. 'monitor');
 -- An open box is demand for the cursor's monster too: not engaged, it shows
@@ -201,11 +227,13 @@ pcall(function()
         if e.id == 0x00A then
             local d = e.data or '';
             if #d >= 8 then _charId = d:byte(5) + d:byte(6) * 256 + d:byte(7) * 65536 + d:byte(8) * 16777216; end
+            _zoning = false;
             pcall(client.zoneIn);
             pcall(autoacc.zoneIn);
             return;
         end
         if e.id == 0x00B then
+            _zoning = true;
             pcall(client.zoneOut);
             pcall(autoacc.zoneIn);
             return;

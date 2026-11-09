@@ -159,6 +159,7 @@ local function status()
     local cs = clientState();
     if cs.phase == 'dormant' then return 0, 'off -- the server is not sending numbers'; end
     if cs.phase ~= 'live' then
+        if cs.retrying == true then return 0, 'off -- the server is not answering'; end
         return 0, (cs.why == 'waiting for an AutoAcc piece') and 'no AutoAcc piece worn' or 'starting';
     end
     local r = report();
@@ -213,9 +214,15 @@ local function targetName(frame)
 end
 
 -- The top line: the monster, or why there is none.
-local function drawTarget(col, r, phase, frame)
+local function drawTarget(col, r, cs, frame)
+    local phase = cs.phase;
     if phase == 'dormant' then
         label(col.WANT, 'Unavailable', 'The server isn\'t sending accuracy numbers right now,\nso ' .. KEPT_ON .. '.');
+        return;
+    end
+    if phase ~= 'live' and cs.retrying == true then
+        label(col.WANT, 'Unavailable', 'The server isn\'t answering right now, so ' .. KEPT_ON .. '.\n'
+            .. 'DLAC keeps asking; crossing a zone line asks again right away.');
         return;
     end
     if phase ~= 'live' then label(col.DIM, 'Starting', 'Connecting to the server.'); return; end
@@ -383,7 +390,7 @@ function M.drawBody()
     local cs, r = clientState(), report();
     local frame = r.frame;
     local live = cs.phase == 'live' and type(frame) == 'table' and frame.laneState == wire.laneState.LIVE;
-    drawTarget(col, r, cs.phase, live and frame or nil);
+    drawTarget(col, r, cs, live and frame or nil);
     if live then
         imgui.Separator();
         drawTable(col, frame);
