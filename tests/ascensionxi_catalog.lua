@@ -11,6 +11,13 @@ sp.init();
 assert(sp.active() == 'ascensionxi');
 local ci = require('dlac\\gear\\catalogindex');
 local sd = dofile('gear/statdefs.lua');
+assert(sd.get('BSTShinyChance').label == 'Shiny Chance Bonus' and sd.get('BSTShinyChance').percent,
+    'Monster Helm: +100% chance bonus doubles the base chance');
+assert(sd.get('BSTReadyTPKept').label == 'Ready TP Retained' and sd.get('BSTReadyTPKept').percent);
+local packStats = sp.statdefs;
+sp.statdefs = function() return nil; end;
+assert(sd.get('BSTShinyChance').label == 'BSTShinyChance', 'AXI stat labels must not leak into other packs');
+sp.statdefs = packStats;
 local function item(id)
     return assert(ci.rawById(id), 'missing item ' .. tostring(id));
 end

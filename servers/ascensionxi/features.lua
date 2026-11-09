@@ -30,6 +30,7 @@ return {
     tabs = {
         gearhelpers = true,
         jobhelpers  = true,
+        stable      = true,
     },
     menu = {
         lockstyle = true,

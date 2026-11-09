@@ -1,6 +1,7 @@
 -- Stable presentation only. Server responses remain authoritative.
 local imgui = require('imgui');
 local textures = require('dlac\\ui\\filetex');
+local grid = require('dlac\\servers\\ascensionxi\\modules\\stable\\grid');
 local M = {};
 local selected, renameOpen = 2, false;
 local habitatOpen, formFilter, ownershipFilter = false, 'all', 'all';
@@ -15,16 +16,18 @@ local detailMove, detailsOpen, abilityInfo;
 -- Reuse DLAC HELM's literal-text path. Percentages are not printf formats.
 local function plain(color, text)
     imgui.PushStyleColor(ImGuiCol_Text, color);
-    imgui.TextUnformatted(text);
+    local ok, err = pcall(imgui.TextUnformatted, text);
     imgui.PopStyleColor();
+    if not ok then error(err); end
 end
 
 local function literalTooltip(text)
     imgui.BeginTooltip();
     imgui.PushTextWrapPos(380);
-    plain(white, text);
+    local ok, err = pcall(plain, white, text);
     imgui.PopTextWrapPos();
     imgui.EndTooltip();
+    if not ok then error(err); end
 end
 
 local function tip(text)
@@ -40,9 +43,9 @@ end
 
 local function portrait(c, id, size, locked)
     local entry = c.catalog[math.floor(id / 2)];
-    local texture = entry and textures.packHandle('ascensionxi', 'stable\\' .. entry.key .. (id % 2 == 1 and '-shiny' or ''));
+    local texture = entry and (textures.queuedPackHandle or textures.packHandle)('ascensionxi', 'stable\\' .. entry.key .. (id % 2 == 1 and '-shiny' or ''));
     if texture then
-        imgui.Image(texture, size, entry.uv0, entry.uv1, locked and { 0.08, 0.08, 0.09, 1 } or { 1, 1, 1, 1 });
+        imgui.Image(texture, size, { 0, 0 }, { 1, 1 }, locked and { 0.08, 0.08, 0.09, 1 } or { 1, 1, 1, 1 });
     else
         imgui.Button('?##portrait', size);
     end
@@ -186,8 +189,16 @@ local function paw(dl, x, y, scale, color)
     end
 end
 
-function M.charges(clocks)
+local function clipped(dl, low, high, draw)
+    dl:PushClipRect(low, high, true);
+    local ok, err = pcall(draw);
+    dl:PopClipRect();
+    if not ok then error(err); end
+end
+
+function M.charges(clocks, scale)
     if not clocks then imgui.TextColored(dim, 'Ready charges: syncing...'); return; end
+    scale = scale or 1;
     local now = clocks.time or os.clock();
     if previousCharges and clocks.charges > previousCharges then
         gainedFrom, gainedAt = previousCharges, now;
@@ -201,9 +212,9 @@ function M.charges(clocks)
     fontHeight = fontHeight or 16;
     local count = string.format('%d / 3', clocks.charges);
     local countWidth = measure(count);
-    local w = math.max(248, measure('READY') + countWidth + 64);
-    local pad, gap, cellHeight = 14, 7, 26;
-    local cellY = y + pad + fontHeight + 12;
+    local w = math.max(248 * scale, measure('READY') + countWidth + 64 * scale);
+    local pad, gap, cellHeight = 14 * scale, 7 * scale, 26 * scale;
+    local cellY = y + pad + fontHeight + 12 * scale;
     local h = cellY - y + cellHeight + pad;
     local dl = imgui.GetWindowDrawList();
     local ink = rgba(236, 225, 197);
@@ -225,22 +236,22 @@ function M.charges(clocks)
             dl:AddLine({ left + 6, cellY + 1 }, { right - 6, cellY + 1 }, rgba(255, 229, 169, 0.65), 1);
         elseif charging and progress > 0 then
             local edge = left + cellWidth * progress;
-            dl:PushClipRect({ left, cellY }, { edge, cellY + cellHeight }, true);
-            dl:AddRectFilled({ left, cellY }, { right, cellY + cellHeight }, rgba(122, 106, 66), 5);
-            dl:PopClipRect();
+            clipped(dl, { left, cellY }, { edge, cellY + cellHeight }, function()
+                dl:AddRectFilled({ left, cellY }, { right, cellY + cellHeight }, rgba(122, 106, 66), 5);
+            end);
             -- A moving highlight stays inside the recovering segment.
             local sweep = left + cellWidth * ((now * 0.38) % 1);
-            dl:PushClipRect({ left + 1, cellY + 1 }, { edge, cellY + cellHeight - 1 }, true);
-            for band = -5, 5 do
-                local alpha = (1 - math.abs(band) / 6) * 0.13;
-                dl:AddRectFilled({ sweep + band * 2, cellY + 1 }, { sweep + band * 2 + 2, cellY + cellHeight - 1 }, rgba(245, 213, 146, alpha), 0);
-            end
-            dl:PopClipRect();
+            clipped(dl, { left + 1, cellY + 1 }, { edge, cellY + cellHeight - 1 }, function()
+                for band = -5, 5 do
+                    local alpha = (1 - math.abs(band) / 6) * 0.13;
+                    dl:AddRectFilled({ sweep + band * 2, cellY + 1 }, { sweep + band * 2 + 2, cellY + cellHeight - 1 }, rgba(245, 213, 146, alpha), 0);
+                end
+            end);
         end
         dl:AddRect({ left, cellY }, { right, cellY + cellHeight }, rgba(187, 157, 94, charged and 0.8 or 0.25), 5, 0, 1);
         -- A small paw makes each segment read as a companion charge.
-        local cx, cy = (left + right) / 2, cellY + 14;
-        paw(dl, cx, cy, 1, charged and rgba(52, 44, 28, 0.85) or rgba(157, 151, 128, 0.55));
+        local cx, cy = (left + right) / 2, cellY + 14 * scale;
+        paw(dl, cx, cy, scale, charged and rgba(52, 44, 28, 0.85) or rgba(157, 151, 128, 0.55));
         if gainedAt and index > gainedFrom and charged then
             local phase = (now - gainedAt) / 0.75;
             if phase >= 0 and phase < 1 then
@@ -339,11 +350,11 @@ local function readyMoves(entry, gauge)
     end
 end
 
-function M.reset()
+function M.reset(keepChoices)
     detailMove, detailsOpen = nil, false;
     previousCharges, gainedFrom, gainedAt = nil, nil, nil;
-    selected, renameOpen, habitatOpen = 2, false, false;
-    search[1], formFilter, ownershipFilter = '', 'all', 'all';
+    renameOpen, habitatOpen = false, false;
+    if not keepChoices then selected, search[1], formFilter, ownershipFilter = 2, '', 'all', 'all'; end
     presetOpen, selectedRoster = false, nil;
 end
 
@@ -459,21 +470,21 @@ function M.render(c)
     local columns = math.max(1, math.floor(gridWidth / 155));
     local cardWidth = math.floor((gridWidth - 18 - (columns - 1) * 8) / columns);
     imgui.BeginChild('##bstgrid', { gridWidth, math.max(120, remainingHeight - (habitatOpen and habitatHeight + 36 or 0)) }, false);
-    local visible = 0;
-    for id = 2, #c.catalog * 2 + 1 do
+    local cards = grid.cards(c.catalog, state, search[1], formFilter, ownershipFilter);
+    local visible = #cards;
+    local rowHeight = cardWidth + 98;
+    local origin = imgui.GetCursorPosY();
+    local first, last, total = grid.rows(visible, columns, rowHeight, imgui.GetScrollY(), imgui.GetWindowHeight(), origin);
+    imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing or 0, { 8, 8 });
+    for index = first * columns + 1, math.min(visible, last * columns) do
+        local id = cards[index];
         local catalogId = math.floor(id / 2);
         local entry = c.catalog[catalogId];
         local pet = state.owned[id];
         local shinyForm = id % 2 == 1;
-        -- Default view keeps one silhouette per variety and shows every owned
-        -- shiny beside its regular form. Shinies lists all 67 shiny discoveries.
-        local visibleForm = formFilter == 'all' and (not shinyForm or pet or ownershipFilter == 'missing') or
-            formFilter == 'shiny' and shinyForm or formFilter == 'regular' and not shinyForm;
-        local haystack = (entry.name .. ' ' .. entry.family .. ' ' .. (pet and pet.name or '')):lower();
-        local visibleOwnership = ownershipFilter == 'all' or ownershipFilter == 'owned' and pet or ownershipFilter == 'missing' and not pet;
-        if visibleForm and visibleOwnership and haystack:find(search[1]:lower(), 1, true) then
-            if visible % columns ~= 0 then imgui.SameLine(); end
-            visible = visible + 1;
+        do
+            if (index - 1) % columns ~= 0 then imgui.SameLine();
+            else imgui.SetCursorPosY(origin + math.floor((index - 1) / columns) * rowHeight); end
             imgui.PushID('bst-card-' .. id);
             local x, y = imgui.GetCursorScreenPos();
             local hovered = imgui.IsWindowHovered(ImGuiHoveredFlags_ChildWindows or 1) and
@@ -503,6 +514,8 @@ function M.render(c)
             imgui.PopID();
         end
     end
+    imgui.PopStyleVar();
+    if total > 0 then imgui.SetCursorPosY(origin + total * rowHeight); imgui.Dummy({ 1, 1 }); end
     if visible == 0 then imgui.TextColored(dim, 'No companions match.'); end
     imgui.EndChild();
     habitats(c, habitatHeight);

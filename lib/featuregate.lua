@@ -41,6 +41,7 @@ M.TABS = {
     { key = 'equipped',    label = 'Equipped' },
     { key = 'gearhelpers', label = 'Gear Helpers' },
     { key = 'jobhelpers',  label = 'Job Helpers' },
+    { key = 'stable',      label = 'Stable' },
 };
 
 -- menuui ROWS keys, minus the rows that must never be gateable (settings,

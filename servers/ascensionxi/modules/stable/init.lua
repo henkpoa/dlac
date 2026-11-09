@@ -1,9 +1,15 @@
--- AscensionXI DLAC Stable module for local companion playtests.
+-- AscensionXI Stable. Gauge budget: one F6 per zone/job/level/merit change,
+-- with bounded retries. Native 0x119 changes drive local recast reads.
 -- Manual Stable management; combat remains in native job/pet menus.
 local imgui = require('imgui');
 local host = require('dlac\\ui\\uihost');
 local transport = require('dlac\\servers\\ascensionxi\\transport');
 local M = {};
+local gauge = require('dlac\\servers\\ascensionxi\\modules\\stable\\gauge');
+local wire = require('dlac\\servers\\ascensionxi\\modules\\stable\\wire');
+local recast = require('dlac\\feature\\recast');
+gauge._clock = function() return transport._clock(); end;
+gauge._read = function() return recast.liveRemainingSeconds({ timerId = 102 }); end;
 local catalog = require('dlac\\servers\\ascensionxi\\modules\\stable\\catalog');
 local state, pending, habitats;
 local notice = 'Open the Stable to load your companions.';
@@ -11,9 +17,9 @@ local names = {};
 for id = 2, 135 do names[id] = { '' }; end
 local nonce = (os.time() * 31) % 4294967295;
 local attempted = false;
-local clocks, clocksAt, gaugeDue, gaugeDormant = nil, 0, 0, false;
+local gaugeDormant = false;
 local zoning = false;
-local gaugeOpen = { true };
+local frame, renderedFrame, refreshOnOpen = 0, nil, false;
 
 local function isBST()
     local ok, job = pcall(function() return AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
@@ -21,12 +27,8 @@ local function isBST()
 end
 
 local function cooldownView()
-    if not clocks or transport._clock() - clocksAt > 6 or not isBST() then return nil; end
-    local left = math.max(0, clocks.readyMs / 1000 - (transport._clock() - clocksAt));
-    local period = clocks.periodMs / 1000;
-    local missing = math.min(3, math.ceil(left / period));
-    return { charges = 3 - missing, nextSeconds = missing > 0 and left - (missing - 1) * period or 0,
-        periodSeconds = period, time = transport._clock() };
+    if not isBST() then return nil; end
+    return gauge.view();
 end
 
 local function u16(s, offset) return s:byte(offset + 1) + s:byte(offset + 2) * 256; end
@@ -56,6 +58,7 @@ local messages = {
 local function request(op, body)
     -- Player actions take priority over gauge reads. Refresh can abandon a location read.
     if pending and (pending.op == 0xF6 or pending.op == 0xF4 and op == 0xF0) and op ~= 0xF6 then
+        if pending.op == 0xF6 then gauge.periodChanged(); end
         transport.abandon(pending.op, pending.seq); pending = nil;
     end
     if pending then return false; end
@@ -64,7 +67,8 @@ local function request(op, body)
     local seq = (nonce % 255) + 1; -- Sequence zero belongs to unsolicited push frames.
     local packet = { 0, 0, 0, 0, op, seq, 0, 0 };
     for i = 1, #payload do packet[#packet + 1] = payload:byte(i); end
-    pending = { op = op, seq = seq, nonce = nonce, packet = packet, attempts = 0, at = 0, started = transport._clock() };
+    pending = { op = op, seq = seq, nonce = nonce, packet = packet, attempts = 0 };
+    if op == 0xF6 then pending.generation = gauge.requested(); end
     if op == 0xF4 then
         pending.habitatId = u16(body, 0);
         habitats = { id = pending.habitatId, loading = true };
@@ -152,18 +156,19 @@ local function onPacket(data)
         local habitatId = pending.habitatId;
         pending = nil;
         if op == 0xF6 then
-            clocks = nil;
-            gaugeDormant = status == 1 or status == 5 or status == 6;
-            gaugeDue = transport._clock() + 30;
+            gaugeDormant = status == wire.BAD_OP or status == wire.BAD_JOB or status == wire.BAD_VERSION;
             return true;
         end
-        if op == 0xF4 and status ~= 5 and status ~= 6 then
+        if op == 0xF4 and status ~= wire.BAD_JOB and status ~= wire.BAD_VERSION then
             habitats = { id = habitatId, error = 'Locations could not be loaded.' };
             notice = '';
             return true;
         end
-        if status == 5 or status == 6 then state = nil; habitats = nil; end
-        notice = status == 6 and 'Reload DLAC to update your Stable.' or status == 5 and 'The Stable is available to main-job Beastmasters.' or 'The Stable could not read that request. Refresh to retry.';
+        if status == wire.BAD_JOB or status == wire.BAD_VERSION then state = nil; habitats = nil; end
+        notice = status == wire.BAD_OP and 'This server does not offer the Stable.' or
+            status == wire.BAD_VERSION and 'Reload DLAC to update your Stable.' or
+            status == wire.BAD_JOB and 'The Stable is available to main-job Beastmasters.' or
+            'The Stable could not read that request. Refresh to retry.';
         return true;
     end
     local payload = data:sub(9);
@@ -180,8 +185,7 @@ local function onPacket(data)
         if #body ~= 12 then return true; end
         local period = u32(body, 4);
         if period < 25000 or period > 30000 then return true; end
-        clocks = { readyMs = u32(body, 0), periodMs = period, callMs = u32(body, 8) };
-        clocksAt, gaugeDue = transport._clock(), transport._clock() + 2;
+        gauge.accept(u32(body, 0), period, pending.generation);
     elseif op == 0xF4 then
         if #body < 4 then return true; end
         local id, count = u16(body, 0), u16(body, 2);
@@ -215,7 +219,12 @@ end
 
 local view = require('dlac\\servers\\ascensionxi\\modules\\stable\\view');
 local function render()
-    if not attempted then attempted = true; request(0xF0); end
+    if not isBST() then return; end
+    if not renderedFrame or frame - renderedFrame > 1 then refreshOnOpen = true; end
+    renderedFrame = frame;
+    if not attempted or refreshOnOpen then
+        if request(0xF0) then attempted, refreshOnOpen = true, false; end
+    end
     view.render({ state = state, pending = pending and pending.op ~= 0xF6, pendingOp = pending and pending.op, notice = notice, names = names, habitats = habitats, cooldowns = cooldownView(),
         catalog = catalog, request = request, assign = assign, label = label,
         editRoster = function(index, slot, id) request(0xF1, p32(state.revision) .. string.char(slot, index) .. p16(id)); end,
@@ -225,16 +234,27 @@ local function render()
         register = function(token) request(0xF3, p32(token)); end });
 end
 
-host.register({ name = 'bststable', tabs = { { label = 'Stable', render = render } } });
+local function registerTab()
+    host.register({ name = 'bststable', tabs = isBST() and { { label = 'Stable', render = render } } or {} });
+end
+pcall(function()
+    local p = AshitaCore:GetMemoryManager():GetPlayer();
+    gauge.context(p:GetMainJob(), p.GetMainJobLevel and p:GetMainJobLevel() or nil);
+end);
+registerTab();
 ashita.events.register('packet_in', 'dlac_bst_stable', function(e)
     if e.id == 0x00A or e.id == 0x00B then
         if pending then transport.abandon(pending.op, pending.seq); end
         state, pending, habitats, attempted = nil, nil, nil, false;
-        view.reset();
-        clocks, gaugeDue, gaugeDormant, zoning = nil, transport._clock() + 3, false, e.id == 0x00B;
+        view.reset(true);
+        gaugeDormant, zoning, renderedFrame = false, e.id == 0x00B, nil;
+        gauge.zone(zoning);
+        registerTab();
         notice = 'Open the Stable to load your companions.';
     elseif e.id == 0x119 then
-        gaugeDue = math.min(gaugeDue, transport._clock() + 0.1);
+        gauge.recastChanged(); -- Read memory in the next frame, after the client applies it.
+    elseif e.id == 0x08C then
+        gauge.periodChanged();
     elseif e.id == 0x1E0 then
         -- Ashita's strings can hold the whole 512-byte backing buffer.
         -- Only e.size bytes belong to this packet, including native padding.
@@ -249,21 +269,30 @@ end);
 
 function M.pump()
     local now = transport._clock();
-    if not pending and now >= gaugeDue then
-        if isBST() then
-            if not gaugeDormant then request(0xF6); end
-        else
-            clocks, gaugeDormant = nil, false;
-        end
-        gaugeDue = now + 2;
+    frame = frame + 1;
+    if zoning then return; end
+    local job, level;
+    pcall(function()
+        local p = AshitaCore:GetMemoryManager():GetPlayer();
+        job = p:GetMainJob();
+        level = p.GetMainJobLevel and p:GetMainJobLevel() or nil;
+    end);
+    if gauge.context(job, level) then
+        if pending then transport.abandon(pending.op, pending.seq); pending = nil; end
+        state, habitats, attempted, renderedFrame, gaugeDormant = nil, nil, false, nil, false;
+        registerTab();
+    end
+    gauge.pump();
+    if not pending and not gaugeDormant and gauge.needsPeriod() then
+        request(0xF6);
     end
     if not pending then return; end
-    if now - pending.started >= 9 then
-        local gauge = pending.op == 0xF6;
+    if pending.started and now - pending.started >= 9 then
+        local timing = pending.op == 0xF6;
         local habitatId, op = pending.habitatId, pending.op;
         transport.abandon(pending.op, pending.seq);
         pending = nil;
-        if gauge then clocks, gaugeDue = nil, now + 30; return; end
+        if timing then return; end
         if habitatId then
             habitats = { id = habitatId, error = 'Locations did not answer. Try again.' };
             notice = '';
@@ -273,26 +302,19 @@ function M.pump()
         end
         return;
     end
-    if pending.at ~= 0 and now - pending.at < 3 or pending.attempts >= 3 then return; end
+    if pending.at and now - pending.at < 3 or pending.attempts >= 3 then return; end
     if transport.send(pending.packet, 'BST Stable') then
+        pending.started = pending.started or now;
         pending.at, pending.attempts = now, pending.attempts + 1;
     end
 end
 
-ashita.events.register('d3d_present', 'dlac_bst_ready_gauge', function()
-    local current = cooldownView();
-    if not current then return; end
-    imgui.SetNextWindowPos({ 420, 520 }, ImGuiCond_FirstUseEver);
-    imgui.PushStyleVar(ImGuiStyleVar_WindowPadding, { 0, 0 });
-    local flags = (ImGuiWindowFlags_AlwaysAutoResize or 0) + (ImGuiWindowFlags_NoTitleBar or 0) + (ImGuiWindowFlags_NoFocusOnAppearing or 0) + (ImGuiWindowFlags_NoBackground or 0) + (ImGuiWindowFlags_NoScrollbar or 0);
-    if imgui.Begin('BST Ready##charges', gaugeOpen, flags) then
-        view.charges(current);
-    end
-    imgui.End();
-    imgui.PopStyleVar();
-end);
+local draw = require('dlac\\servers\\ascensionxi\\modules\\stable\\draw');
+draw.attach(gauge, cooldownView, isBST);
 
 -- Headless protocol checks use these same production decoders.
 M._decodeState, M._onPacket = decodeState, onPacket;
 M._cooldownView = cooldownView;
+M._gauge = gauge;
+M._request = request;
 return M;
