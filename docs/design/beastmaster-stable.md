@@ -82,6 +82,14 @@ still checks `/dl perf`, first-open smoothness and private bytes in the client.
 
 ## Tests
 
+Field correction, November 9 (`2026.11.09b`): `/dl stable status` exposed an
+invalid `chatfmt.info` call shared by all BST gauge feedback. Use the existing
+`chatfmt.msg` API. The draw suite now captures final chat output instead of
+replacing `_say`, so it exercises the production formatter for status aliases,
+control acknowledgements and drawing-error messages. The revised test reproduced
+the owner's exact nil-function error before the fix and passes afterward.
+This is an addon-only update on the existing DLAC #245; reload DLAC after installing.
+
 From a clean DLAC checkout:
 
 ```text

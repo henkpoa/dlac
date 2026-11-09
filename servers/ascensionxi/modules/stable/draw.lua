@@ -12,7 +12,7 @@ M._path = function()
     local dir = require('dlac\\lib\\statefile').charDir();
     return dir and dir .. 'bstgauge.lua';
 end;
-M._say = function(text) require('dlac\\chatfmt').info(text); end;
+M._say = function(text) require('dlac\\chatfmt').msg(text); end;
 
 local function loadSettings()
     local nextPath = M._path();

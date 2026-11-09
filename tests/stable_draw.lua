@@ -32,6 +32,10 @@ ImGuiWindowFlags_NoMove = 4;
 package.loaded['dlac\\ui\\filetex'] = {};
 package.loaded['dlac\\feature\\gamehud'] = { hidden = function() return hidden; end };
 local saved, messages = {}, {};
+-- Capture the final output, keeping the production chatfmt helper in the path.
+-- Replacing draw._say hid a missing chatfmt API in the original command tests.
+local originalPrint = print;
+print = function(msg) messages[#messages + 1] = msg; end;
 package.loaded['dlac\\lib\\safewrite'] = { replaceLua = function(path, data)
     assert((loadstring or load)(data)); saved[path] = data; return true;
 end };
@@ -42,7 +46,6 @@ ashita = { events = { register = function(_, name, fn) handlers[name] = fn; end 
 local draw = require('dlac\\servers\\ascensionxi\\modules\\stable\\draw');
 local now = 100;
 draw._path = function() return currentPath; end;
-draw._say = function(msg) messages[#messages + 1] = msg; end;
 local g = { _clock = function() return now; end, recastChanged = function() end, pump = function() end,
     status = function() return { native = 29.5, wire = 30, period = 30 }; end };
 draw.attach(g, function() return { charges = 1, nextSeconds = 15, periodSeconds = 30, time = now }; end,
@@ -58,12 +61,20 @@ currentPath = 'fixture-character-b.lua'; draw.render(); assert(draw._settings().
 currentPath = 'fixture-character-a.lua'; draw.render(); assert(not draw._settings().shown and draw._settings().scale == 2 and draw._settings().locked);
 cmd('/dl gauge show'); hidden = true; before = begins; draw.render(); assert(begins == before, 'Scroll Lock suppresses drawing');
 hidden = false; enabled = false; assert(not cmd('/dl gauge hide')); draw.render(); assert(begins == before);
-enabled = true; cmd('/dl stable status'); assert(messages[#messages]:find('29.500s', 1, true));
+enabled = true;
+for _, command in ipairs({'/dl stable status', '/dlac stable status', '/dl gauge status', '/dlac gauge status'}) do
+    local count = #messages;
+    assert(cmd(command));
+    assert(#messages == count + 1 and messages[#messages]:find('BST Ready: slot 102 29.500s', 1, true),
+        'status must reach the actual chat formatter exactly once');
+end
 cmd('/dl gauge demo'); draw.render(); cmd('/dl gauge demo');
 throwClip = true; handlers.dlac_bst_ready_gauge();
 assert(begins == ends and style == 0 and clips == 0 and not draw._settings().shown, 'drawing errors must unwind the real paw renderer and window');
+assert(messages[#messages]:find('BST gauge hidden after a drawing error:', 1, true), 'draw failures must report through the actual chat helper');
 throwClip = false; cmd('/dl gauge show'); hovering, throwText = true, true; handlers.dlac_bst_ready_gauge();
 assert(begins == ends and style == 0 and clips == 0 and wraps == 0 and colors == 0 and tooltips == 0,
     'tooltip errors must unwind nested stacks too');
 loadfile = originalLoadfile;
+print = originalPrint;
 print('Stable gauge drawing: shared commands, character settings, scaling, Scroll Lock and balanced stacks under injected failures passed.');
