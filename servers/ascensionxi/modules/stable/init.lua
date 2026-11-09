@@ -56,6 +56,7 @@ local messages = {
 };
 
 local function request(op, body)
+    if op ~= 0xF0 and op ~= 0xF4 and not isBST() then return false; end
     -- Player actions take priority over gauge reads. Refresh can abandon a location read.
     if pending and (pending.op == 0xF6 or pending.op == 0xF4 and op == 0xF0) and op ~= 0xF6 then
         if pending.op == 0xF6 then gauge.periodChanged(); end
@@ -167,7 +168,7 @@ local function onPacket(data)
         if status == wire.BAD_JOB or status == wire.BAD_VERSION then state = nil; habitats = nil; end
         notice = status == wire.BAD_OP and 'This server does not offer the Stable.' or
             status == wire.BAD_VERSION and 'Reload DLAC to update your Stable.' or
-            status == wire.BAD_JOB and 'The Stable is available to main-job Beastmasters.' or
+            status == wire.BAD_JOB and 'This Stable request is unavailable for your current job or server settings.' or
             'The Stable could not read that request. Refresh to retry.';
         return true;
     end
@@ -219,14 +220,14 @@ end
 
 local view = require('dlac\\servers\\ascensionxi\\modules\\stable\\view');
 local function render()
-    if not isBST() then return; end
+    if zoning then return; end
     if not renderedFrame or frame - renderedFrame > 1 then refreshOnOpen = true; end
     renderedFrame = frame;
     if not attempted or refreshOnOpen then
         if request(0xF0) then attempted, refreshOnOpen = true, false; end
     end
     view.render({ state = state, pending = pending and pending.op ~= 0xF6, pendingOp = pending and pending.op, notice = notice, names = names, habitats = habitats, cooldowns = cooldownView(),
-        catalog = catalog, request = request, assign = assign, label = label,
+        catalog = catalog, request = request, assign = assign, label = label, readOnly = not isBST(),
         editRoster = function(index, slot, id) request(0xF1, p32(state.revision) .. string.char(slot, index) .. p16(id)); end,
         preset = function(action, index, name) request(0xF5, p32(state.revision) .. string.char(action, index) .. p16(0) .. fixed(name or '', 16)); end,
         find = function(id) request(0xF4, p16(id) .. p16(0)); end,
@@ -235,7 +236,7 @@ local function render()
 end
 
 local function registerTab()
-    host.register({ name = 'bststable', tabs = isBST() and { { label = 'Stable', render = render } } or {} });
+    host.register({ name = 'bststable', tabs = not zoning and { { label = 'Stable', render = render } } or {} });
 end
 pcall(function()
     local p = AshitaCore:GetMemoryManager():GetPlayer();

@@ -32,7 +32,7 @@ local transport = require('dlac\\servers\\ascensionxi\\transport');
 transport._clock = function() return now; end;
 transport._send = function(packet) sends[#sends + 1] = packet; return true; end;
 local stable = require('dlac\\servers\\ascensionxi\\modules\\stable\\init');
-assert(tab == nil, 'Stable is hidden off main-job BST');
+assert(tab and tab.label == 'Stable', 'Stable browsing is available off main-job BST');
 assert(handlers.dlac_bst_stable and handlers.dlac_bst_ready_gauge);
 stable.pump(); handlers.dlac_bst_ready_gauge();
 assert(#sends == 0 and stable._cooldownView() == nil, 'non-BST must not poll or draw');

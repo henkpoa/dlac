@@ -17,8 +17,13 @@ locally. F6 supplies the recharge period once per zone, main job/level change or
 merit update (0x08C), with at most three attempts. A foreground request can
 preempt F6. There is no periodic query or six-second expiry. The server keeps the
 unused Call field in protocol v4 for compatibility; DLAC does not decode it.
-The gauge hides off BST, on zone-out and with Scroll Lock. The Stable tab exists
-only on main BST and also honors Settings > Features > Stable.
+The gauge hides off BST, on zone-out and with Scroll Lock. The Stable tab is
+browsable on every job and honors Settings > Features > Stable. Off BST, F0/F4
+load the collection, saved rosters and habitats; mutation buttons are disabled
+with an explanation. F1/F2/F3/F5 and F6 remain main-BST-only on both sides.
+This owner-requested change in `2026.11.09c` replaces the review's BST-only tab
+gate. AscensionXI's native saved-state view and wire read permissions must ship
+with it; changing only the tab gate would leave WAR browsing rejected.
 No ability, charge, shiny or equipment formula is enforced by the addon.
 
 ## Source ownership and refreshing

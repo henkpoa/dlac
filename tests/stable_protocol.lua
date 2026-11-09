@@ -96,5 +96,19 @@ assert(client._request(0xF0)); handlers.dlac_bst_stable({ id = 0x00B }); sentBef
 for _ = 1, 20 do pump(1); end
 assert(#sends == sentBefore and tab == nil);
 handlers.dlac_bst_stable({ id = 0x00A }); pump(1); assert(tab and #sends == sentBefore + 1);
-job = 1; pump(); assert(tab == nil and client._cooldownView() == nil);
+job = 1; pump(); assert(tab and client._cooldownView() == nil);
+tab.render(); pump(1); request = sends[#sends]; assert(request[5] == 0xF0);
+reply(fixtures.state, request); tab.render();
+assert(context.readOnly and context.state.owned[135], 'WAR can browse the saved collection');
+for _, op in ipairs({0xF1, 0xF2, 0xF3, 0xF5, 0xF6}) do
+    assert(not client._request(op), 'non-BST cannot send mutations or gauge requests');
+end
+context.find(1); pump(1); request = sends[#sends]; assert(request[5] == 0xF4);
+reply(fixtures.habitats, request); tab.render(); assert(context.habitats.rows[1]);
+sentBefore = #sends;
+for _ = 1, 60 do pump(1 / 60); tab.render(); end
+assert(#sends == sentBefore and client._cooldownView() == nil, 'WAR browsing never polls Ready');
+job = 9; pump(1); tab.render(); pump(1); request = sends[#sends];
+assert(request[5] == 0xF0); reply(fixtures.state, request); tab.render();
+assert(not context.readOnly, 'switching back to BST restores management');
 print('Stable protocol: real server fixtures, atomic paging, one idle hour, deferred native reads, tab reopen, blocked gate, statuses and zone/job lifecycle passed.');

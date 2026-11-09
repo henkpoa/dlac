@@ -75,7 +75,7 @@ local function popup(c)
         imgui.SetNextItemWidth(210);
         imgui.InputText('Name##preset', presetName, 16);
         tip('3-15 letters.');
-        if button('Rename##preset', not c.pending and presetName[1] ~= '') then c.preset(3, presetIndex, presetName[1]); imgui.CloseCurrentPopup(); end
+        if button('Rename##preset', not c.readOnly and not c.pending and presetName[1] ~= '') then c.preset(3, presetIndex, presetName[1]); imgui.CloseCurrentPopup(); end
         imgui.TextColored(dim, 'Changes require the Stable Master.');
         imgui.EndPopup();
     end
@@ -84,9 +84,9 @@ local function popup(c)
         imgui.Text(c.label(selected));
         imgui.SetNextItemWidth(220);
         imgui.InputText('##nickname', c.names[selected], 16);
-        if button('Save', not c.pending) then c.rename(selected, c.names[selected][1]); imgui.CloseCurrentPopup(); end
+        if button('Save', not c.readOnly and not c.pending) then c.rename(selected, c.names[selected][1]); imgui.CloseCurrentPopup(); end
         imgui.SameLine();
-        if button('Use original name', not c.pending) then c.rename(selected, ''); imgui.CloseCurrentPopup(); end
+        if button('Use original name', not c.readOnly and not c.pending) then c.rename(selected, ''); imgui.CloseCurrentPopup(); end
         imgui.TextColored(dim, '3-15 letters');
         imgui.EndPopup();
     end
@@ -364,6 +364,7 @@ function M.render(c)
     if button('Refresh##bst', not c.pending or c.pendingOp == 0xF4) then c.request(0xF0); end
     imgui.SameLine(); imgui.SmallButton('?##bsthelp');
     tip('Charm > Seal Beast > trade the filled jug to a Stable Master.\nSelect a companion below, then assign it to a roster slot. Use Call Beast in the field.');
+    if c.readOnly then imgui.TextWrapped('Browse your collection on any job. Switch to Beastmaster to manage companions.'); end
     if not c.state then
         imgui.TextWrapped(c.pending and 'Loading your Stable...' or c.notice);
         imgui.EndChild(); return;
@@ -406,11 +407,11 @@ function M.render(c)
     imgui.SameLine(); imgui.TextColored(gold, editing and editing.name or 'Current');
     imgui.SameLine();
     if isActive then imgui.TextColored(green, 'Active');
-    elseif button('Use roster', not c.pending) then c.preset(2, selectedRoster); end
+    elseif button('Use roster', not c.readOnly and not c.pending) then c.preset(2, selectedRoster); end
     tip('The active roster supplies Call Beast slots I, II and III. Switch at a Stable Master.');
     if selectedRoster ~= 0 then
         imgui.SameLine();
-        if button('Rename##roster', not c.pending) then
+        if button('Rename##roster', not c.readOnly and not c.pending) then
             presetIndex, presetOpen, presetName[1] = selectedRoster, true, editing and editing.name or '';
         end
         tip('Assignments and removals save automatically at the Stable Master.');
@@ -436,13 +437,13 @@ function M.render(c)
             imgui.TextColored(dim, '+  Empty slot'); imgui.Dummy({ 0, 30 });
         end
         local canAssign = state.owned[selected] and not rosterSlot(roster, selected);
-        if button('Assign selected##slot', not c.pending and canAssign) then assign(slot, selected); end
+        if button('Assign selected##slot', not c.readOnly and not c.pending and canAssign) then assign(slot, selected); end
         local selectedSlot = rosterSlot(roster, selected);
         tip(canAssign and ('Assign ' .. c.label(selected) .. ' to slot ' .. slots[slot] .. (id ~= 0 and (' in place of ' .. c.label(id)) or '') .. '. At the Stable Master.') or
             selectedSlot and ('Already in slot ' .. slots[selectedSlot] .. '. Remove it from that slot first to move it.') or 'Select an available companion in the grid first.');
         if id ~= 0 then
             imgui.SameLine();
-            if button('X##remove', not c.pending) then assign(slot, 0); end
+            if button('X##remove', not c.readOnly and not c.pending) then assign(slot, 0); end
             tip('Remove from this roster slot. Your companion stays registered.');
         end
         imgui.EndChild(); imgui.PopID();
@@ -538,14 +539,14 @@ function M.render(c)
     local _, fontHeight = measure('Rename');
     local actionHeight = math.max(24, (fontHeight or 16) + 8);
     if pet then
-        if button('Rename', not c.pending, { 0, actionHeight }) then renameOpen = true; end
+        if button('Rename', not c.readOnly and not c.pending, { 0, actionHeight }) then renameOpen = true; end
         local slot = rosterSlot(roster, selected);
         if slot then imgui.SameLine(); imgui.TextColored(green, 'Slot ' .. slots[slot]);
         else
             imgui.SameLine();
             for index = 1, 3 do
                 if index > 1 then imgui.SameLine(); end
-                if button(slots[index] .. '##assign', not c.pending, { measure(slots[index]) + 12, actionHeight }) then assign(index, selected); end
+                if button(slots[index] .. '##assign', not c.readOnly and not c.pending, { measure(slots[index]) + 12, actionHeight }) then assign(index, selected); end
                 tip('Assign to slot ' .. slots[index] .. ' in ' .. (editing and editing.name or 'Current') .. ' at the Stable Master.' .. (roster.roster[index] ~= 0 and (' Replaces ' .. c.label(roster.roster[index]) .. '.') or ''));
             end
         end
@@ -558,13 +559,14 @@ function M.render(c)
         if habitatOpen and (not c.habitats or c.habitats.id ~= math.floor(selected / 2)) then c.find(math.floor(selected / 2)); end
     end
     imgui.Spacing();
-    local gauge = M.charges(c.cooldowns);
+    local gauge;
+    if not c.readOnly then gauge = M.charges(c.cooldowns); end
     readyMoves(entry, gauge);
     if #state.captures > 0 then
         imgui.Spacing(); imgui.TextColored(gold, 'CAPTURED JUGS');
         for _, capture in ipairs(state.captures) do
             imgui.TextWrapped(c.label(capture.companion));
-            if button('Register##jug' .. capture.token, not c.pending) then c.register(capture.token); end
+            if button('Register##jug' .. capture.token, not c.readOnly and not c.pending) then c.register(capture.token); end
             tip('Keep the jug in your inventory and stand near the Stable Master.');
         end
     end
