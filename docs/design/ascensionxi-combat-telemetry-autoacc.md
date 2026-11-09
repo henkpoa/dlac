@@ -2,6 +2,8 @@
 
 Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day; weapon skills for 1-Hit WS sets added 2026-10-18 (`2026.10.18a`, engine v173); ranged shots, the not-engaged rule and the settings added 2026-11-06 (`2026.11.06a`, engine v176).** Read "Status 2026-11-06", "Status 2026-10-18" and "Status 2026-10-05" first; the sections after them are the history of the design.
 
+**Open 2026-11-09:** the accuracy box can stay on "Starting" for good. A dlac that loads after the zone-in never starts telemetry, and a server that does not answer gets a HELLO every 1.5 s. Diagnosis and fix: [ascensionxi-autoacc-start-in-game.md](ascensionxi-autoacc-start-in-game.md).
+
 **Backend research agent:** start with the [backend research assignment](#backend-research-assignment) appended below. It defines the remaining investigation and deliverable; the operation IDs, rate budgets and APIs proposed in this document are not already implemented or agreed wire contracts.
 
 ## Status 2026-11-06: ranged shots, not engaged, and the settings
