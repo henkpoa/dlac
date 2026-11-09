@@ -12042,3 +12042,32 @@ new prod deploy tomorrow. Another agent is doing Nexus."
   but it is a Ward).
 - Not done: the stock-only ability picker still lacks Ranger's Decoy Mark,
   Decoy Shots and Arrow Coating (#1149) and Paladin's Rebuke (#1156).
+
+## 2026-11-09: the accuracy box starts in game, and backs off a silent server (`2026.11.09a`)
+
+An AscensionXI session handed over PR #244: a prod player's accuracy box said
+"Starting" for a whole session, and `/addon reload dlac` did not help.
+Henrik's condition: "That sounds good, as long as it doesn't spam the server
+if there is a real problem."
+
+- **The cause.** The telemetry client started only on a zone-in packet. The
+  player's wire log had no telemetry request in two sessions, and the order of
+  the first requests showed dlac finished loading about 3 s after the login
+  zone-in.
+- **Start in game.** With no zone edge since load, once something wants the
+  session and the player is in game (a main job and an id, not mid-zone by the
+  packets or `GetIsZoning`), the client settles 3 s and HELLOs.
+- **A foreign HELLO reply** no longer leaves the client stuck in `hello` with
+  nothing queued.
+- **The backoff.** Every automatic HELLO (a lost HELLO or RESYNC, a foreign
+  reply, NO_SESSION) waits 5, 10, 20, 40, then 60 s between rounds. A silent
+  server hears 36 HELLOs in ten minutes from a client with the box open, about
+  400 before.
+- **Said once.** While it backs off, the box says "Unavailable" and the row
+  "off -- the server is not answering". The wire log gets a note line at the
+  start and at each backoff.
+- Tests: telemetry client 135 -> 213, box 367 -> 396; wire 90, model 209,
+  dispatch 93, smoke_ui 1778 and run_tests 8083 unchanged, WSL the same.
+  Sweep: 31 new and re-pointed mutants; the full sweep 222, 221 killed, 1 accepted (C21, as before), 0 open.
+- Owed: the live checks (a reload in game, a fresh login, one zone line), then
+  the AscensionXI pin.

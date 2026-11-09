@@ -3,8 +3,9 @@
 **Written:** 2026-11-09, from an AscensionXI session (a read-only look at prod plus
 two players' wire logs).
 **For:** the dlac agent who builds the fix.
-**State:** diagnosed, not built. This branch, `claude/autoacc-start-in-game`, holds only
-this document. Build the fix here, so the diagnosis and the code ship in one PR.
+**State:** built 2026-11-09 on this branch, `claude/autoacc-start-in-game` (dlac
+`2026.11.09a`). §9 says what was built and where it differs from §4. The live checks in
+§6 are owed.
 **Owner's condition:** *"That sounds good, as long as it doesn't spam the server if there
 is a real problem."*
 
@@ -273,3 +274,60 @@ when the server does not answer.
 - **When done:** add a `Status` section to
   [ascensionxi-combat-telemetry-autoacc.md](ascensionxi-combat-telemetry-autoacc.md) and
   turn this document's state line into "built".
+
+## 9. What was built (2026-11-09, `2026.11.09a`)
+
+All in `servers/ascensionxi/modules/telemetry/` unless named. No engine change
+(`dispatch.M.VERSION` stays), no server change.
+
+- **R1, the start in game.** `client.lua` `startInGame`, called from `M.pump` while the
+  phase is `off`. It starts the client the way `zoneIn` does (phase `settling`, `SETTLE`)
+  when no zone edge has been seen since load (`zoneSeen`, set by `zoneIn` and `zoneOut`),
+  something wants the session, and `client._inGame()` is true. After the first zone edge
+  the edges own the start, so a zone-out never leads to a start before its zone-in.
+  `init.lua` `_inGame`: a main job, a party server id (`GetMemberServerId(0)`), not
+  between a 0x00B and its 0x00A (`_zoning`, kept by the tap), and not `GetIsZoning`.
+  `_charId` is the 0x00A's id, else `GetMemberServerId(0)`.
+- **R2.** A HELLO reply naming another character is a failed round (`helloAgain`).
+- **R3.** `helloAgain(why, failing)` is the one way back to HELLO. The next round waits
+  `HELLO_BACKOFF` (5 s), doubled for each failure since the last accepted HELLO, up to
+  `HELLO_BACKOFF_MAX` (60 s); a round is still `TRIES` sends `RETRY` apart. It counts a
+  lost HELLO or RESYNC (the `TRIES` sends unanswered), a foreign reply, and NO_SESSION
+  from a WATCH or a RESYNC. An accepted HELLO or a zone-in resets it; demand does not.
+  No stop after N rounds. Measured headless (CL-24): a server that never answers, ten
+  minutes with the box open, gets 36 HELLOs (about 400 before), at most 3 in any minute
+  once capped. BUSY, UNAVAILABLE, BAD_OP and PROTO_UNSUPPORTED are unchanged.
+- **R4.** `client.state().retrying` is true after a failed round or UNAVAILABLE, while the
+  client is not live and the session is wanted. The box then shows **Unavailable** with the
+  hover *"The server isn't answering right now, so AutoAcc keeps your accuracy pieces on.
+  DLAC keeps asking; crossing a zone line asks again right away."* The Gear Helpers row
+  says `off -- the server is not answering`.
+- **R5.** `transport.note(op, why)` writes a `note` line to `gear-vault-wire.log`:
+  `note op=C0 seq=0 combat telemetry: started in game: no zone-in since dlac loaded`, and
+  one per backoff, e.g. `combat telemetry: no answer: HELLO again in 5 s` (UNAVAILABLE:
+  `unavailable: HELLO again in 30 s`).
+
+Where it differs from §4:
+
+1. **The start waits for demand.** The client looks for the player in game only while
+   something wants the session, and at most once a second (`LOOK_EVERY`). So a player
+   without AutoAcc pieces costs no memory read per frame. The price: the HELLO goes
+   `SETTLE` after the first question instead of at it.
+2. **`GetIsZoning` is a second zoning gate.** A dlac loaded mid-zone never saw the 0x00B.
+3. **NO_SESSION backs off too.** §4 named the timeout escalations only; the PR asks that
+   every automatic re-HELLO back off, and a server that keeps answering NO_SESSION to a
+   fresh session would otherwise loop. It costs one 5 s wait after a lease that really
+   ran out. It is an answer, so the box keeps "Starting" for it.
+4. **UNAVAILABLE gets the label too.** It used to show "Starting" while asking every 30 s
+   for good.
+
+Seen, not changed: `zoneIn` and `zoneOut` drop a request in flight without giving the
+transport slot back, so another module's next request waits up to the transport's
+`MAX_WAIT` (8 s). That was so before; with this change it can also happen when the
+in-game start's HELLO is in flight as a late 0x00A arrives (CL-22).
+
+Tests: telemetry client 135 -> 213 (CL-05, CL-07, CL-11 and CL-14 follow the backoff;
+CL-07b, CL-13b and CL-20 to CL-27 are new), box 367 -> 396 (UI-14). Wire 90, model 209,
+dispatch 93, pack lint 48, smoke_ui 1778 and run_tests 8083 unchanged, on Windows Lua 5.4
+and WSL lua5.4. Sweep: C22 to C40, I07 to I15, U34 and U35, and C14 re-pointed. The full sweep: 222 mutants, 221 killed, 1 accepted (C21, as before), 0 open.
+Not run: the frame-profile harness end to end.
