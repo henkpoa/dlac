@@ -35,9 +35,17 @@ package.loaded.ffi = {
 };
 package.loaded.d3d8 = { get_device = function() return 1; end,
     gc_safe_release = function(tex) releases = releases + 1; return tex; end };
-ashita = { events = { register = function(_, _, fn) handler = fn; end } };
+-- filetex is first required mid-draw, so it must register NO event handler:
+-- an older Ashita (CatsEyeXI's) calls a nil and unloads dlac when a d3d_present
+-- handler is added while d3d_present dispatches. dlac.lua's frame beat pumps it.
+local registered = {};
+ashita = { events = { register = function(evt, name) registered[#registered + 1] = evt .. '/' .. name; end } };
 AshitaCore = { GetInstallPath = function() return 'test/'; end };
 local textures = require('dlac\\ui\\filetex');
+assert(#registered == 0, 'filetex registered ' .. table.concat(registered, ', ') .. ' on require');
+handler = textures.pump;
+local beat = assert(io.open('dlac.lua', 'rb')):read('*a');
+assert(beat:find("require('dlac\\\\ui\\\\filetex').pump()", 1, true), "dlac.lua's frame beat must pump the texture queue");
 for _ = 1, 2 do for id = 1, 134 do assert(textures.queuedPackHandle('ascensionxi', 'stable/' .. id) == nil); end end
 assert(loads == 0, 'rendering must never synchronously load a collection texture');
 for frame = 1, 67 do handler(); assert(loads == frame * 2); end
