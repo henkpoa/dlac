@@ -4,6 +4,37 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, November 10, 2026 (BST release fixes)
+
+DLAC `2026.11.10b` refreshes the full pack from AscensionXI
+`3da7ad338af7bdca886303ee9015767cc84d53fc`, after the BST fixes and launcher
+publication PRs #1201 and #1203. Only the generated Stable catalog changes:
+
+- Dhalmel's move is named **Dhalmel Berserk**, matching the client DAT and
+  avoiding the native resolver collision with Warrior's Berserk.
+- The five healing moves show Onslaught's Carbuncle's Light bonuses of
+  **5% / 10% / 20%**. Shared moves appear on eight companion entries.
+
+The semantic diff contains nine changed strings. Equipment, pet stats, icons,
+portraits, fishing, digging, other generated tables and handwritten UI are
+unchanged. The full generator ran with the installed base client as a read-only
+fallback and the release checkout's DAT overlays.
+
+Verification: 62 generator tests, pack lint (49 checks), 8,083 core checks,
+1,778 UI smoke checks, catalog/stat mapping, all five Stable suites and the
+cross-repository server/DLAC protocol suite passed. Core and smoke tests ran
+under Lua 5.4. The protocol suite used the project's LuaJIT runtime after
+generating enum files with `python -m tools.codegen build`.
+
+Merge this DLAC PR before its linked AscensionXI pin PR. The pin may reference
+this reviewed commit before merge, as allowed by the authoritative AXI release
+routine. The AXI merge updates staging only. Do not promote the channel to
+production until the paired BST server release is ready. On staging, update
+through the launcher, reload DLAC and confirm `/dl check` shows `2026.11.10b`,
+the Dhalmel move name and the healing details. Rollback is an AXI pin revert.
+
+---
+
 # AscensionXI catalog refresh, November 8, 2026
 
 DLAC `2026.11.07b` regenerates the complete pack from AscensionXI main
