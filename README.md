@@ -1,282 +1,382 @@
-﻿# dlac — dynamic LuaAshitacast
+﻿<div align="center">
 
-A GUI companion for **LuAshitacast** (Final Fantasy XI on Ashita v4, built for
-**CatsEyeXI**) that removes the Lua editing from gear management: build sets, wire
-them to game events, toggle combat modes, and let situational gear resolve itself —
-all from a window in game.
+<a href="https://www.ascensionffxi.com"><img src="docs/img/readme/ascensionxi-banner.png" alt="AscensionXI: Final Fantasy XI, level 75 era, Ironman" width="640"></a>
 
-**Nothing dlac does requires you to open or edit a Lua file.** The files stay
-hand-editable for power users, but they are storage, not the interface.
+# DLAC
 
-**New to LuaAshitacast or self-dressing gear entirely?** Open
-[docs/guide.html](docs/guide.html) in a browser — a from-zero walkthrough of sets,
-triggers, modes, the gear helpers and their priority ladder, lockstyle, and the
-teleport/convenience surfaces.
+**The gear addon for AscensionXI.**<br>
+Build your sets once, and DLAC wears the right gear at the right moment while you play.
 
-## Setup — two clicks per job
+[![AscensionXI addon][badge-axi]][axi-site]
+[![CatsEyeXI supported][badge-cexi]][cexi-site]
+[![Ashita v4][badge-ashita]][ashita]
+[![Guide on the AscensionXI wiki][badge-wiki]][wiki]
+[![Join us on Discord][badge-discord]][discord]
 
-**Public CatsEyeXI distribution:** use the dedicated `dlac-cexi-*.zip`, which
-excludes E-Box Restock and Last Synth actions. GitHub's source archive contains
-the shared multi-server code instead. See [CEXI packaging and installation](docs/reference/cexi-release.md).
+**[Read the full guide on the AscensionXI wiki][wiki]** · [Playing on CatsEyeXI?](#playing-on-catseyexi)
 
-You need a working LuaAshitacast install (it's part of the CatsEyeXI client).
+</div>
 
-1. **Install** — drop the `dlac` folder into `Ashita\addons\`, then
-   `/addon load dlac` (add that line to your Ashita boot script to load it every time).
-2. **Open the GUI** — **CTRL+K** (or `/dl ui`).
-3. Click the red **Setup** button (top-right). Works on *any* profile, and always
-   ends the same way — **your live `<JOB>.lua` becomes a small clean dlac shim**:
-   - your existing profile — whether ffxi-lac, hand-written, or anything else — is
-     first copied to `backups\pre-profiles\` and **verified byte-for-byte**, then
-     replaced. Old logic never stays live: one equip engine, no conflicts;
-   - nothing is lost — your old **static sets** (including `_Priority` lists, order
-     kept) import via **"Copy from"** in the Sets tab, your old **group tables** via
-     **"Scan my Lua"** in the Triggers tab's Groups box, dynamic sets move over
-     automatically, verbatim;
-   - a job with no profile gets the same clean shim from scratch;
-   - the four base sets (Idle / Tp_Default / Resting / Movement, empty), the starter
-     trigger rules that target them, and your gear database are seeded automatically —
-     nothing complains out of the box.
-4. LuaAshitacast reloads by itself (fresh jobs: click **Reload LAC**).
+---
 
-That's it. Your gear imports itself (bags are auto-scanned on pickup, login and job change),
-and from here on everything is GUI work. Repeat for each job.
+Welcome! DLAC is a gear manager that runs inside Final Fantasy XI. You put your gear
+into **sets**, you tell DLAC **when** to wear each set, and it swaps your gear for you
+while you play. No Lua files, and no macros full of `/equip` lines.
 
-## What you get
+DLAC is made for **[AscensionXI][axi-site]** and grows together with it. The Gear Vault,
+AutoAcc and the job gauges are built hand in hand with the server, and the launcher
+installs DLAC for you. DLAC also runs on **[CatsEyeXI][cexi-site]**, where everything
+under [Everyday DLAC](#everyday-dlac-on-both-servers) works just the same.
 
-| Tab | Does |
-|---|---|
-| **Equipped** | Live 16-slot view, worn stat totals (augment- and set-bonus-aware), per-slot alternatives, slot locking, the **floating equipment window** (an always-up 4×4 with right-click item **pins**) |
-| **All Equipment** | Browse everything you own — or the full CatsEyeXI catalog — with search and stats; **"Show gear I don't own"** greys out what you lack, and right-click adds it to your **Wishlist** |
-| **Sets** | Build sets by hand or **Auto-build** from stat weights (**Points** or ordered **Priority** mode); level-scaling candidate lists per slot; live score; **Equip & Lock**; import your old profile's sets via **Copy from**; send a set to your other jobs via **Copy to** |
-| **Triggers** | Wire sets to the game: statuses, spells (by skill / type / element / `contains` / exact name), abilities, items, weaponskills, pets, **player state** (HP/MP — raw or percent — TP, active buffs & debuffs), **in-town**, **target = Self**, with **AND/OR condition groups** — plus player-defined **Modes** with live toggle buttons and the **Blueprints** rule library |
-| **Gear Helpers** | The self-dressing gear family (below) with live per-job coverage, and the **Priority** section — the draggable ladder that referees which helper wins a contested slot |
-| **Job Helpers** | Job-specific companion modules. BLU ships with **[Bludex](https://github.com/henkpoa/bludex)** — a Blue Magic codex + visual set planner: every spell with stats and descriptions, a 20-slot set builder that applies in game, trait ladders, learn-location hints and a skillchain-partner finder. Also usable as a [standalone addon](https://github.com/henkpoa/bludex) without dlac |
+<p align="center">
+  <img src="docs/img/readme/01-window.png" alt="The DLAC window" width="760"><br>
+  <sub>The DLAC window: (1) your profiles, (2) the job picker, (3) your job, level and how much gear you own, (4) the Menu, (5) the tabs.</sub>
+</p>
 
-Beyond the tabs: **lockstyle sets** (the armor header button — your look, in 30
-saved boxes per job, with town behaviour), your **Wishlist** (gear you're hunting,
-with notes and the jobs/sets that want it), the **Teleports** menu (one click from
-anywhere to anywhere, plus quick rows for every gear helper), per-job **macro
-books** (with the page following your *subjob* — NIN one page, SAM another), and
-named **profiles** per character.
+## What you get on each server
 
-### Triggers, in short
+| | AscensionXI | CatsEyeXI |
+| --- | :---: | :---: |
+| Sets, triggers, modes and Blueprints | ✅ | ✅ |
+| Gear Helpers: MaxMP, gathering, fishing and chocobo gear | ✅ | ✅ |
+| Lockstyle, macro books and teleports | ✅ | ✅ |
+| Job Helpers | ✅ WHM, PLD, DNC | ✅ BLU (Bludex) |
+| Installed and kept up to date by the launcher | ✅ | download the ZIP |
+| [Gear Vault](#gear-vault) | ✅ | — |
+| [AutoAcc](#autoacc) | ✅ | — |
+| [Crafting gear for Nexus](#more-with-the-servers-own-numbers) | ✅ | — |
+| Fish, digs and gathered items moved to your Mog Case or Satchel | ✅ | — |
+| [CatsEyeXI's own systems](#extra-on-catseyexi): giftbox opener, NM Compendium | — | ✅ |
 
-A trigger is *condition(s) → set*. All matching triggers apply, most specific last, so
-partial sets **overlay**: your general Enfeebling set equips, then White-Enfeebling
-over it, then your dedicated Slow set on top. Conditions stack with AND
-(`skill = Elemental Magic` + `contains = Stone` = every Stone tier). Trigger edits are
-**live on the next action** — no reload. `/dl why` explains exactly what fired and why.
+---
+
+## Made for AscensionXI
+
+> **AscensionXI** is an Ironman Final Fantasy XI server from the level 75 era, where you
+> party up, take on challenges together, and earn your own gear.
+> *Play together. Earn your own.*
+>
+> **[Visit ascensionffxi.com][axi-site]** · **[Join us on Discord][discord]**
+
+These parts of DLAC talk to the AscensionXI server directly, so you'll only find them there.
+
+### It's already installed
+
+You probably have DLAC already. The AscensionXI launcher installs it, keeps it up to date
+and turns it on the first time. Press **Ctrl+K** (or type `/dl ui`) to open it. If you'd
+rather not use it, switch it off in the launcher's **Addons** tab.
+
+### Gear Vault
+
+DLAC is the easiest way to use your Gear Vault. You need The Deeper Room done first.
+
+- Each job has its own **Mog Wardrobe layout**: the gear that job keeps in its wardrobes.
+- Gear your sets use goes into that layout by itself, and from there into your wardrobes
+  the next time you're in town. **Pin** anything else you want to keep there.
+- When your wardrobes are full, DLAC offers you your least-used pieces to take out.
+- At a Gear Vault counter, **Store all** puts every storable piece in your bags into the
+  vault in one go.
+- Vaulted gear shows in **violet** all through DLAC, and you can put it straight into a set.
+
+<p align="center">
+  <img src="docs/img/readme/02-gear-vault.png" alt="The Gear Vault tab" width="760"><br>
+  <sub>(1) wardrobe space, Sync, Search and options, (2) this job's Mog Wardrobe layout, (3) Vault and Inventory, (4) everything you've stored.</sub>
+</p>
+
+### AutoAcc
+
+The server tells DLAC how much accuracy you need against the monster you're fighting.
+Give your accuracy pieces the **AutoAcc** gear rule, and once the rest of your gear
+already reaches the hit cap, DLAC swaps them for the slot's next best piece. You keep
+hitting, and you stop spending slots on accuracy you don't need. It works for ranged
+attacks too.
+
+Type `/dl accuracy` to see your hit rate against your target and what AutoAcc is wearing.
+
+### Job gauges and helpers
+
+- **White Mage**: a flower gauge that appears by itself while Afflatus Solace or Misery is up.
+- **Paladin**: a gauge for Divine Guard and Divine Fury (your five points, the bar toward
+  the next one, and your Palisade stacks), plus **Divine Elements**: what the divine
+  elements on your weapon add to each weapon skill, and the cheapest way to each level 2
+  skillchain.
+- **Dancer**: **DNC Status** keeps track of Perpetual Step, your Unbroken Rhythm stacks and
+  the Steps on your target.
+- **Stances count**: Red Mage, Paladin and Warrior sets can count their stance's gear
+  bonuses (Composure, Divine Guard, Divine Fury, Berserk and more), and a piece can wait
+  for a stance before it goes on.
+
+They show you what's going on. They never use an ability for you.
+
+<p align="center">
+  <img src="docs/img/readme/32-job-helpers.png" alt="The Job Helpers tab" width="640"><br>
+  <sub>The Job Helpers tab, with DNC Status switched on.</sub>
+</p>
+
+### More, with the server's own numbers
+
+- **Crafting gear for Nexus**: if you craft with Nexus, DLAC puts your best crafting gear
+  on before every synth, starting with the weakest craft the recipe needs.
+- **Fishing**: your Fishing points, the gear Fennella sells, and a fish lookup (which rods
+  won't break, where it swims, with which bait). Your catch can move into your Mog Case or
+  Mog Satchel by itself.
+- **Gathering**: your HELM points and your chance of an extra roll, and your gathering
+  gear goes on when you're near a HELM point.
+- **Chocobo digging**: your digging skill, dig delay and allowance, with Gysahl Greens
+  counted in Void Storage too.
+- **EXP bands**: right-click your Chariot, Empress or Emperor Band to recharge it at a Gear Vault.
+
+---
+
+## Everyday DLAC, on both servers
+
+Everything from here on works the same on AscensionXI and CatsEyeXI.
+
+### New to gear sets? Start here
+
+If you've never swapped gear before, these few ideas are all you need.
+
+- **A slot** is one of the 16 places gear goes: main hand, sub, ranged, ammo, head, neck,
+  two earrings, body, hands, two rings, back, waist, legs and feet.
+- **A set** is a list of gear for some of those slots. A "Cure" set holds the pieces that
+  make your Cures heal more.
+- **A set only changes the slots it names.** A set with just a pair of boots in it only
+  changes your feet. That's how sets stack: you wear your Idle set, and a Movement set
+  with only boots goes on top of it while you run.
+- **A trigger** is a rule that says when a set goes on, like "when I'm resting, wear my
+  Resting set". DLAC checks your rules all the time and swaps gear by itself.
+
+### Your first set in five minutes
+
+Every job starts with four empty sets (Idle, Tp_Default, Resting and Movement) and the
+rules that wear them. Nothing happens until you put gear in them.
+
+1. Press **Ctrl+K** and click the **Sets** tab.
+2. Next to **Set:**, pick **Idle**.
+3. Click a slot in the grid, click **+ Add**, and click a piece of gear. Do that for every
+   slot you want.
+4. Press **Commit**. It turns red while you have changes that aren't saved yet.
+5. That's it. Your Idle gear goes on whenever you're standing around. Do the same for
+   **Tp_Default**, and you have a fighting set too.
+
+### Sets
+
+<p align="center">
+  <img src="docs/img/readme/05-sets.png" alt="The Sets tab" width="760">
+</p>
+
+- Pick from everything you own. A slot can hold several pieces, and DLAC wears the best
+  one you can at your current level, so a level sync just falls back to the next piece.
+- **Auto-build** picks the best set from your gear, based on the stats you tell it you
+  care about.
+- **Copy from** turns your old LuaAshitacast sets into DLAC sets. **Copy to** sends a set
+  to your other jobs.
+- **Equip & Lock** wears a set and holds it there until you unlock.
+- **Mode Gates** wear a piece only while a mode is on, like your Treasure Hunter gloves.
+
+### Triggers: when your sets go on
+
+<p align="center">
+  <img src="docs/img/readme/11-triggers-default.png" alt="The Triggers tab" width="760">
+</p>
+
+Each rule is a set of **conditions** and the **set** to wear when they're true. Every rule
+that matches fires, so sets stack: your Fast Cast set goes on for every spell, and Cure
+Clogs go on top of it for Cures.
+
+Rules can look at your status, whether you're moving or in town, the spell's name, skill,
+magic type or element, the day and weather, your HP, MP and TP, your buffs, your pet and
+your modes, joined with **and** and **or**. A change to a rule works on your very next
+action, with no reload.
 
 ### Modes
 
-Named switches that triggers can match. Two kinds:
+A mode is a switch you flip with a button, a key or a macro (`/dl mode TH`).
 
-- **Toggles** (e.g. `DT`) — on/off; overlay your damage-taken set over whatever else
-  won. Highest priority: manual intent always wins.
-- **Cycles** (e.g. `Weapon`: Melee → Ranged → Caster) — an ordered value list, exactly
-  one active; rules match a value with `mode = Weapon:Melee`. This replaces the classic
-  hand-written "variant table + HandleCommand arithmetic" pattern entirely.
+- **Toggles** (TH, DT) are on or off: put your damage-taken set over everything while DT is on.
+- **Cycles** (Weapon: Melee → Ranged → Caster) step through a list, and your rules follow
+  the one that's active.
 
-Flip them from the Triggers tab buttons (cycles show their current value), by chat/macro
-(`/dl mode dt`, `/dl mode weapon`, `/dl mode weapon caster`), or give a mode an optional
-**keybind** in the GUI — applied automatically at profile load, no OnLoad code.
+### Blueprints: share rules like macros
 
-### Blueprints — share rules like macros
+Save any rule as a **Blueprint** and stamp it onto your other jobs. Blueprints travel as
+plain text, so you can paste a friend's rules into your own game.
 
-Any trigger rule can be saved as a **Blueprint** (the `bp` button on its row): a
-job-independent copy in your per-character library (Triggers tab, Blueprints
-section). **Stamp** one onto any job's handler — the stamped rule is an ordinary
-trigger afterwards — or **Edit** it in the same rule builder. Blueprints travel as
-plain text: **View/Copy** per entry, **Copy all** for the whole library, and
-**Import from text** parses a friend's pasted blob with a live preview and
-collision choices. The payload is the rule verbatim; a stamped rule that names a
-set the job doesn't have simply warns until you create it.
+### Gear Helpers: gear that picks itself
 
-### Gear Helpers — gear that picks itself
+<p align="center">
+  <img src="docs/img/readme/22-gear-helpers.png" alt="The Gear Helpers tab" width="760">
+</p>
 
-The **Gear Helpers** tab hosts the whole family; each row's name is colored by live
-per-job coverage, the four hobby rows (Crafting / Gathering / Fishing / Chocobo)
-carry an **on/off switch** in the Status column — one at a time, the same rule and
-the same switch as the hobby bar (Menu → **Hobby bar**, or the Teleports menu's own
-row for it, is the same four hobbies in a floating window). Slot rules are **virtual
-entries** you place in a set slot via the normal **+ Add** picker; the other items
-in the same slot list act as the fallback, and everything is level-checked and
-re-detected on login/job change/inventory change. Every row here only picks
-*equipment* — dlac never acts for you.
+DLAC equips gear. It never acts for you: you still cast, craft, fish and dig.
 
-- **Elemental Staff** — `dlac:AutoIridescence` (Main) — your best *usable* Iridescence option per
-  cast: HQ/NQ elemental staff vs a universal weapon (Chatoyant/Iridal for anyone;
-  job-specific pieces up to Iridescence +3 — Inanna, Keraunos, Gridarvor, the Lv75
-  relic staves — rank above them), highest tier wins, ties go to the universal.
-  Every owned universal rides a level-ordered ladder, so a level sync falls
-  through to the best one you can still wear. CW-only Incursion weapons appear in
-  the tab only in CW mode (other modes get a "Show Crystal Warrior gear" preview
-  checkbox). *(Sets written as `dlac:AutoStaff` keep working.)*
-- **Elemental Obi** — `dlac:ElementalObi` (Waist) — the matching elemental obi (or the universal
-  Hachirin-no-obi) only when the day/weather bonus for the spell's element is net
-  positive. *(`dlac:AutoObi` keeps working.)*
-- **Oneiros Grip** — `dlac:AutoOneiros` (Sub) — the grip while its latent Refresh +1 is
-  actually live (MP at or below 50% of your *base* pool — merit-aware, gear
-  excluded), your regular grip otherwise.
-- **Ammo** — keeps the slot fed per job: your ammo by category
-  (Bullets / Bolts / Arrows / Throwing), level-sorted, with the free-WS trio
-  recognized; Crystal Warriors get Ephemeral Box counts and one-click fetch.
-- **MaxMP** — the battery ladder: when ON, your MP+ "battery" pieces are worn
-  while your MP is high (a bigger pool holds more) and each slot hands back to
-  the normal set piece as MP falls past that piece's break-even point — strongest
-  refresh batteries last, ear/ring pairs kept stable, movement gear allowed
-  through while you move. `/dl plan` prints the ladder.
-- **Crafting / Gathering / Fishing / Chocobo gear** — whole-set helpers with their own
-  floating bars: craft gear per craft with an HQ / NQ / Skill-Up goal, gathering
-  gear while idle near a HELM point, fishing gear that re-ranks rod/bait every
-  heartbeat (Ebisu > Lu Shang's > base at equal risk) with rod/bait pins on the
-  bar. Gear only — dlac never automates the activity itself.
+- **MaxMP** keeps your highest-MP pieces on while your MP is full, and hands each slot
+  back to your set as your MP drops.
+- **Gathering**, **Fishing** and **Chocobo** gear go on while you're idle, one hobby at a
+  time, with a floating **Hobby bar** for quick switching.
+- **Claim Priority** decides who wins when two parts of DLAC want the same slot. Drag a
+  row to reorder it, and open the **Arbiter monitor** to see who put on each piece.
 
-### Priority — who wins a contested slot
+### Equipped and All Equipment
 
-Gear helpers claim slots; the **Priority** section (Gear Helpers tab) is ONE
-draggable ladder that referees them: Pins, the **Locks veto row** (a claimant
-above it punches through a locked slot, one below it stops), the Ammo rule, MaxMP,
-Craft, HELM, Fishing, and the immovable **Triggers floor** — what you wear when
-no claim wins. Reordering is live, no reload. `/dl prio` prints the ladder with
-live claim status; `/dl why` names the winning claimant and its rank per slot.
+<p align="center">
+  <img src="docs/img/readme/21-equipped.png" alt="The Equipped tab" width="760">
+</p>
 
-### Lockstyle sets — your look, not your gear
+- **Equipped** shows what you're wearing right now with your stat totals. Hover an
+  alternative to compare it, with gains in green and losses in red, and click to put it on.
+  The **floating equipment** window keeps your gear on screen.
+- **All Equipment** lists everything you own, with filters, search and stats. Tick
+  **Show gear I don't own** to see what you're still missing.
+- **Free equip** (`/dl disable`) lets go of every slot while you change gear by hand.
 
-The armor button in the header opens the lockstyle window: build a *look* in the
-same 4×4 grid (one item per visual slot — the server happily styles off-job and
-under-level gear) and save it into numbered boxes, stored **per job**. The
-preview is client-side and equips nothing — tick "Show gear I don't own" to try
-looks on before hunting the pieces (Save is what enforces ownership). **OnLoad
-Lockstyle** applies your marked box on login and job change; **Keep on sub
-change** re-applies it after subjob flips (the game clears style lock there);
-in towns, choose either **Disable in town** (drop the style so your real gear
-shows) or a dedicated **town box** worn while you're there. The picker offers
-anything *any* of your jobs can wear at its current level.
+### Lockstyle, macro books and teleports
 
-### Wishlist — gear you mean to own
+<p align="center">
+  <img src="docs/img/readme/26-lockstyle.png" alt="The Lockstyle window" width="560">
+</p>
 
-The **All Equipment** tab has a **"Show gear I don't own"** tick: it opens the
-full CatsEyeXI catalog and greys out what you lack. Combine it with **Usable
-now** and you have a shopping list — everything your job could wear at your level
-that isn't yours yet. **Right-click any row → Wishlist** to put it on the list.
+- **Lockstyle**: build your look in 30 boxes per job, preview gear you don't own yet, and
+  have it put on when you log in. It can stay on through subjob changes, or step aside in town.
+- **Macro book**: DLAC switches your macro book and page when you change job or subjob.
+- **Teleports**: click a warp ring, a teleport earring or an EXP ring, and DLAC equips it,
+  waits until it's ready, and uses it.
 
-The list itself lives under **Menu → Wishlist** (or `/dl wish`), and each entry
-carries a **note** ("Sky drop, need a static") plus any number of **links** to
-the jobs and sets that want it — as many as you like, across any of your jobs.
-A link is a plan, not a claim: you can link a piece to WHM/Idle without putting
-it in that set, and beside every link the window shows what is actually true
-right now — *in the set (Body)* or *not added yet*. When the two disagree and
-you own the piece, an **Add** button appears on that row. dlac never edits a set
-on its own. Rings and earrings ask which of the two slots, showing what already
-sits in each.
+### When something looks wrong
 
-You can also build sets **ahead of the hunt**: the set editor's **+ Add** picker
-has the same tick, and a piece you don't own can go straight into a set. The
-engine skips it — the slot keeps its normal best-by-level pick and set totals
-ignore it — and the day it lands in your bags it simply starts being worn, with
-nothing to change. Adding one that way also wishlists and links it for you.
+<p align="center">
+  <img src="docs/img/readme/19-dl-why.png" alt="What /dl why says after a Cure" width="760">
+</p>
 
-Entries turn **green** the moment the item reaches your bags (ownership is read
-from your bags, never remembered, so selling it puts it back on the list), and
-nothing is ever deleted for you — clearing an entry is always your call.
+- `/dl why` explains your last gear change: which rules matched and which set won each slot.
+- The **Trigger monitor** lists the rules that fired, live.
+- `/dl check` shows which version you're running and whether everything loaded.
+- `/dl report` records what DLAC does for five minutes and writes one file you can attach
+  to a bug report. Nothing is sent anywhere on its own.
+- The windows are gone? Press **Scroll Lock**. It hides DLAC together with the game's own HUD.
+
+### Extra on CatsEyeXI
+
+DLAC also knows CatsEyeXI's own systems:
+
+- **Giftbox opener** (`/dl giftbox`): opens every reward box in your inventory, one at a
+  time, and never into a bag that can't hold what comes out.
+- **NM Compendium** (`/dl nm`) and the **Wishlist** (`/dl wish`), for the gear you're hunting.
+- **Bludex** for Blue Mage: every spell, a set planner and trait ladders. Also available
+  as a [standalone addon](https://github.com/henkpoa/bludex).
+- **Elemental Staff**, **Elemental Obi**, **Oneiros Grip**, **Ammo** and **Crafting** gear helpers.
+
+---
+
+## Getting started
+
+### Playing on AscensionXI
+
+There's nothing to install: the launcher already did it. Log in, press **Ctrl+K**, and
+follow [your first set in five minutes](#your-first-set-in-five-minutes). The
+**[DLAC guide on the AscensionXI wiki][wiki]** goes through every button, with pictures.
+
+New to AscensionXI? **[Start at ascensionffxi.com][axi-site]** and come say hi on **[Discord][discord]**.
+
+### Playing on CatsEyeXI
+
+1. Download **`dlac-cexi-<version>.zip`** from this repository's
+   **[Releases](https://github.com/henkpoa/dlac/releases)**. Take the named CEXI ZIP, not
+   GitHub's "Source code" archive.
+2. If you have an older DLAC, type `/addon unload dlac`, then back up and **replace** the
+   whole `Ashita\addons\dlac` folder. Don't unpack over the old one.
+3. Unpack the ZIP into `Ashita\addons`, so you end up with `addons\dlac\dlac.lua`.
+4. Type `/addon load dlac`, and add that line to your Ashita boot script so it loads every time.
+5. Press **Ctrl+K**.
+
+DLAC equips gear itself, so **don't run it together with LuaAshitacast**. Type
+`/addon unload luashitacast` and take it out of your boot script. Your old LuaAshitacast
+files are never changed: bring your sets over with **Manage → Copy from...** on the Sets tab.
+
+The CatsEyeXI ZIP picks the CatsEyeXI server by itself. Keep `config\addons\dlac` when
+you update: your sets, rules and settings live there.
 
 ## Commands
 
 `/dl` (or `/dlac`):
 
-| Command | Does |
-|---|---|
-| `/dl ui` | Open/close the GUI (also bound to **CTRL+K**) |
-| `/dl mode <name> [on\|off\|toggle]` | Flip a mode (no name: list active modes) |
-| `/dl lock <slot\|all> [on\|off\|toggle]` | Lock a slot: the engine stops equipping into it (no arg: list locks) |
-| `/dl disable [slot\|all]` / `/dl enable [slot\|all]` | **Free equip** — hand slots back to yourself. dlac writes nothing to them (no equip, no unequip), so what you put on stays on. Beats everything, including `/dl naked`. Bare `/dl disable` takes all 16; releases on a job change or logout |
-| `/dl naked` / `/dl dress` | Take everything off and hold it off; `/dl dress` gives your gear back to the triggers |
-| `/dl why` | Explain the last dispatch per handler — what matched, what equipped, which claimant won each contested slot and at what rank |
-| `/dl prio` | The live claim-priority ladder (Pins / Locks veto / gear helpers / Triggers floor) with per-claimant status |
-| `/dl plan` | The MaxMP battery ladder: release order, thresholds, live state per band |
-| `/dl env` | Day/weather as dlac sees it + per-element obi math |
-| `/dl triggers reload\|init\|path` | Force re-read / seed / locate the trigger file |
-| `/dl sync` | Import new gear from bags now (also runs automatically) |
-| `/dl prune` (then `/dl prune commit`) | Remove gear.lua entries for items you no longer own anywhere — dry-run first; checks every container incl. storage |
-| `/dl fix` | Re-stamp gear.lua entries with fields the scan has since learned (reserved slots etc.) |
-| `/dl ls apply [box]` | Apply a saved lockstyle box (GUI: the armor header button) |
-| `/dl wish` | Open the Wishlist window (also **Menu → Wishlist**) |
-| `/dl unused` | **Wardrobe cleanup** — what is sitting in a Mog Wardrobe that nothing asks for. Reads every profile and job entry on the character (triggers → the sets they point at), plus your lockstyle boxes, gear helpers, ammo rules and fishing pick, then lists the wardrobe pieces none of it names. Opens a window on the last report with a Refresh button; `/dl unused scan` rebuilds and answers in chat |
-| `/dl giftbox` | **Open every reward box in your inventory** — Goblin Giftboxes, the Goblin Gatherbox, the Tiny/Timeworn/Titanic Tackleboxes, the Mamool Ja/Lamia/Troll Troves, the alexandrite Purses, the Forgotten Pouches, the Moat/Forest Carp Creels, the Old Case and the Domain Coffer / Domain Coffer +1 — one at a time, in a fixed order. The gate is per box, not per run: a giftbox pays out up to 5 items so it needs 6 free slots, while a purse or a pouch pays 1 and needs only 2 — so a tight bag keeps opening what it can afford instead of stopping on the first box it cannot. It tells you how many are left and the smallest number of slots that would unblock it — it never opens into a bag that cannot hold the contents. It waits for each box's count to actually drop before using the next, so it paces itself to the server instead of firing on a timer; a box that does not open stops the run rather than being tried again. `/dl giftbox stop` halts it, `/dl giftbox status` counts without opening. Also answers to `/dl gb`, `/dl box` and `/dl boxes`. A tray icon offers the same run when you are carrying boxes *somewhere worth opening them* — standing at an Ephemeral Box as a Crystal Warrior, or in town as anyone else; the command itself works anywhere |
-| `/dl weight` / `best` | Stat-weight helpers for set auto-building |
-| `/dl set level main <n>` | Preview as another level |
-| `/dl p` / `/dl w` | Panic escape: lock Ring2, equip the Provenance/Warp Ring, wait out its equip delay, use it (`off` cancels) |
-| `/dl iw` | Instant Warp scroll: used straight from Inventory — no equip, no lock, no wait |
-| `/dl ir` | Instant Retrace scroll: same, back to your Campaign nation |
-| `/dl c` | Chocobo Whistle: lock Neck, equip it, call the chocobo the moment the game says ready (`off` cancels) |
-| `/dl nexus` | Nexus Cape: lock Back, equip it, teleport to your party leader the moment the game says ready (`off` cancels) |
-| `/dl shirt` | Shadow Lord Shirt: lock Body, equip it, teleport to Castle Zvahl Keep (`off` cancels) |
-| `/dl t <where>` | Teleport gear: lock the item's slot (earrings Ear2, rings Ring2, caps Head, stables gear Neck, suits Body), equip it, wait, use it (norg, jeuno, maat, ducal, purgonorgo...) — shared destinations resolve to the item you own; no arg lists destinations |
-| `/dl xp <ring>` | Exp/VP rings (Empress, Chariot, Kupofried, Venture...): same equip-wait-use dance on Ring2 — no arg lists what you own |
+| Command | What it does |
+| --- | --- |
+| `/dl ui` | Open or close the window (same as **Ctrl+K**) |
+| `/dl why` | Explain the last gear change. `/dl why <slot>` explains one slot |
+| `/dl mode <name>` | Flip a mode, or move a cycle to its next value. `/dl mode` lists the modes that are on |
+| `/dl disable`, `/dl enable` | Free equip: hand your slots back to you, or give them back to DLAC |
+| `/dl naked`, `/dl dress` | Take everything off and keep it off, then go back to normal |
+| `/dl lock set <name>`, `/dl lock set off` | Wear a set locked, then unlock it |
+| `/dl lock all off` | Release every lock |
+| `/dl prio` | Show the Claim Priority order |
+| `/dl sync` | Look for new gear in your bags right now |
+| `/dl ls` | Open Lockstyle |
+| `/dl w`, `/dl iw`, `/dl ir`, `/dl c` | Use your Warp Ring, Instant Warp, Instant Retrace or Chocobo Whistle. Add `off` to cancel |
+| `/dl t <where>` | Use a teleport item for that place. With no place, it lists what you own |
+| `/dl xp <ring>` | Use an EXP ring or band |
+| `/dl unused` | Gear sitting in your Mog Wardrobes that nothing asks for |
+| `/dl check` | Which version you're running, and whether everything loaded |
+| `/dl report` | Record five minutes of what DLAC does into one file you can send |
+| `/dl reload` | Reload DLAC |
+| `/dl accuracy` | **AscensionXI:** your hit rate against your target, and what AutoAcc is wearing |
+| `/dl vault why <item>` | **AscensionXI:** everything DLAC knows about one piece of gear |
+| `/dl craft nexus on`, `off` | **AscensionXI:** crafting gear for Nexus synths |
+| `/dl giftbox` | **CatsEyeXI:** open every reward box in your inventory |
 
-## Something went wrong?
+Your sets, rules and settings are saved for each character in
+`Ashita\config\addons\dlac\`, with backups of every set you save.
 
-| Command | Does |
-|---|---|
-| `/dl check` | Health readout — versions, module loads, catalog, profile — and a verdict that names any issue it can prove |
-| `/dl report` | **Record what dlac does for 5 minutes, then write one sendable file.** While it runs, `/dl mark <note>` flags the moment it went wrong (put it on a macro) — marking the same moment again just rewords it, and the Monitor's button becomes **[Un-mark]**. `/dl report stop` finishes early; `/dl report full` bundles every job |
-| `/dl sends` | What dlac has actually put on the wire this session, by packet and by cause |
-| `/dl gearpackets` | How gear goes on the wire — one packet per changed slot, or one batch for the whole set. `default` \| `single` \| `set` \| `auto`, plus `threshold <1-16>`. `/dl gp` for short |
-| `/dl debug ls` | Lockstyle capture window — click Apply during it and the report shows every hop |
-
-Everything lands in `addons\dlac\debug\` as plain text you can attach. `/dl report`
-is the one to send: it starts with the decisions **already in memory**, so a bug you
-just watched happen is in the file even though you pressed record afterwards. It
-carries your character name, your dlac settings, sets and triggers, the gear facts
-behind each decision, and dlac's own chat lines — no tells, no party chat, and
-nothing is sent anywhere on its own. You can also start it from the **[Record a
-report]** button in the Arbiter Monitor.
-
-## Safety
-
-- Setup never deletes your code — your original file is copied to
-  `backups\pre-profiles\` and verified byte-for-byte **before** anything is rewritten.
-  A first backup is never overwritten (re-runs save a time-stamped copy beside it),
-  and the Sets/Groups importers read your old sets and tables from it forever.
-- Every file write is parse-checked first and aborts untouched on failure.
-- A broken hand-edit to the trigger file keeps the last good rules and reports.
+---
 
 ## For developers
 
-**Start at [docs/HANDOFF.md](docs/HANDOFF.md)** — environment, hard rules, and current
-state, with a reading order. Then: [CONTEXT.md](CONTEXT.md) (glossary),
-[docs/architecture.md](docs/architecture.md) (module map & data flow),
-[docs/adr/](docs/adr/) (decision records),
-[docs/design/trigger-system.md](docs/design/trigger-system.md) (the trigger engine
-spec), and [docs/history.md](docs/history.md) (session journal — including the
-dead-ends worth not retrying). dlac is CatsEyeXI-only by design (ADR 0001).
+DLAC is one Ashita v4 addon with **server packs**: everything that belongs to one server
+lives in `servers/<id>/` ([ADR 0035](docs/adr/0035-server-packs.md),
+[pack contract](docs/reference/server-pack-contract.md)). AscensionXI is
+`servers/ascensionxi/`, CatsEyeXI is `servers/cexi/`, and the shared engine and windows
+stay server-neutral. The public CatsEyeXI ZIP is built from this same source; see
+[CEXI packaging](docs/reference/cexi-release.md).
 
-**Writing a Job helper module?** Copy
-[docs/templates/example-helper/](docs/templates/example-helper/) into
-`jobhelpers/<job>/<your-module>/` — it is a working helper, and the suite keeps it that way.
-Then read [docs/reference/jobhelper-authoring-guide.md](docs/reference/jobhelper-authoring-guide.md)
-— the module contract, the one API table (`S`) a module asks for everything, and the hard rules,
-written so a module can be built without reading dlac's source.
+**Start at [docs/HANDOFF.md](docs/HANDOFF.md)**: environment, hard rules and current
+state, with a reading order. Then [CONTEXT.md](CONTEXT.md) (glossary),
+[docs/architecture.md](docs/architecture.md) (module map and data flow),
+[docs/adr/](docs/adr/) (decision records) and
+[docs/design/trigger-system.md](docs/design/trigger-system.md) (the trigger engine).
 
-**Repository layout** (full version: [docs/architecture.md](docs/architecture.md)):
-the addon root is what LuaAshitacast sees, folders are what only the addon sees.
+**Writing a Job helper?** Copy [docs/templates/example-helper/](docs/templates/example-helper/)
+into `jobhelpers/<job>/<your-module>/` and read the
+[Job helper authoring guide](docs/reference/jobhelper-authoring-guide.md).
 
 | Path | What lives there |
 | --- | --- |
-| root | `dlac.lua` (entry) + the seeded engine: `utils`, `dispatch`, `chatfmt`, `profiles`, `gear` |
-| `ui/` | imgui modules (`gearui`, `triggersui`, `uihost`, ...) |
-| `data/` | generated/static tables (`catalog`, `crafts`, `statdefs`, ...) |
-| `gear/` | the gear pipeline (`gearimport`, `gearoptim`, `setmanager`, ...) |
+| root | `dlac.lua` (entry) and the engine: `utils`, `dispatch`, `chatfmt`, `profiles`, `gear` |
+| `ui/` | the windows (`gearui`, `triggersui`, `uihost`, ...) |
+| `gear/` | the gear pipeline (`gearimport`, `gearoptim`, `setmanager`, `serverpack`, ...) |
 | `feature/` | self-contained features (`lockstyle`, `craftwatch`, `useitem`, ...) |
-| `lib/` | generic helpers (`cmdqueue`) |
-| `jobhelpers/` | drop-in Job helper modules, `<job>/<module>/` (one folder = one module) |
-
-The five engine files at root are copied into each character's `<char>\dlac\` folder and
-load a second time inside LuaAshitacast's Lua state, so they cannot move into a subfolder:
-`require("dlac\\utils")` is published API in every user profile.
+| `lib/` | generic helpers |
+| `jobhelpers/` | drop-in Job helper modules, `<job>/<module>/` |
+| `servers/` | the server packs: data, modules and feature defaults per server |
 
 ## License
 
-MIT — see [LICENSE](LICENSE). dlac works alongside LuaAshitacast but does not bundle it.
+MIT — see [LICENSE](LICENSE).
+
+<div align="center">
+
+<br>
+
+**DLAC is made for [AscensionXI][axi-site].** Come play with us: **[ascensionffxi.com][axi-site]** · **[Discord][discord]**
+
+</div>
+
+[axi-site]: https://www.ascensionffxi.com
+[wiki]: https://www.ascensionffxi.com/wiki/DLAC
+[discord]: https://discord.gg/e924EXBC6m
+[cexi-site]: https://catseyexi.com
+[ashita]: https://www.ashitaxi.com
+[badge-axi]: https://img.shields.io/badge/AscensionXI-addon-c9a24b?style=for-the-badge&labelColor=17130c&logo=data:image%2Fpng;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAERUlEQVR4AeyWW2icRRTH59tNdlNNuk0kVRQsrU1qSi6ajUXwlogvom%2FWPhTUNpQk3tBovGCjDcV7KVYpwTQXAz4o8YIgFkRL0hq8UJOaah5kY0MpEUxML9bsdzlnZjyzm9mdby9ECm1fEvJn5vvmd%2F5z5pzZZQPsMv8tJ7BcgeUKXP4KnJvqW38m1tu4pE70rdFfGdPTHxTl48%2FHBsrP%2FtHfkG9dv5d%2F9lyh%2FAKR9TumGLjTlsDWgIDhXApaWFG6bsdJFaC0du12J8zYFLGfkoYDEg8FBG9aFYKJkormuci6kmMBITcm1jI8g5J3WDZMWNe2xpVXogWlG584Gal8dKtA%2BwuBDsuhMwo2teKcOC3RBsVKcDojG9p2WWseS3CWtYVHNrR0S3Rm1bopDxbeWVWb5JRfIgE1sSwmPeG0MW7PkzEzJbz43vkfu1YqTuts4exuMr5GcueHyOT3b%2Bv35kgH8kwfNQ9J1zGZVALq5dU1O%2F9i6LZTIFXBTgvs62UI3lKM0tz48w2Cu08RZ3MZ325t%2BYSr95kS3PDA5BzB9mG%2BBNRKaf3uD6VwDkoK9gnt1rmjHY1yuKtAIu%2BlzQss6XSW1736u4rLJXVinwd5MmqxyWYloBYDMt5G%2FfuHNklXAR1LwELfbHj2FTK%2BiUo%2FWhYt3qf4fCIPIz5ZAaBKmHzOBK7a1H1KCvsFZeCXewM9v0ybx5m10GxZXcI0y5xTonSXHJ%2FYUi3QJqtvG%2BihPo9wcFmmBDh7V986GNNsvhExO%2FZ%2FtUAZqk8FB9nCEekfGWJaAHyzPHgvfRUoMr8QwBeX9ABfQM4WaMLznPsAMIhAm%2FtVdYKv2KW5fCMCZ%2BiPYyoJk8%2BbQOyz%2B%2Bsp%2BE3Sv4hwPHEadaJFAeJzijHNMucUSwlQFRZjlAcdyIflTOC3ocZi4OIjMghLgU8HUG6lPrj0zLQ4YIHHxcDPPdFCn6PxQImneB2n3hkIy5kAeoXdlGklcv75jQ981V%2Bx%2BctJD%2FjrKRNItaQuVFz2omloztFLcelE6C6ZTFYC44NNDwvOHxKIMyEPWzSM5%2F9%2Bg6pwnMT84juP9jVWa84c%2FRwm4qgbJuKvwE8Hbq9E5PupvAK52Fb1yKF5TTe0joGUXjMC2aYrwKhSYclE%2F9DQg0HN6hENLjXPV4Gv99Reybn4mMASAN57S%2FPIt9pIj9Fto2MI3vvEpEua3GTTdadnOjSnR2pBOJMFxynS62oMSMmsI%2Fvqa4vC4W8Q4GYSmbsre3JcLkmnBA9Lkoz%2FdnOA1w6%2FF%2B38rrumVHGH3214nC5ceRbrwjOKUZsrBY7sj1ZzKcoEh5c4h6ak8EBVnNUowNTwqalqIWAwyWh2cUS4R3A%2Bim6wbmQmdocQOMlTfouMeha4RzH06Un%2BIrrrybFfm9p%2FGcnUne1j4%2Bbman73s8cmMrkLfaY7FVeeWZ8C9fJSajmBi16Bpdr5HwAAAP%2F%2FJTg5DgAAAAZJREFUAwCluFh9W0z3LAAAAABJRU5ErkJggg%3D%3D
+[badge-cexi]: https://img.shields.io/badge/CatsEyeXI-supported-3f8f6b?style=for-the-badge&labelColor=17130c
+[badge-ashita]: https://img.shields.io/badge/Ashita-v4-6b7b8c?style=for-the-badge&labelColor=17130c
+[badge-wiki]: https://img.shields.io/badge/Guide-wiki%2FDLAC-c9a24b?style=for-the-badge&labelColor=17130c
+[badge-discord]: https://img.shields.io/badge/Discord-join%20us-5865F2?style=for-the-badge&labelColor=17130c&logo=discord&logoColor=white
