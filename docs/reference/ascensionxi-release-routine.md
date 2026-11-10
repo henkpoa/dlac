@@ -25,7 +25,9 @@ Catalogue every item with AXI's own generator. Don't hand-edit the catalog.
 
    The generator rewrites `manifest.lua`, `data/`, `itemicons.lua` and
    `assets/items/`. It leaves the hand-maintained `features.lua`, `detect.lua`,
-   `modules.lua` and `modules/` alone.
+   `modules.lua` and handwritten `modules/` code alone. The generated Stable
+   `modules/stable/catalog.lua` and `assets/stable/` portraits are refreshed;
+   those portraits are cropped to their authored UV bounds and resized to 256px.
 4. Bump `addon.version` in `dlac.lua` (`YYYY.MM.DD` plus a letter). That is the version
    players see in `/dl check`.
 5. Check it, in the DLAC worktree:

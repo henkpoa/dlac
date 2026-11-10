@@ -690,13 +690,20 @@ local function petInner(key)
     return string.match(key, '^[Pp][Ee][Tt]:(.+)$');
 end
 
+local function packDefinition(key)
+    local ok, pack = pcall(require, 'dlac\\gear\\serverpack');
+    if not ok or not pack.statdefs then return nil; end
+    local definitions = pack.statdefs();
+    return definitions and definitions[key:lower()] or nil;
+end
+
 -- Resolve any spelling (case-insensitive, alias-aware) to its entry. An unknown stat falls
 -- back to { key, label=key, section='Misc' } so a new/unlisted stat never errors -- it just
 -- shows un-styled until it's added above.
 function M.get(key)
     if type(key) ~= 'string' then return nil; end
     if _maok and modAliases[key] then key = modAliases[key]; end
-    local e = M.byKey[key];
+    local e = packDefinition(key) or M.byKey[key];
     if e == nil then
         local canon = canonicalSpellings[string.lower(key)] or M.aliasOf[string.lower(key)];
         e = (canon ~= nil) and M.byKey[canon] or nil;
@@ -714,6 +721,8 @@ end
 -- Canonical key for any spelling (alias-aware); returns the input unchanged if unknown.
 function M.canon(key)
     if type(key) ~= 'string' then return key; end
+    local definition = packDefinition(key);
+    if definition then return definition.key; end
     if _maok and modAliases[key] then return modAliases[key]; end
     if M.byKey[key] ~= nil then return key; end
     local a = canonicalSpellings[string.lower(key)] or M.aliasOf[string.lower(key)];

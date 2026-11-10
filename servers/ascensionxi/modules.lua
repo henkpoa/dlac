@@ -25,4 +25,4 @@
     `pldgauge` (2026-10-24) draws the Paladin Divine Guard gauge, slot 2 of
     the job gauge partition (0xD2, 0xDA) (docs/design/pld-divine-guard-gauge.md).
 ]]--
-return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus', 'fishing', 'pldgauge' };
+return { 'gearvault', 'helm', 'digging', 'ascension', 'restocknotice', 'telemetry', 'whmgauge', 'dncstatus', 'fishing', 'pldgauge', 'stable' };

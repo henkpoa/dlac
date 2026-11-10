@@ -3712,7 +3712,7 @@ end)();
         -- 14 Settings + 12 Features (6 tabs + 6 menu rows, lib\featuregate,
         -- 2026-08-26): the gate section renders whenever featuregate loads,
         -- which headless it always does.
-        check('MN12a Settings body ran to completion (26 checkboxes)', drew.checkbox, 26);
+        check('MN12a CEXI Settings body ran to completion (26 checkboxes, no Stable)', drew.checkbox, 26);
         check('MN12b level body drew its typed-number box', drew.input, 1);
 
         repairClick = true;

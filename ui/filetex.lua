@@ -20,6 +20,7 @@ if has then
 end
 
 local cache, tried, keep = {}, {}, {};
+local queue, queued = {}, {};
 
 -- name -> assets/<name>.png handle (loaded once). nil on any failure.
 -- CRITICAL: retain the texture OBJECT in `keep` -- storing only the numeric
@@ -48,6 +49,30 @@ end
 -- Pack artwork travels with its catalog when servers/<pack>/ is copied.
 function M.packHandle(pack, name)
     return loadAsset('servers\\' .. pack .. '\\assets\\' .. name);
+end
+
+-- Large collections opt into a shared two-texture frame budget.
+function M.queuedPackHandle(pack, name)
+    if not has or dev == nil then return nil; end
+    local key = 'servers\\' .. pack .. '\\assets\\' .. name;
+    if not tried[key] and not queued[key] then
+        queued[key] = true;
+        queue[#queue + 1] = key;
+    end
+    return cache[key];
+end
+
+function M.pump()
+    for _ = 1, 2 do
+        if #queue == 0 then break; end
+        local key = table.remove(queue, 1);
+        queued[key] = nil;
+        loadAsset(key);
+    end
+end
+
+if ashita and ashita.events then
+    ashita.events.register('d3d_present', 'dlac_filetex_queue', M.pump);
 end
 
 return M;

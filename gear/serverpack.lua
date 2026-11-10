@@ -315,8 +315,18 @@ function M.features()
     return state.feats;
 end
 
--- true when several packs ship and neither the flag file nor detection
--- answered: NOTHING is mounted, and the first-run chooser is owed a render.
+-- Optional presentation for server-specific stat keys. Do not cache a pre-init miss.
+function M.statdefs()
+    if not state.ready or not state.active then return nil; end
+    if not state.statsRead then
+        local ok, definitions = pcall(M._require, 'dlac\\servers\\' .. state.active .. '\\statdefs');
+        state.stats = ok and type(definitions) == 'table' and definitions or nil;
+        state.statsRead = true;
+    end
+    return state.stats;
+end
+
+-- True when several packs ship but none was selected: the first-run chooser is owed a render.
 function M.needsChoice() return state.needsChoice == true; end
 
 -- Write the per-install flag file (the player's declaration -- the chooser
