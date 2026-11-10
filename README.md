@@ -35,7 +35,7 @@ under [Everyday DLAC](#everyday-dlac-on-both-servers) works just the same.
 
 ## What you get on each server
 
-| | AscensionXI | CatsEyeXI |
+| | <img src="docs/img/readme/ascensionxi-icon.png" alt="" width="20" height="20"><br>AscensionXI | <img src="docs/img/readme/catseyexi-icon.png" alt="" width="20" height="20"><br>CatsEyeXI |
 | --- | :---: | :---: |
 | Sets, triggers, modes and Blueprints | ✅ | ✅ |
 | Gear Helpers: MaxMP, gathering, fishing and chocobo gear | ✅ | ✅ |
@@ -51,12 +51,6 @@ under [Everyday DLAC](#everyday-dlac-on-both-servers) works just the same.
 ---
 
 ## Made for AscensionXI
-
-> **AscensionXI** is an Ironman Final Fantasy XI server from the level 75 era, where you
-> party up, take on challenges together, and earn your own gear.
-> *Play together. Earn your own.*
->
-> **[Visit ascensionffxi.com][axi-site]** · **[Join us on Discord][discord]**
 
 These parts of DLAC talk to the AscensionXI server directly, so you'll only find them there.
 
@@ -276,9 +270,9 @@ There's nothing to install: the launcher already did it. Log in, press **Ctrl+K*
 follow [your first set in five minutes](#your-first-set-in-five-minutes). The
 **[DLAC guide on the AscensionXI wiki][wiki]** goes through every button, with pictures.
 
-New to AscensionXI? **[Start at ascensionffxi.com][axi-site]** and come say hi on **[Discord][discord]**.
-
 ### Playing on CatsEyeXI
+
+<a href="https://catseyexi.com"><img src="docs/img/readme/catseyexi-logo.png" alt="CatsEyeXI" height="56"></a>
 
 1. Download **`dlac-cexi-<version>.zip`** from this repository's
    **[Releases](https://github.com/henkpoa/dlac/releases)**. Take the named CEXI ZIP, not
@@ -362,21 +356,13 @@ into `jobhelpers/<job>/<your-module>/` and read the
 
 MIT — see [LICENSE](LICENSE).
 
-<div align="center">
-
-<br>
-
-**DLAC is made for [AscensionXI][axi-site].** Come play with us: **[ascensionffxi.com][axi-site]** · **[Discord][discord]**
-
-</div>
-
 [axi-site]: https://www.ascensionffxi.com
 [wiki]: https://www.ascensionffxi.com/wiki/DLAC
 [discord]: https://discord.gg/e924EXBC6m
 [cexi-site]: https://catseyexi.com
 [ashita]: https://www.ashitaxi.com
 [badge-axi]: https://img.shields.io/badge/AscensionXI-addon-c9a24b?style=for-the-badge&labelColor=17130c&logo=data:image%2Fpng;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAERUlEQVR4AeyWW2icRRTH59tNdlNNuk0kVRQsrU1qSi6ajUXwlogvom%2FWPhTUNpQk3tBovGCjDcV7KVYpwTQXAz4o8YIgFkRL0hq8UJOaah5kY0MpEUxML9bsdzlnZjyzm9mdby9ECm1fEvJn5vvmd%2F5z5pzZZQPsMv8tJ7BcgeUKXP4KnJvqW38m1tu4pE70rdFfGdPTHxTl48%2FHBsrP%2FtHfkG9dv5d%2F9lyh%2FAKR9TumGLjTlsDWgIDhXApaWFG6bsdJFaC0du12J8zYFLGfkoYDEg8FBG9aFYKJkormuci6kmMBITcm1jI8g5J3WDZMWNe2xpVXogWlG584Gal8dKtA%2BwuBDsuhMwo2teKcOC3RBsVKcDojG9p2WWseS3CWtYVHNrR0S3Rm1bopDxbeWVWb5JRfIgE1sSwmPeG0MW7PkzEzJbz43vkfu1YqTuts4exuMr5GcueHyOT3b%2Bv35kgH8kwfNQ9J1zGZVALq5dU1O%2F9i6LZTIFXBTgvs62UI3lKM0tz48w2Cu08RZ3MZ325t%2BYSr95kS3PDA5BzB9mG%2BBNRKaf3uD6VwDkoK9gnt1rmjHY1yuKtAIu%2BlzQss6XSW1736u4rLJXVinwd5MmqxyWYloBYDMt5G%2FfuHNklXAR1LwELfbHj2FTK%2BiUo%2FWhYt3qf4fCIPIz5ZAaBKmHzOBK7a1H1KCvsFZeCXewM9v0ybx5m10GxZXcI0y5xTonSXHJ%2FYUi3QJqtvG%2BihPo9wcFmmBDh7V986GNNsvhExO%2FZ%2FtUAZqk8FB9nCEekfGWJaAHyzPHgvfRUoMr8QwBeX9ABfQM4WaMLznPsAMIhAm%2FtVdYKv2KW5fCMCZ%2BiPYyoJk8%2BbQOyz%2B%2Bsp%2BE3Sv4hwPHEadaJFAeJzijHNMucUSwlQFRZjlAcdyIflTOC3ocZi4OIjMghLgU8HUG6lPrj0zLQ4YIHHxcDPPdFCn6PxQImneB2n3hkIy5kAeoXdlGklcv75jQ981V%2Bx%2BctJD%2FjrKRNItaQuVFz2omloztFLcelE6C6ZTFYC44NNDwvOHxKIMyEPWzSM5%2F9%2Bg6pwnMT84juP9jVWa84c%2FRwm4qgbJuKvwE8Hbq9E5PupvAK52Fb1yKF5TTe0joGUXjMC2aYrwKhSYclE%2F9DQg0HN6hENLjXPV4Gv99Reybn4mMASAN57S%2FPIt9pIj9Fto2MI3vvEpEua3GTTdadnOjSnR2pBOJMFxynS62oMSMmsI%2Fvqa4vC4W8Q4GYSmbsre3JcLkmnBA9Lkoz%2FdnOA1w6%2FF%2B38rrumVHGH3214nC5ceRbrwjOKUZsrBY7sj1ZzKcoEh5c4h6ak8EBVnNUowNTwqalqIWAwyWh2cUS4R3A%2Bim6wbmQmdocQOMlTfouMeha4RzH06Un%2BIrrrybFfm9p%2FGcnUne1j4%2Bbman73s8cmMrkLfaY7FVeeWZ8C9fJSajmBi16Bpdr5HwAAAP%2F%2FJTg5DgAAAAZJREFUAwCluFh9W0z3LAAAAABJRU5ErkJggg%3D%3D
-[badge-cexi]: https://img.shields.io/badge/CatsEyeXI-supported-3f8f6b?style=for-the-badge&labelColor=17130c
+[badge-cexi]: https://img.shields.io/badge/CatsEyeXI-supported-3f8f6b?style=for-the-badge&labelColor=17130c&logo=data:image%2Fpng;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAGQ0lEQVR42uWX749UVxnHP%2Bece%2B%2FM3JmdgWXYZQBLwxbYQlNqiECqZamiKW1NiskY4wtjtIn6wphoYnzTTNY%2FQKOpxHcaTaOympCYapVEWVSS0tKWUGazULrLLsuyv2dnZ%2BfHnXvP44uZAkZYdi36xpOcNzfnnuf7fM%2FzfJ%2FnMfznS1EoaLq6NHv2aPJFxSDC%2F2Tl8wal7kDS2oVCQZPPm%2F%2BmaYVwy7L3WKrXf%2Bojn%2BHJ7qfZwtZbpwoFvfoLV780YAGyn93z1Y07tn8t0%2FPw3o25nNcVaibHr5eHLg%2F9Y2zk%2FR%2FaP4%2BcEhHVZmnFZ3FWZbqAph%2Bbe35f1uuM%2F3zXsaPP9Rw5gkmtJ4trnyWpQmx6dGr86K9%2F%2B6ujZzJ%2F%2FcGi0t%2BR1n8rgjCrYulwQa3vqqRT2cypA9%2F%2BRt%2BOQ881xdMqsHWMRHq7KNVUTdmY2mAP7z8kYcp8%2FGownasfn%2Fw9%2BbyhWPwQAAoFTX%2B%2FzT625Rcf%2B9aLn37oib5mLZp3rUK5WqkOFZJREMdVkYQ6kEA9ufNAOBOU9heDySl78swbK4Ew943248dt5zO9x3pfOPr93mc%2FF9ajkivGoYMmOaokVJNpqpSok1FxPIxqqEDte3SvHb5UPDSu5l%2Fhj68vUkDfLU1XjtYTA5b8bm%2Fdlk2Fnk8eEEugxLjEabJJ1Ukog4tDCo%2BAiGFmiZSQsEo3XFc2HTuY6era9F1A8sW8uldkr5DrSGZBntr0%2BM69ybhIOHnJ6NoinTRI4hLHJY6DhyFDDItwjRJ%2FURO8xN%2F18EfTku7JfWHr7q2dAwMD0d2y7p4A%2BqanFYC%2FIX1s8%2BM7RDuOjRoN3PIk69Ek8HDReBg8DC6aLAmuyxKv8B5VG2jPzdjYvp6s5DJPtxjN69UCUIODgyGgk53rPpHJbVRR0NRoTSKZYh0JfFySeLe2j0cclxw%2BD4nf1iwrXm9OYh2JrQB9l6bVmmIgeaBrYyKT2hZLJpAwajHieiRwcNte37ljGDpUjKx4WKSlW5vXK7UhGa2kbndLPQXgJtd1eyk%2FrV0HEVFoTdx4pImRwMVve57EI4FLApcUHilxUEohCCYdx8km254fXiWAYlEBRI5KeX5MK6VEBLRWxLSD12bg9vsbPFrf47h4xmkrmAXXhXWpe9m%2FjxRbZUVup64giAjxSLfUVUDUHUVFFE1t11Rh7g5g924BsE0qwXLNihWtFBJZUaFYfHEgEhSCKIUCRASDpuxaGhK2udVI0IBSuXXv6dOrBNDfLwCqsngzWK7NR80wq5UGG1EPA%2FDAx8WqlrPSZsfFUFIN5gkQkVYclBuEUzVZWxC2Wa2cn5yrlSqj9aVllGsEK5SCKss6JK49HG1wtIOnHVxtiGmHOerMqQAtIBjs2KywUFFrBSB9fX0GkOpC6fTCxBTGdazneZSXKozJIr52iWuXhHKIawdfeRilGWaOGRpoY1BY3bw4rurl6lWAwWLX6mvBYFfrcGV%2B4XcT71wWidA3ro0y%2BOpJzl5%2Fl5IKSViDUgqFIonHe2qRobERNrwxQ6xqrQ2WVePC6I1gavYMAAMDdvXVsFgUCujgZ%2FMT%2FsPZIzPB3LaRsaEoaNT11OwU6V3b2Ol0kxCNi2FCLXOyfIErw6MkqpaOJYlq566Y0uvDP5o8fflP%2BXzeFItFu7Zy3JXXFIs2tWPztXql8iXTnbSOcVW1vKiu3hyl2p2g7msuM8trC%2B9ysXgFaUaohGejclXfePXsdK26%2BOVK8WateKko7e5o1QBUi4WCXvzJL9%2Fv3LUta3zvoHSo0CjHLJVKvD30FhemrzBSqXB9bBJCi3aMaEfb8b%2BdN3Nj41%2B5eeLtVkPy%2BX%2F3%2Fv4AAAYHoVDQ22veqersxBMmEXtUkioyjiMShiqsN0j7XWjHiBOPRTayZuLseT3zzvBLN068%2BVPyeUOrFK%2B5K1a3BLCd7o9885mYrdRf1t3%2Bi3qLT2QsqUyG7T37CJshtZl5bpy7uLwwMvG9yd%2Bce%2Fl%2Bxtfaln%2BgOWz%2F4qGj4jtfV77Z7%2FixbMJPR0F5abI2u%2FBaeXrhx%2FN%2FuDT0QS%2F54AeTwu3U3fzCpzbknt%2FXmz649RFy%2BP%2FSTT0QYyu1a3eZfvL5vLkT4IedjNT9ppo2I607%2Btsl4YHS%2Ff%2Bw%2Fgm9Fp%2F3sYe99AAAAABJRU5ErkJggg%3D%3D
 [badge-ashita]: https://img.shields.io/badge/Ashita-v4-6b7b8c?style=for-the-badge&labelColor=17130c
 [badge-wiki]: https://img.shields.io/badge/Guide-wiki%2FDLAC-c9a24b?style=for-the-badge&labelColor=17130c
 [badge-discord]: https://img.shields.io/badge/Discord-join%20us-5865F2?style=for-the-badge&labelColor=17130c&logo=discord&logoColor=white
