@@ -51,7 +51,8 @@ function M.packHandle(pack, name)
     return loadAsset('servers\\' .. pack .. '\\assets\\' .. name);
 end
 
--- Large collections opt into a shared two-texture frame budget.
+-- Large collections opt into a shared two-texture frame budget. The queue is
+-- drained by M.pump, which dlac.lua's frame beat calls.
 function M.queuedPackHandle(pack, name)
     if not has or dev == nil then return nil; end
     local key = 'servers\\' .. pack .. '\\assets\\' .. name;
@@ -62,6 +63,14 @@ function M.queuedPackHandle(pack, name)
     return cache[key];
 end
 
+-- Called once per frame by dlac.lua's 'dlac-seed-watch' beat. This module must
+-- not register a d3d_present handler of its own: it is first required lazily,
+-- from inside a draw (the tray's Teleports icon on the very first frame), and
+-- an older Ashita (CatsEyeXI's, May 2025) calls a nil and unloads dlac when a
+-- d3d_present handler is ADDED while d3d_present is being dispatched (field
+-- report 2026-11-10, v2026.11.10b: "attempt to call a nil value", empty
+-- traceback). Removing handlers mid-dispatch, or adding other events, is fine
+-- there; adding to the event being dispatched is not.
 function M.pump()
     for _ = 1, 2 do
         if #queue == 0 then break; end
@@ -69,10 +78,6 @@ function M.pump()
         queued[key] = nil;
         loadAsset(key);
     end
-end
-
-if ashita and ashita.events then
-    ashita.events.register('d3d_present', 'dlac_filetex_queue', M.pump);
 end
 
 return M;

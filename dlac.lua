@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.10b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.10c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -520,7 +520,11 @@ addon.version = '2026.11.10b';  -- date of the last shipped change (Ashita print
                                 --  11.07b = AscensionXI November 8 refresh:
                                 --  Ranger's Artifact and relic gear,
                                 --  Sniping Bow and the Onslaught bows; the
-                                --  job rings' latents read "HP over 75%")
+                                --  job rings' latents read "HP over 75%";
+                                --  11.10c = the texture queue is pumped from the
+                                --  frame beat: ui\filetex no longer registers a
+                                --  d3d_present handler mid-draw, which made an
+                                --  older Ashita (CatsEyeXI) unload dlac)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
@@ -725,6 +729,12 @@ ashita.events.register('d3d_present', 'dlac-seed-watch', function()
     end);
     -- Drain personal tag history before combat consumers read this beat.
     pcall(function() require('dlac\\feature\\mobtag').pump(); end);
+    -- The texture loader's queue (two large-collection textures per frame, the
+    -- Stable's portraits). Pumped from HERE because ui\filetex is first required
+    -- mid-draw, and a handler it registered itself would be added while
+    -- d3d_present is dispatching -- which an older Ashita (CatsEyeXI's) answers
+    -- by calling a nil and unloading dlac. Free while the queue is empty.
+    pcall(function() require('dlac\\ui\\filetex').pump(); end);
     -- The combat state service's beat (feature\combat): engaged / target /
     -- targetChanged / first-swing, published to subscribers once per dispatch
     -- beat. It runs AFTER engagewatch's pump on purpose -- the edges that pump
