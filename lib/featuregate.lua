@@ -41,7 +41,7 @@ M.TABS = {
     { key = 'equipped',    label = 'Equipped' },
     { key = 'gearhelpers', label = 'Gear Helpers' },
     { key = 'jobhelpers',  label = 'Job Helpers' },
-    { key = 'stable',      label = 'Stable' },
+    { key = 'stable',      label = 'Stable', module = 'stable' },
 };
 
 -- menuui ROWS keys, minus the rows that must never be gateable (settings,
@@ -64,6 +64,20 @@ for _, r in ipairs(M.MENU) do menuKnown[r.key] = true; end
 -- from the pack default are kept (set() forgets a flip back to default), so a
 -- pack changing its defaults later reaches every character that never chose.
 local overrides = {};
+
+-- Settings can hide an existing surface, but cannot install a pack module.
+-- Offer module-owned tabs only when the active pack actually supplies them.
+function M.tabOptions()
+    local modules = {};
+    pcall(function()
+        for _, name in ipairs(require('dlac\\gear\\serverpack').modules()) do modules[name] = true; end
+    end);
+    local options = {};
+    for _, tab in ipairs(M.TABS) do
+        if not tab.module or modules[tab.module] then options[#options + 1] = tab; end
+    end
+    return options;
+end
 
 -- Seam for the headless suite: inject a fake pack-features table (or false to
 -- force "no pack file"). nil = ask serverpack.

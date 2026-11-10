@@ -44,4 +44,10 @@ for frame = 1, 67 do handler(); assert(loads == frame * 2); end
 handler(); assert(loads == 134 and releases == 134, 'duplicates must not reload or release cached objects');
 assert(textures.queuedPackHandle('ascensionxi', 'stable/1') == 1);
 collectgarbage(); handler(); assert(loads == 134);
+local cexi = textures.packHandle('cexi', 'existing-icon');
+assert(cexi and loads == 135, 'existing synchronous pack textures still load immediately');
+assert(textures.packHandle('cexi', 'existing-icon') == cexi and loads == 135);
+local shared = textures.handle('existing-icon');
+assert(shared and shared ~= cexi and loads == 136, 'shared and pack texture paths stay distinct');
+handler(); assert(loads == 136, 'an empty queue adds no texture work');
 print(string.format('Stable assets: cached filters, clipped rows, 134 cropped portraits (%.2f MiB), two loads/frame and texture retention passed.', bytes / 1048576));

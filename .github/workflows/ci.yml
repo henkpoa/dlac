@@ -115,6 +115,7 @@ jobs:
 
       - name: AscensionXI Stable (wire fixtures, native Ready clock, draw safety, portrait budget)
         run: |
+          lua5.4 tests/server_pack_isolation.lua
           lua5.4 tests/ascensionxi_stable.lua
           lua5.4 tests/stable_protocol.lua
           lua5.4 tests/stable_gauge.lua

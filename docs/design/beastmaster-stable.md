@@ -26,6 +26,35 @@ gate. AscensionXI's native saved-state view and wire read permissions must ship
 with it; changing only the tab gate would leave WAR browsing rejected.
 No ability, charge, shiny or equipment formula is enforced by the addon.
 
+## Other servers: November 10 isolation check
+
+CatsEyeXI keeps its own `cexi` pack, catalog and pet modifiers. Its module list
+is still `gamemode, prestige, ebox, giftbox`; the loader never mounts the AXI
+Stable, transport, gauge commands or portraits. No CEXI pack files changed in
+this PR. Unknown installations with no selection remain neutral. Server
+selection is per install: an explicit Settings > Server choice outranks launcher
+detection, and switching packs reloads the addon.
+
+The audit found a Settings-only leak: the globally listed Stable checkbox
+appeared on CEXI even though its tab could not load. `2026.11.10a` adds a generic
+module dependency to that tab's setting; `featuregate.tabOptions()` offers only
+tabs whose required module exists in the active pack. A saved override cannot
+make the unsupported checkbox appear. AXI retains the same Stable checkbox.
+
+`tests/server_pack_isolation.lua` mounts the real CEXI modules and data headlessly,
+checks that no AXI runtime module or BST gauge service loads, exercises idle
+module pumps, and verifies the Settings control, neutral pack choice, optional
+stat-label cache across pack resets, and unchanged whole-second recast rounding.
+It runs in the existing Stable CI step under Lua 5.4 and also passed under
+LuaJIT locally. `stable_assets.lua` additionally checks that the existing shared
+and CEXI synchronous texture API still loads immediately, caches and separates
+paths, and does no texture work with an empty queue.
+
+Validation: 8,083 core checks, 1,778 CEXI UI smoke checks, CEXI pack lint (39),
+AXI pack lint (49), Stable mount/protocol/assets checks and AXI catalog checks
+passed under Lua 5.4. These are headless compatibility checks, not a live CEXI
+session. Repeat with `lua tests/server_pack_isolation.lua` plus the suites above.
+
 ## Source ownership and refreshing
 
 The AscensionXI generator `tools/dlac-pack/gen_pack.py` refreshes catalog.lua,
