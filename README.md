@@ -234,7 +234,8 @@ DLAC equips gear. It never acts for you: you still cast, craft, fish and dig.
   have it put on when you log in. It can stay on through subjob changes, or step aside in town.
 - **Macro book**: DLAC switches your macro book and page when you change job or subjob.
 - **Teleports**: click a warp ring, a teleport earring or an EXP ring, and DLAC equips it,
-  waits until it's ready, and uses it.
+  waits until it's ready, and uses it. You can keep running while it waits: two seconds before
+  the use, a yellow "Stop moving" line tells you to stand still, because moving interrupts it.
 
 ### When something looks wrong
 

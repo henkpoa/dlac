@@ -16877,6 +16877,124 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- UW. useitem "Stop moving" warning (Henrik, 2026-11-10): moving interrupts
+--     the use, so one yellow line comes WARN_LEAD (2s) before the /item goes
+--     out -- you run until it shows. Driven through the real tick handler on
+--     a fake os.clock, three ways:
+--       a) the game clock reads the item (Holla Ring, 30s delay). The clock
+--          counts whole seconds and ticks 0.4s off the frame grid, so a warning
+--          placed straight off the count would land up to a second off;
+--       b) the clock can't read it -- the blind fallback timer (Warp Ring);
+--       c) the fallback guess is SHORTER than the real delay (Chocobo Whistle,
+--          guess 15 vs 20). The warning must follow the clock, not the guess:
+--          the fallback timer only tracked the 0, so a warning read off it
+--          came ~3.7s early.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg, savedClock = ashita.events.register, os.clock;
+    local savedMem = ashita.memory;
+    local savedStruct, savedOracle = package.loaded['struct'], package.loaded['dlac\\gear\\gearoracle'];
+    local VANA = 0x3C307D70;
+    local t = 0;
+    os.clock = function() return t; end
+
+    -- the client's whole-second clock, ticking 0.4s off the frame grid
+    local function clockInt() return VANA + 1000 + math.floor(t + 0.4); end
+    ashita.memory = {
+        find = function() return 1; end,
+        read_uint32 = function(a)
+            if a == 1 then return 100; elseif a == 100 then return 200;
+            elseif a == 200 + 0x0C then return clockInt(); end
+            return 0;
+        end,
+    };
+    package.loaded['struct'] = { unpack = function(fmt, s, pos)
+        local b1, b2, b3, b4 = string.byte(s, pos, pos + 3);
+        return b1 + b2 * 256 + b3 * 65536 + b4 * 16777216;
+    end };
+    local function u32(n)
+        return string.char(n % 256, math.floor(n / 256) % 256, math.floor(n / 65536) % 256, math.floor(n / 16777216) % 256);
+    end
+    -- equip timestamp (Extra offset 9) = game seconds the item turns usable
+    local function enchanted(id, readyAt)
+        return { Id = id, Count = 1, Flags = 5, Extra = string.rep('\0', 8) .. u32(readyAt - VANA) };
+    end
+
+    local nameById = { [1003] = 'Holla Ring', [1004] = 'Warp Ring', [1005] = 'Chocobo Whistle' };
+    local worn = nil;   -- what the oracle says is in the slot
+    package.loaded['dlac\\gear\\gearoracle'] = setmetatable(
+        { wornItem = function() return worn and { item = worn } or nil; end },
+        { __index = savedOracle });
+    local inv = {
+        GetContainerCountMax = function() return 0; end,
+        GetContainerItem = function() return nil; end,
+    };
+    AshitaCore = {
+        GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+        GetResourceManager = function(self) return {
+            GetItemById = function(self2, id)
+                if nameById[id] == nil then return nil; end
+                return { Name = { nameById[id] }, MaxCharges = 0 };
+            end,
+        }; end,
+        GetChatManager = function(self) return { QueueCommand = function() end }; end,
+    };
+
+    -- one run: start the use at t=0, step 50ms frames until it has fired
+    local function run(cmd, item)
+        local cmdHandler, tick = nil, nil;
+        ashita.events.register = function(evt, name, fn)
+            if evt == 'command' then cmdHandler = fn; end
+            if evt == 'd3d_present' then tick = fn; end
+        end;
+        local out = { warns = {} };
+        package.loaded['dlac\\chatfmt'] = {
+            print = function(s)
+                if s:find('NOW', 1, true) ~= nil and out.fireAt == nil then out.fireAt = t; end
+            end,
+            warn = function(s) out.warns[#out.warns + 1] = { at = t, s = s }; end,
+        };
+        t = 0;
+        local useitem = dofile('feature/useitem.lua');
+        worn = item;
+        cmdHandler({ command = cmd });
+        for i = 1, 1200 do
+            t = i / 20;
+            tick();
+            if out.fireAt ~= nil then break; end
+        end
+        out.left = useitem.pending();
+        return out;
+    end
+
+    -- a) game clock: usable at clock second 1030, i.e. t = 29.6
+    local a = run('/dl t holla', enchanted(1003, VANA + 1030));
+    check('UW1 clock: exactly one warning', #a.warns, 1);
+    local lead = (a.fireAt and a.warns[1]) and (a.fireAt - a.warns[1].at) or -1;
+    check('UW1b ...about 2s before the use (1.6-2.1)', lead >= 1.6 and lead <= 2.1, true);
+    check('UW1c ...and the use waited out the hold past the 0 (>= 29.6 + 1.5)',
+        (a.fireAt or 0) >= 31.1, true);
+    check('UW1d ...naming the item and where it goes', a.warns[1] and a.warns[1].s,
+        'Stop moving -- Holla Ring goes off in 2s (teleporting to Holla).');
+
+    -- b) blind fallback: the Warp Ring's 12s timer
+    local b = run('/dl w', nil);
+    check('UW2 fallback: exactly one warning', #b.warns, 1);
+    check('UW2b ...at 10s, two before the 12s timer', b.warns[1] and math.floor(b.warns[1].at * 100 + 0.5), 1000);
+    check('UW2c ...which fires at 12s', b.fireAt and math.floor(b.fireAt * 100 + 0.5), 1200);
+
+    -- c) fallback guess (15) shorter than the real delay (20): usable at t = 19.6
+    local c = run('/dl c', enchanted(1005, VANA + 1020));
+    check('UW3 short guess: the use still waits out the hold (>= 19.6 + 1.5)', (c.fireAt or 0) >= 21.1, true);
+    check('UW3b ...one warning about 2s before it', #c.warns == 1 and c.fireAt ~= nil
+        and (c.fireAt - c.warns[1].at) >= 1.6 and (c.fireAt - c.warns[1].at) <= 2.1, true);
+
+    ashita.events.register, os.clock, ashita.memory = savedReg, savedClock, savedMem;
+    package.loaded['struct'], package.loaded['dlac\\gear\\gearoracle'] = savedStruct, savedOracle;
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- RLD. /dl reload targets DLAC (Henrik, 2026-07-26): utils.lua's reload
 --      branch queued '/addon reload luashitacast' from the LAC-hosted era --
 --      on a migrated (native) install that RESURRECTED LuaAshitacast and

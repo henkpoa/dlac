@@ -41,6 +41,8 @@
     timer, exactly the old behavior). Decode layout is tCrossBar's, via XIUI's
     itemrecast.lua -- both field-proven on this client. SE quirk (field-verified):
     the displayed 0 is still a live second, so we hold fire ~1.2s past it.
+    Two seconds before the /item goes out, a yellow "Stop moving" line: moving
+    interrupts the use, so you run until it shows (WARN_LEAD, 2026-11-10).
 
     Runs in the ADDON state: native /equip + /item bypass LuaAshitacast; the
     engine lock (/dl lock <slot>) stops dlac dispatch from swapping the piece back
@@ -240,7 +242,12 @@ end
 -- field (Henrik, 07-14) -- 1.7 is that plus his requested half second.
 local ZERO_HOLD = 1.7;
 
-local state = nil;   -- { name, slot, useAt, stage, releaseAt, nextPoll, measured, zeroAt }
+-- Seconds of warning before the /item goes out (Henrik, 2026-11-10). Moving
+-- interrupts the use, so you can run until this line, then stop. One yellow
+-- line per use, timed to the moment fire() will really happen (fireEta).
+local WARN_LEAD = 2;
+
+local state = nil;   -- { name, slot, useAt, stage, releaseAt, nextPoll, measured, zeroAt, lastRem, tickAt, warned }
 
 local function queue(cmd)
     pcall(function() AshitaCore:GetChatManager():QueueCommand(1, cmd); end);
@@ -377,6 +384,33 @@ local function listTeleports(items, withNames)
     return table.concat(parts, ', ');
 end
 
+-- When fire() will run, by the same rules the tick uses. Once remaining hit 0
+-- it is that moment + ZERO_HOLD. Before that it comes from the game clock: it
+-- only counts whole seconds, so the reading is anchored to the poll where the
+-- number last changed (tickAt). The fallback timer counts too, because
+-- whichever comes first fires.
+local function fireEta()
+    if state.zeroAt ~= nil then return state.zeroAt + ZERO_HOLD; end
+    if state.tickAt ~= nil and state.lastRem ~= nil then
+        return math.min(state.useAt, state.tickAt + state.lastRem + ZERO_HOLD);
+    end
+    return state.useAt;
+end
+
+local function warnSoon(now)
+    if state.warned then return; end
+    local left = fireEta() - now;
+    if left > WARN_LEAD then return; end
+    state.warned = true;
+    local s = string.format('Stop moving -- %s goes off in %ds (%s).',
+        state.name, math.max(1, math.floor(left + 0.5)), state.verb or 'using it');
+    if _cfok and type(_cfmt) == 'table' and type(_cfmt.warn) == 'function' then
+        _cfmt.warn(s);
+    else
+        print('[dlac] ' .. s);
+    end
+end
+
 local function fire()
     queue('/item "' .. state.name .. '" <me>');
     print('[dlac] using ' .. state.name .. ' NOW.');
@@ -401,6 +435,13 @@ ashita.events.register('d3d_present', 'dlac-useitem-tick', function()
                         print(string.format('[dlac] %s ready in %ds (game clock).', state.name, math.ceil(rem)));
                     end
                 end
+                -- Note the poll where the whole-second count changed (fireEta's
+                -- anchor). A jump UP is a re-equip reset: the countdown starts
+                -- over, and so does the warning.
+                if rem ~= state.lastRem then
+                    if state.lastRem ~= nil and rem > state.lastRem then state.warned = false; end
+                    state.lastRem, state.tickAt = rem, now;
+                end
                 if rem <= 0 then
                     -- SE quirk (field-verified): the displayed 0 is still a live
                     -- second -- the item only becomes usable ~1s after remaining
@@ -408,13 +449,20 @@ ashita.events.register('d3d_present', 'dlac-useitem-tick', function()
                     -- (1.2 fired early at times in the field -- Henrik, 07-14).
                     if state.zeroAt == nil then state.zeroAt = now; end
                     state.useAt = math.max(state.useAt, state.zeroAt + ZERO_HOLD);   -- keep the fallback honest too
+                    warnSoon(now);
                     if now >= state.zeroAt + ZERO_HOLD then fire(); end
                     return;
                 end
                 state.zeroAt = nil;                               -- bounced back above 0 (re-equip reset)
-                state.useAt = math.max(state.useAt, now + rem);   -- keep the fallback honest
+                -- keep the fallback honest, hold included: if the polls go dark
+                -- it fires when the clock would have, not on the 0 itself. And
+                -- fireEta reads it, so a fallback guess shorter than the real
+                -- delay doesn't drag the warning early.
+                state.useAt = math.max(state.useAt, now + rem + ZERO_HOLD);
             end
         end
+        -- Every frame, so the line lands on time between polls too.
+        if state.stage == 'wait' then warnSoon(now); end
         -- Fallback: fire on the timer when the polls go dark (readiness never
         -- readable, or the item vanished mid-wait). useAt is pushed to the
         -- measured remaining on every good poll, so this can't fire early.
