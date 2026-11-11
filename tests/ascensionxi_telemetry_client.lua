@@ -142,7 +142,7 @@ check('CL-04 a RESYNC renewal', opOf(lastSent()), wire.op.RESYNC);
 check('CL-04 mode 0', wire.u8(payloadOf(lastSent()), 12), wire.resyncMode.RENEW);
 
 -- CL-05: unanswered: same seq and Nonce again, the slot abandoned between,
--- then the escalation to HELLO.
+-- then the escalation to HELLO, after the backoff (2026-11-09).
 local renew = lastSent();
 pumpFor(client.RETRY + 0.1);
 check('CL-05 retried', #sent, n + 2);
@@ -151,7 +151,10 @@ check('CL-05 same nonce', nonceOf(lastSent()), nonceOf(renew));
 check('CL-05 the slot was given back', #abandoned >= 1 and abandoned[#abandoned].seq == seqOf(renew), true);
 pumpFor(client.RETRY + 0.1);
 pumpFor(client.RETRY + 0.1);
-check('CL-05 escalates to HELLO after three tries', opOf(lastSent()), wire.op.HELLO);
+check('CL-05 three tries, then no HELLO at once', opOf(lastSent()), wire.op.RESYNC);
+check('CL-05 the box hears the server is not answering', client.state().retrying, true);
+pumpFor(client.HELLO_BACKOFF + 0.1);
+check('CL-05 escalates to HELLO after the backoff', opOf(lastSent()), wire.op.HELLO);
 
 -- CL-06: a RESYNC that shows the WATCH never landed re-sends it; one that
 -- shows a lost push asks for a republish.
@@ -172,10 +175,15 @@ client.onFrame(resyncReply(lastSent(), 1, 1, 0));
 pumpFor(0.1);
 check('CL-06 WATCH lost: re-sent', opOf(lastSent()), wire.op.WATCH);
 
--- CL-07: NO_SESSION sends the client back to HELLO.
+-- CL-07: NO_SESSION sends the client back to HELLO, through the backoff like
+-- every automatic HELLO; it is an answer, so the box does not call the
+-- server silent.
 local w3 = lastSent();
 client.onFrame(reply(wire.op.WATCH, seqOf(w3), 0, wire.header(wire.result.NO_SESSION, 12, 0, nonceOf(w3))));
 pumpFor(0.1);
+check('CL-07 no HELLO at once', opOf(lastSent()), wire.op.WATCH);
+check('CL-07 an answer: not "not answering"', client.state().retrying, false);
+pumpFor(client.HELLO_BACKOFF);
 check('CL-07 HELLO after NO_SESSION', opOf(lastSent()), wire.op.HELLO);
 
 -- CL-08: a server without the route answers BAD_OP: the client goes quiet.
@@ -207,10 +215,22 @@ check('CL-10 session', wire.u32(sp, 4), SESSION);
 check('CL-10 all lanes', wire.u8(sp, 12), 0xFF);
 check('CL-10 END_SESSION', wire.u8(sp, 13), wire.stopFlag.END_SESSION);
 
--- CL-11: HELLO from another character's answer is ignored.
+-- CL-11: HELLO from another character's answer is a failed round: never
+-- live on it, and never stuck on it either (2026-11-09: it used to leave the
+-- client in 'hello' with nothing queued until the next zone change).
 client.reset(); client.zoneIn(); pumpFor(client.SETTLE + 0.1);
 client.onFrame(helloReply(lastSent(), SESSION, 999));
 check('CL-11 not live on a stranger', client.state().phase ~= 'live', true);
+local n11 = #sent;
+pumpFor(client.HELLO_BACKOFF - 0.2);
+check('CL-11 quiet during the backoff', #sent, n11);
+check('CL-11 the box hears the server is not answering', client.state().retrying, true);
+pumpFor(0.4);
+check('CL-11 then HELLO again, not stuck', #sent == n11 + 1 and opOf(lastSent()) == wire.op.HELLO, true);
+client.onFrame(helloReply(lastSent(), SESSION));
+check('CL-11 our own answer: live', client.state().phase, 'live');
+check('CL-11 and the backoff starts over', client.state().failures, 0);
+check('CL-11 and the box is told', client.state().retrying, false);
 
 -- CL-12: a busy shared channel delays, never drops, the request.
 client.reset(); client.zoneIn(); busy = true; n = #sent;
@@ -271,6 +291,8 @@ do
     check('CL-14 the next question says HELLO again', opOf(h2), wire.op.HELLO);
     client._unwant();
     pumpFor(3 * client.RETRY + 0.5);
+    check('CL-14 unwanted, a failed round is not called the server\'s', client.state().retrying, false);
+    pumpFor(client.HELLO_BACKOFF);
     check('CL-14 an unanswered HELLO does not loop once unwanted', client.state().phase, 'settling');
     local n2 = #sent;
     pumpFor(5);
@@ -310,14 +332,29 @@ do
     check('CL-16 with its key', frames[#frames].key, wire.snapshotKey(snapshot(1, gen).payload));
 end
 
+-- CL-27: the shared transport writes a module's own line (no frame) as a
+-- 'note' at seq 0, through the same batched wire log.
+do
+    local t = dofile('servers/ascensionxi/transport.lua');
+    local got = nil;
+    t._audit = function(event, op, seq, why) got = { event = event, op = op, seq = seq, why = why }; end;
+    t.note(wire.op.HELLO, 'combat telemetry: a line');
+    check('CL-27 a note', got and got.event, 'note');
+    check('CL-27 under its op', got and got.op, wire.op.HELLO);
+    check('CL-27 seq 0', got and got.seq, 0);
+    check('CL-27 the text', got and got.why, 'combat telemetry: a line');
+end
+
 -- CL-13: init.lua's tap blocks every frame of the partition, malformed and
 -- unknown ops too, and leaves the other partitions alone.
 local handlers = {};
 ashita = { events = { register = function(_, name, fn) handlers[name] = fn; end } };
 AshitaCore = { GetPacketManager = function() return { AddOutgoingPacket = function() end }; end };
+local wireNotes = {};
 package.loaded['dlac\\servers\\ascensionxi\\transport'] = {
     _clock = function() return time; end, send = function() return true; end,
     received = function() end, abandon = function() end,
+    note = function(op, why) wireNotes[#wireNotes + 1] = { op = op, why = why }; end,
 };
 local init = require('dlac\\servers\\ascensionxi\\modules\\telemetry\\init');
 local tap = assert(handlers.dlac_axi_combat_telemetry, 'the tap is registered');
@@ -342,6 +379,46 @@ for _, op in ipairs({ 0x40, 0x90, 0xA0, 0xB0, 0xB1, 0xBF, 0xD0 }) do
 end
 check('CL-13 the unload hook', type(handlers.dlac_axi_combat_telemetry_unload), 'function');
 check('CL-13 a pump', type(init.pump), 'function');
+
+-- CL-13b (2026-11-09): init.lua's seams for the start without a zone-in. In
+-- game = a main job and an id, and not mid-zone by the packets (a 0x00B
+-- until its 0x00A) or by GetIsZoning; the id is the zone-in packet's, and
+-- the party's own entry's before one; the client's lines reach the wire log.
+do
+    local job, serverId, isZoning = 0, 21828, false;
+    AshitaCore = {
+        GetPacketManager = function() return { AddOutgoingPacket = function() end }; end,
+        GetMemoryManager = function() return {
+            GetPlayer = function() return {
+                GetMainJob = function() return job; end,
+                GetIsZoning = function() return isZoning; end,
+            }; end,
+            GetParty = function() return { GetMemberServerId = function() return serverId; end }; end,
+        }; end,
+    };
+    check('CL-13b before login (main job 0): not in game', client._inGame(), false);
+    job = 1;
+    check('CL-13b a main job and an id: in game', client._inGame(), true);
+    check('CL-13b no zone-in yet: the party\'s id', client._charId(), 21828);
+    serverId = 0;
+    check('CL-13b no id: not in game', client._inGame(), false);
+    check('CL-13b and no id to check a reply against', client._charId(), nil);
+    serverId = 21828;
+    isZoning = 1;
+    check('CL-13b GetIsZoning (a number): not in game', client._inGame(), false);
+    isZoning = true;
+    check('CL-13b GetIsZoning (a bool): not in game', client._inGame(), false);
+    isZoning = false;
+    tap({ id = 0x00B, data = string.rep('\0', 32) });
+    check('CL-13b between a 0x00B and its 0x00A: not in game', client._inGame(), false);
+    tap({ id = 0x00A, data = string.rep('\0', 4) .. wire.w32(4321) .. string.rep('\0', 24) });
+    check('CL-13b after the 0x00A: in game again', client._inGame(), true);
+    check('CL-13b the zone-in packet\'s id wins', client._charId(), 4321);
+    client._note('a line');
+    check('CL-13b a client line reaches the wire log', wireNotes[#wireNotes] and wireNotes[#wireNotes].why,
+        'combat telemetry: a line');
+    check('CL-13b under the telemetry partition\'s op', wireNotes[#wireNotes] and wireNotes[#wireNotes].op, wire.op.HELLO);
+end
 
 -- CL-17: /dl accuracy and /dl autoacc both toggle the box, and an open box
 -- keeps the session wanted through the client.
@@ -456,6 +533,215 @@ client.want();
 pumpFor(0.5);
 check('CL-19 the ranged question expired: nothing binds', client.state().bound, nil);
 client._engaged, client._cursorTarget = nil, nil;
+
+-- CL-20..CL-26 (2026-11-09, a prod report: the box said "Starting" for a
+-- whole session). The client started only on a zone-in packet, so a dlac
+-- that loaded after it never sent a HELLO; and a server that did not
+-- answer got one every RETRY, without end.
+local inGameNow, notes = true, {};
+client._inGame = function() return inGameNow; end;
+client._note = function(text) notes[#notes + 1] = text; end;
+client._charId = function() return 21828; end;
+client.IDLE_AFTER = 1e9;
+local function hellosSince(from)
+    local c = 0;
+    for i = from + 1, #sent do if opOf(sent[i]) == wire.op.HELLO then c = c + 1; end end
+    return c;
+end
+local function noteHas(fragment)
+    for _, s in ipairs(notes) do if s:find(fragment, 1, true) then return true; end end
+    return false;
+end
+
+-- CL-20: loaded in game: once something asks, the client settles as after a
+-- zone-in and HELLOs, with no zone-in at all; the start is in the wire log.
+do
+    client._unwant();
+    client.reset();   -- as dlac loads: no zone edge seen
+    local n0 = #sent;
+    pumpFor(5);
+    check('CL-20 nothing while nothing asks', #sent, n0);
+    check('CL-20 still off', client.state().phase, 'off');
+    client.want();
+    pumpFor(client.SETTLE - 0.2);
+    check('CL-20 it settles first, as after a zone-in', #sent, n0);
+    pumpFor(0.4);
+    check('CL-20 one HELLO, no zone-in needed', #sent, n0 + 1);
+    check('CL-20 a HELLO', opOf(lastSent()), wire.op.HELLO);
+    check('CL-20 the start is in the wire log', noteHas('no zone-in since dlac loaded'), true);
+    client.onFrame(helloReply(lastSent(), SESSION));
+    check('CL-20 live', client.state().phase, 'live');
+end
+
+-- CL-21: loaded before login (main job 0): nothing until the 0x00A, then
+-- exactly one HELLO.
+do
+    inGameNow = false;
+    client.reset();
+    local n0 = #sent;
+    pumpFor(10);
+    check('CL-21 before login: nothing', #sent, n0);
+    check('CL-21 off', client.state().phase, 'off');
+    client.zoneIn();   -- the login's 0x00A; memory reads a job after it
+    inGameNow = true;
+    pumpFor(client.SETTLE + 0.1);
+    check('CL-21 the zone-in: one HELLO', hellosSince(n0), 1);
+    client.onFrame(helloReply(lastSent(), SESSION));
+    pumpFor(5);
+    check('CL-21 and only one', hellosSince(n0), 1);
+end
+
+-- CL-22: loaded in game, then a 0x00A (a late load right at login): one
+-- session at a time; the zone-in replaces the start as it replaces a session.
+do
+    client.reset();
+    pumpFor(client.SETTLE + 0.1);
+    local h = lastSent();
+    check('CL-22 the start\'s HELLO', opOf(h), wire.op.HELLO);
+    local n0 = #sent;
+    client.zoneIn();
+    check('CL-22 the zone-in takes over', client.state().phase, 'settling');
+    check('CL-22 the start\'s HELLO is forgotten', client.state().pending, nil);
+    check('CL-22 a late answer to it is not ours', client.onFrame(helloReply(h, SESSION)), false);
+    pumpFor(client.SETTLE + 0.1);
+    check('CL-22 one HELLO for the zone-in', hellosSince(n0), 1);
+    client.onFrame(helloReply(lastSent(), SESSION));
+    pumpFor(0.1);
+    client.onFrame(watchReply(lastSent(), 0, client.state().watchGen));
+    pumpFor(10);
+    check('CL-22 one session: no second HELLO', hellosSince(n0), 1);
+    check('CL-22 live', client.state().phase, 'live');
+end
+
+-- CL-23: a zone line that begins before anything asks (a 0x00B, no 0x00A
+-- yet) leaves the start to its 0x00A: nothing goes in between.
+do
+    client._unwant();
+    client.reset();
+    client.zoneOut();
+    client.want();
+    local n0 = #sent;
+    pumpFor(10);
+    check('CL-23 no start between a 0x00B and its 0x00A', #sent, n0);
+    check('CL-23 off', client.state().phase, 'off');
+    client.zoneIn();
+    pumpFor(client.SETTLE + 0.1);
+    check('CL-23 the 0x00A starts it', hellosSince(n0), 1);
+end
+
+-- CL-24: a server that never answers, ten minutes with the box open (it
+-- wants the session every frame): rounds of TRIES HELLOs, each round
+-- waiting 5, 10, 20, 40, then 60 s; at most TRIES a minute once capped;
+-- the box hears it; each backoff is one line in the wire log.
+local roundStarts, roundSizes;
+local function silentFor(seconds)
+    roundStarts, roundSizes = {}, {};
+    local n0, lastSeq = #sent, nil;
+    local sendTimes = {};
+    for _ = 1, math.floor(seconds * 20) do
+        time = time + 0.05;
+        client.want();
+        client.pump();
+        while n0 < #sent do
+            n0 = n0 + 1;
+            if opOf(sent[n0]) == wire.op.HELLO then
+                sendTimes[#sendTimes + 1] = time;
+                if seqOf(sent[n0]) ~= lastSeq then
+                    roundStarts[#roundStarts + 1] = time;
+                    roundSizes[#roundSizes + 1] = 0;
+                    lastSeq = seqOf(sent[n0]);
+                end
+                roundSizes[#roundSizes] = roundSizes[#roundSizes] + 1;
+            end
+        end
+    end
+    return sendTimes;
+end
+do
+    client.reset();
+    notes = {};
+    local t0 = time;
+    local times = silentFor(600);
+    check('CL-24 at most 40 HELLOs in ten minutes (about 400 before)', #times <= 40, true);
+    check('CL-24 and it keeps asking', #times >= 30, true);
+    check('CL-24 the first one after SETTLE', math.abs(times[1] - t0 - client.SETTLE) < 0.2, true);
+    local gaps = { 5, 10, 20, 40, 60, 60, 60 };
+    for i, wait in ipairs(gaps) do
+        local gap = roundStarts[i + 1] and (roundStarts[i + 1] - roundStarts[i]) or -1;
+        check(('CL-24 round %d waits %d s'):format(i + 1, wait),
+            math.abs(gap - (client.TRIES * client.RETRY + wait)) < 0.3, true);
+    end
+    local allFull = true;
+    for i = 1, #roundSizes - 1 do if roundSizes[i] ~= client.TRIES then allFull = false; end end
+    check('CL-24 each round is TRIES sends of one HELLO', allFull, true);
+    local worst = 0;
+    for i = 1, #times do
+        local c = 0;
+        for j = i, #times do if times[j] - times[i] < 60 then c = c + 1; end end
+        if times[i] - t0 > 180 and c > worst then worst = c; end
+    end
+    check('CL-24 capped: at most TRIES HELLOs in any minute', worst <= client.TRIES, true);
+    check('CL-24 the box hears it', client.state().retrying, true);
+    check('CL-24 the backoff is in the wire log', noteHas('no answer: HELLO again in 5 s') and noteHas('HELLO again in 60 s'), true);
+    -- An accepted reply resets it: the next silence starts at 5 s again.
+    for _ = 1, 20 * (client.HELLO_BACKOFF_MAX + 10) do
+        if client.state().pending == 'hello' then break; end
+        time = time + 0.05; client.pump();
+    end
+    client.onFrame(helloReply(lastSent(), SESSION));
+    check('CL-24 an answer: live', client.state().phase, 'live');
+    check('CL-24 and the count starts over', client.state().failures, 0);
+    check('CL-24 and the box is told', client.state().retrying, false);
+    pumpFor(0.1);
+    client.onFrame(watchReply(lastSent(), 0, client.state().watchGen));
+    -- Silent again: the lease renewal goes unanswered, then the HELLO waits 5 s.
+    times = silentFor(15 + client.TRIES * client.RETRY + client.HELLO_BACKOFF + 1);
+    check('CL-24 silent again: one HELLO, after 5 s', #times, 1);
+end
+
+-- CL-25: a zone-in starts the backoff over (demand never does): after a long
+-- silence, the zone-in's HELLO goes after SETTLE and its next round waits 5 s.
+do
+    client.reset();
+    silentFor(300);
+    check('CL-25 the backoff is long by now', client.state().failures >= 5, true);
+    client.zoneIn();
+    check('CL-25 the zone-in starts over', client.state().failures, 0);
+    check('CL-25 and is not "not answering" yet', client.state().retrying, false);
+    silentFor(client.SETTLE + 2 * client.TRIES * client.RETRY + client.HELLO_BACKOFF + 0.5);
+    check('CL-25 its first round after SETTLE, the next after 5 s', #roundStarts, 2);
+end
+
+-- CL-26: UNAVAILABLE keeps its own 30 s, and the box says the server is not
+-- answering all through it, the next HELLO included; unwanted, it does not.
+do
+    client.reset(); client.zoneIn(); pumpFor(client.SETTLE + 0.1);
+    client.onFrame(reply(wire.op.HELLO, seqOf(lastSent()), wire.status.UNAVAILABLE, ''));
+    check('CL-26 the box hears it', client.state().retrying, true);
+    check('CL-26 the backoff is in the wire log', noteHas('unavailable: HELLO again in 30 s'), true);
+    pumpFor(client.BACKOFF + 0.5);
+    check('CL-26 the HELLO after it', opOf(lastSent()), wire.op.HELLO);
+    check('CL-26 still not answering while it waits', client.state().retrying, true);
+    client._unwant();
+    check('CL-26 unwanted: the box does not say so', client.state().retrying, false);
+    client.want();
+end
+
+-- CL-07b: NO_SESSION on a RESYNC waits the backoff too.
+do
+    client.reset(); client.zoneIn(); pumpFor(client.SETTLE + 0.1);
+    client.onFrame(helloReply(lastSent(), SESSION));
+    pumpFor(0.1);
+    client.onFrame(watchReply(lastSent(), 0, client.state().watchGen));
+    pumpFor(15.1);
+    local r = lastSent();
+    check('CL-07b a renewal', opOf(r), wire.op.RESYNC);
+    client.onFrame(reply(wire.op.RESYNC, seqOf(r), 0, wire.header(wire.result.NO_SESSION, 12, 0, nonceOf(r))));
+    pumpFor(0.1);
+    check('CL-07b no HELLO at once', opOf(lastSent()), wire.op.RESYNC);
+    pumpFor(client.HELLO_BACKOFF);
+    check('CL-07b HELLO after the backoff', opOf(lastSent()), wire.op.HELLO);
+end
 
 print(('ascensionxi_telemetry_client: %d passed, %d failed'):format(pass, fail));
 if fail > 0 then os.exit(1); end

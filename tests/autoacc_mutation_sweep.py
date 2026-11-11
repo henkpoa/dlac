@@ -36,6 +36,7 @@ GU = 'ui/gearui.lua'
 UT = 'utils.lua'
 MD = 'servers/ascensionxi/modules.lua'
 FT = 'servers/ascensionxi/features.lua'
+TR = 'servers/ascensionxi/transport.lua'
 
 # id, guard, file, old, new
 M = [
@@ -82,7 +83,7 @@ M = [
      "    if st.phase ~= 'live' or (kind ~= 'republish' and kind ~= 'renew') then return false; end",
      '    if false then return false; end'),
     ('C14', 'another character\'s HELLO answer is ignored', CL,
-     "        if id ~= nil and h.charId ~= id then return; end   -- another character's answer\n", ''),
+     "        if id ~= nil and h.charId ~= id then helloAgain('another character', true); return; end\n", ''),
     ('C15', 'UNAVAILABLE backs off', CL,
      "st.phase, st.why, st.due = 'settling', 'unavailable', now() + M.BACKOFF;",
      "st.phase, st.why, st.due = 'settling', 'unavailable', now();"),
@@ -97,6 +98,52 @@ M = [
     ('C21', 'a busy shared channel delays, never drops', CL,
      '            if not transmit(p) then p.sentAt = nil; end   -- busy: try on a later frame',
      '            transmit(p);'),
+
+    # ---- the start without a zone-in, and the HELLO backoff (2026-11-09) ----
+    ('C22', 'a dlac loaded in game starts without a zone-in', CL, "    if st.phase == 'off' then startInGame(t); end\n", ''),
+    ('C23', 'the start waits for the player in game', CL,
+     '    if not ok or inGame ~= true then return; end', '    if not ok then return; end'),
+    ('C24', 'a zone-out leaves the start to its zone-in', CL,
+     'function M.zoneOut()\n    zoneSeen = true;\n', 'function M.zoneOut()\n'),
+    ('C25', 'the start settles first, as after a zone-in', CL,
+     "    st.phase, st.due = 'settling', t + M.SETTLE;", "    st.phase, st.due = 'settling', t;"),
+    ('C26', 'nothing starts while nothing asks', CL,
+     "    if zoneSeen or not wanted(t) or type(M._inGame) ~= 'function' then return; end",
+     "    if zoneSeen or type(M._inGame) ~= 'function' then return; end"),
+    ('C27', 'the start is in the wire log', CL, "    note('started in game: no zone-in since dlac loaded');\n", ''),
+    ('C28', 'the HELLO backoff grows', CL, 'M.HELLO_BACKOFF * 2 ^ (st.failures - 1)', 'M.HELLO_BACKOFF'),
+    ('C29', 'the HELLO backoff is capped at a minute', CL,
+     '    local wait = math.min(M.HELLO_BACKOFF_MAX, M.HELLO_BACKOFF * 2 ^ (st.failures - 1));',
+     '    local wait = M.HELLO_BACKOFF * 2 ^ (st.failures - 1);'),
+    ('C30', 'an accepted HELLO starts the backoff over', CL, '    st.failures, st.failing = 0, false;\n', ''),
+    ('C31', 'a zone-in starts the backoff over', CL,
+     '    local keep = st.stats;\n    M.reset();\n    st.stats = keep;\n',
+     '    local keep, failures = st.stats, st.failures;\n    M.reset();\n    st.stats, st.failures = keep, failures;\n'),
+    ('C32', 'another character\'s answer is retried, never a stall', CL,
+     "if id ~= nil and h.charId ~= id then helloAgain('another character', true); return; end",
+     'if id ~= nil and h.charId ~= id then return; end'),
+    ('C33', 'a lost HELLO or RESYNC waits the backoff', CL,
+     "            else helloAgain('no answer', true); end", "            else st.phase = 'hello'; queue('hello'); end"),
+    ('C34', 'a WATCH\'s NO_SESSION waits the backoff', CL,
+     "    if r.result == wire.result.NO_SESSION then helloAgain('no session', false); return; end\n"
+     '    if r.result == wire.result.STALE_GEN then',
+     "    if r.result == wire.result.NO_SESSION then st.phase = 'hello'; queue('hello'); return; end\n"
+     '    if r.result == wire.result.STALE_GEN then'),
+    ('C35', 'a RESYNC\'s NO_SESSION waits the backoff', CL,
+     "    if r.result == wire.result.NO_SESSION then helloAgain('no session', false); return; end\n"
+     '    if r.result ~= wire.result.OK then return; end',
+     "    if r.result == wire.result.NO_SESSION then st.phase = 'hello'; queue('hello'); return; end\n"
+     '    if r.result ~= wire.result.OK then return; end'),
+    ('C36', 'NO_SESSION is an answer, not a silent server', CL,
+     "helloAgain('no session', false); return; end\n    if r.result == wire.result.STALE_GEN then",
+     "helloAgain('no session', true); return; end\n    if r.result == wire.result.STALE_GEN then"),
+    ('C37', 'a failed round is told to the box', CL, '    if failing then st.failing = true; end\n', ''),
+    ('C38', 'UNAVAILABLE is told to the box', CL,
+     "        st.failing = true;\n        note(('unavailable", "        note(('unavailable"),
+    ('C39', 'the box is told only while the session is wanted', CL,
+     "(st.phase == 'settling' or st.phase == 'hello') and wanted(t),", "(st.phase == 'settling' or st.phase == 'hello'),"),
+    ('C40', 'each backoff is in the wire log', CL,
+     "    note(('%s: HELLO again in %d s'):format(why, math.floor(wait)));\n", ''),
 
     # ---- the AutoAcc model: frames and bases ----
     ('A01', 'a formula failure drops the bases', AA,
@@ -279,6 +326,10 @@ M = [
     ('U33', 'a failed check never prints the check\'s reason', MO,
      "        flag(col.ERR, 'Check failed', 'DLAC\\'s numbers don\\'t match the server\\'s right now,\\nso ' .. KEPT_ON .. ' until they do.');",
      "        flag(col.ERR, 'Check failed', tostring(r.why));"),
+    ('U34', 'a server that isn\'t answering is said in the box, not Starting', MO,
+     "    if phase ~= 'live' and cs.retrying == true then", '    if false then'),
+    ('U35', 'and in the row', MO,
+     "        if cs.retrying == true then return 0, 'off -- the server is not answering'; end\n", ''),
     ('A37', 'a held piece is named', AA,
      '        for _, c in ipairs(cands) do out.why[c.slot], out.typed[c.slot] = why, c.typed; end',
      '        for _, c in ipairs(cands) do out.why[c.slot] = why; end'),
@@ -319,6 +370,20 @@ M = [
      'monitor._client, monitor._autoacc = client, autoacc;'),
     ('I05', 'the pack mounts the telemetry module', MD, ", 'restocknotice', 'telemetry', 'whmgauge'", ", 'restocknotice', 'whmgauge'"),
     ('I06', 'the AutoAcc helper row is enabled on AscensionXI', FT, 'choco = true, autoacc = true, fish', 'choco = true, fish'),
+    ('I07', 'in game needs a main job', IN,
+     "    if zoning or type(job) ~= 'number' or job == 0 then return false; end",
+     "    if zoning or type(job) ~= 'number' then return false; end"),
+    ('I08', 'between a 0x00B and its 0x00A is not in game', IN, '    if _zoning then return false; end\n', ''),
+    ('I09', 'GetIsZoning is not in game', IN,
+     "zoning = z == true or (type(z) == 'number' and z ~= 0);", 'zoning = false;'),
+    ('I10', 'a 0x00B starts the zoning', IN, '            _zoning = true;\n', ''),
+    ('I11', 'its 0x00A ends it', IN, '            _zoning = false;\n', ''),
+    ('I12', 'in game needs an id', IN, '    return memoryId() ~= nil;', '    return true;'),
+    ('I13', 'before a zone-in the id is the party\'s', IN,
+     'client._charId = function() return _charId or memoryId(); end;', 'client._charId = function() return _charId; end;'),
+    ('I14', 'the client\'s lines reach the wire log', IN,
+     "client._note = function(text) transport.note(wire.op.HELLO, 'combat telemetry: ' .. text); end;\n", ''),
+    ('I15', 'a module line is written as a note', TR, "    audit('note', op, 0, why, M._clock());\n", ''),
 
     # ---- weapon skills: a set typed 1-Hit WS (the Set Type, 2026-10-18) ----
     ('A39', 'a weapon skill\'s first hit carries +100', AA, '    FIRST_HIT = 100,', '    FIRST_HIT = 0,'),
