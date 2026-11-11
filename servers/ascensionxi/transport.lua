@@ -165,6 +165,7 @@ function M.producerOf(op)
     if op == 0x83 then return 'fishing'; end
     if op >= 0xA0 and op <= 0xAF then return 'ascension'; end
     if op >= 0xC0 and op <= 0xCF then return 'telemetry'; end
+    if op >= 0xF0 and op <= 0xFF then return 'stable'; end
     if op >= 0xD0 and op <= 0xDF then
         local slot = op % 8;
         if slot == 1 then return 'dnc status'; end

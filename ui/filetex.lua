@@ -20,6 +20,7 @@ if has then
 end
 
 local cache, tried, keep = {}, {}, {};
+local queue, queued = {}, {};
 
 -- name -> assets/<name>.png handle (loaded once). nil on any failure.
 -- CRITICAL: retain the texture OBJECT in `keep` -- storing only the numeric
@@ -48,6 +49,35 @@ end
 -- Pack artwork travels with its catalog when servers/<pack>/ is copied.
 function M.packHandle(pack, name)
     return loadAsset('servers\\' .. pack .. '\\assets\\' .. name);
+end
+
+-- Large collections opt into a shared two-texture frame budget. The queue is
+-- drained by M.pump, which dlac.lua's frame beat calls.
+function M.queuedPackHandle(pack, name)
+    if not has or dev == nil then return nil; end
+    local key = 'servers\\' .. pack .. '\\assets\\' .. name;
+    if not tried[key] and not queued[key] then
+        queued[key] = true;
+        queue[#queue + 1] = key;
+    end
+    return cache[key];
+end
+
+-- Called once per frame by dlac.lua's 'dlac-seed-watch' beat. This module must
+-- not register a d3d_present handler of its own: it is first required lazily,
+-- from inside a draw (the tray's Teleports icon on the very first frame), and
+-- an older Ashita (CatsEyeXI's, May 2025) calls a nil and unloads dlac when a
+-- d3d_present handler is ADDED while d3d_present is being dispatched (field
+-- report 2026-11-10, v2026.11.10b: "attempt to call a nil value", empty
+-- traceback). Removing handlers mid-dispatch, or adding other events, is fine
+-- there; adding to the event being dispatched is not.
+function M.pump()
+    for _ = 1, 2 do
+        if #queue == 0 then break; end
+        local key = table.remove(queue, 1);
+        queued[key] = nil;
+        loadAsset(key);
+    end
 end
 
 return M;

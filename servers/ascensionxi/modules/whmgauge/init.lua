@@ -242,8 +242,9 @@ local PLD = 7;
 local function yieldsCommand()
     local job = nil;
     pcall(function() job = AshitaCore:GetMemoryManager():GetPlayer():GetMainJob(); end);
-    if job ~= PLD then return false; end
-    local ok, other = pcall(function() return require('dlac\\gear\\serverpack').service('pldGauge'); end);
+    local service = job == PLD and 'pldGauge' or job == 9 and 'bstGauge' or nil;
+    if not service then return false; end
+    local ok, other = pcall(function() return require('dlac\\gear\\serverpack').service(service); end);
     return ok and other ~= nil;
 end
 

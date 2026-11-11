@@ -253,7 +253,7 @@ function M.timerIdFor(sig)
     return tid;
 end
 
--- The whole-seconds remaining for `sig` off the live client, or nil (unknown).
+-- Fractional seconds remaining for `sig`, preserving individual client jiffies.
 -- The ability-recast table is 32 slots (0..31); each slot has a timer id and a
 -- remaining count. We find the slot carrying our timer id and convert its count
 -- to seconds.
@@ -270,7 +270,7 @@ end
 --     nil = could not resolve / no client -> UNKNOWN
 -- readyFor still answers `true` for 0 and for nil; the REMAINING it hands back
 -- beside it is what separates them.
-function M.liveRemaining(sig)
+function M.liveRemainingSeconds(sig)
     if type(sig) ~= 'table' then return nil; end
     local want = M.timerIdFor(sig);
     if want == nil then return nil; end          -- unresolvable slot -> unknown
@@ -279,20 +279,25 @@ function M.liveRemaining(sig)
     if mgr == nil then return nil; end
     -- Resolved, so whatever we find is a MEASUREMENT: an ability on no slot is
     -- idle, which is 0 seconds remaining, not "no idea".
-    local rem = 0;
-    pcall(function()
+    local rem;
+    local ok = pcall(function()
+        if type(mgr.GetAbilityTimerId) ~= 'function' or type(mgr.GetAbilityTimer) ~= 'function' then return; end
+        rem = 0;
         for i = 0, 31 do
-            local tid = nil;
-            if type(mgr.GetAbilityTimerId) == 'function' then tid = mgr:GetAbilityTimerId(i); end
+            local tid = mgr:GetAbilityTimerId(i);
             if tid == sig.timerId then
-                local q = 0;
-                if type(mgr.GetAbilityTimer) == 'function' then q = mgr:GetAbilityTimer(i) or 0; end
-                rem = math.floor((tonumber(q) or 0) / JIFFIES_PER_SEC + 0.5);
+                local q = mgr:GetAbilityTimer(i) or 0;
+                rem = math.max(0, (tonumber(q) or 0) / JIFFIES_PER_SEC);
                 return;
             end
         end
     end);
-    return rem;
+    return ok and rem or nil;
+end
+
+function M.liveRemaining(sig)
+    local seconds = M.liveRemainingSeconds(sig);
+    return seconds and math.floor(seconds + 0.5) or nil;
 end
 
 -- The one-liner the button uses: is Reward ready? (ready, remaining) with the

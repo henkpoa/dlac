@@ -685,7 +685,7 @@ local function renderSettingsBody()
             imgui.TextColored(COL.HEADER, 'Features');
         end
         imgui.TextColored(COL.DIM, 'Tabs in the main window:');
-        for _, t in ipairs(fgate.TABS) do
+        for _, t in ipairs(fgate.tabOptions()) do
             settingCheck('ftab_' .. t.key, t.label,
                 'Show the ' .. t.label .. ' tab in the main dlac window.',
                 function() return fgate.enabled('tab', t.key) == true; end,

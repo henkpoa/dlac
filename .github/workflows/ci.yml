@@ -113,6 +113,15 @@ jobs:
       - name: AscensionXI Paladin Divine Guard gauge (slot 2, Palisade, shared /dl gauge)
         run: lua5.4 tests/ascensionxi_pldgauge.lua
 
+      - name: AscensionXI Stable (wire fixtures, native Ready clock, draw safety, portrait budget)
+        run: |
+          lua5.4 tests/server_pack_isolation.lua
+          lua5.4 tests/ascensionxi_stable.lua
+          lua5.4 tests/stable_protocol.lua
+          lua5.4 tests/stable_gauge.lua
+          lua5.4 tests/stable_draw.lua
+          lua5.4 tests/stable_assets.lua
+
       - name: AscensionXI Paladin Divine Elements helper (the element rules, the plan, the window)
         run: lua5.4 tests/ascensionxi_divine_elements.lua
 

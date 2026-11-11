@@ -186,6 +186,9 @@ return {
     [11987] = {
         Avatar = { Regen = 1 },
     },
+    [12517] = {
+        All = { Accuracy = 5, StoreTP = 5 },
+    },
     [12520] = {
         Avatar = { Attack = 5 },
     },
@@ -195,6 +198,9 @@ return {
     [12650] = {
         Avatar = { Accuracy = 5 },
     },
+    [13969] = {
+        All = { Attack = 5 },
+    },
     [13974] = {
         Wyvern = { Accuracy = 10 },
     },
@@ -203,6 +209,9 @@ return {
     },
     [14103] = {
         Avatar = { Enmity = -2, Evasion = 5 },
+    },
+    [14222] = {
+        All = { MagicAccuracy = 5 },
     },
     [14227] = {
         Wyvern = { HPP = 10 },
@@ -234,6 +243,9 @@ return {
     [14904] = {
         Avatar = { Enmity = -2 },
     },
+    [14917] = {
+        All = { Accuracy = 5 },
+    },
     [14922] = {
         Wyvern = { MDT = -5 },
     },
@@ -249,11 +261,20 @@ return {
     [15032] = {
         Automaton = { Haste = 3 },
     },
+    [15080] = {
+        All = { Accuracy = 8 },
+    },
     [15086] = {
         Avatar = { MagicAccuracy = 10 },
     },
+    [15095] = {
+        All = { Attack = 10 },
+    },
     [15101] = {
         Avatar = { CriticalHitRate = 3, MagicAttackBonus = 5 },
+    },
+    [15110] = {
+        All = { Accuracy = 8, Attack = 10 },
     },
     [15115] = {
         Wyvern = { MDT = -5 },
@@ -261,11 +282,17 @@ return {
     [15116] = {
         Avatar = { Accuracy = 7 },
     },
+    [15125] = {
+        All = { MagicAccuracy = 10 },
+    },
     [15130] = {
         Wyvern = { PDT = -5, RDT = -5 },
     },
     [15131] = {
         Avatar = { Enmity = -2 },
+    },
+    [15140] = {
+        All = { StoreTP = 5 },
     },
     [15145] = {
         Wyvern = { HHP = 6 },

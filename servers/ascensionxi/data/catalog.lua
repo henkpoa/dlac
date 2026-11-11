@@ -18131,7 +18131,7 @@ return {
                 Name = "Save the Queen",
                 Level = 65,
                 Id = 16604,
-                Model = 1195,
+                Model = 954,
                 Jobs = {"PLD"},
                 OneHanded = true,
                 Type = "Sword",
@@ -24021,10 +24021,11 @@ return {
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 32,
-                    Delay = 288,
-                    STR = 2,
-                    CHR = 2,
+                    DMG = 38,
+                    Delay = 276,
+                    STR = 4,
+                    CHR = 4,
+                    Accuracy = 5,
                 }
             },
             BarbicanAxe = {
@@ -25090,6 +25091,19 @@ return {
                     DMG = 83,
                     Delay = 288,
                     Accuracy = 15,
+                }
+            },
+            ForsakenAxe = {
+                Name = "Forsaken Axe",
+                Level = 10,
+                Id = 20015,
+                Model = 735,
+                Jobs = {"BST"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 12,
+                    Delay = 276,
                 }
             },
             Fransisca = {
@@ -26358,6 +26372,22 @@ return {
                     Enmity = 3,
                 }
             },
+            RekindledAxe = {
+                Name = "Rekindled Axe",
+                Level = 10,
+                Id = 20016,
+                Model = 735,
+                Jobs = {"BST"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 20,
+                    Delay = 276,
+                    STR = 2,
+                    CHR = 2,
+                    Accuracy = 2,
+                }
+            },
             RelicAxe = {
                 Name = "Relic Axe",
                 Level = 75,
@@ -26501,6 +26531,38 @@ return {
                 Stats = {
                     DMG = 34,
                     Delay = 312,
+                }
+            },
+            RkndlAxe_1 = {
+                Name = "Rkndl. Axe +1",
+                Level = 20,
+                Id = 20017,
+                Model = 735,
+                Jobs = {"BST"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 26,
+                    Delay = 276,
+                    STR = 3,
+                    CHR = 3,
+                    Accuracy = 3,
+                }
+            },
+            RkndlAxe_2 = {
+                Name = "Rkndl. Axe +2",
+                Level = 30,
+                Id = 20018,
+                Model = 735,
+                Jobs = {"BST"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 32,
+                    Delay = 276,
+                    STR = 4,
+                    CHR = 4,
+                    Accuracy = 4,
                 }
             },
             RsvCptPick = {
@@ -83616,16 +83678,16 @@ return {
         },
         BeastHelm = {
             Name = "Beast Helm",
-            Level = 56,
+            Level = 50,
             Id = 12517,
             Model = 80,
             Jobs = {"BST"},
             Type = "Head",
             Stats = {
-                DEF = 22,
+                DEF = 24,
                 HP = 15,
-                INT = 5,
-                CharmDuration = 4,
+                STR = 3,
+                CHR = 4,
             }
         },
         BeckonersHorn = {
@@ -95882,11 +95944,11 @@ return {
             Jobs = {"BST"},
             Type = "Head",
             Stats = {
-                DEF = 26,
-                HP = 19,
-                CHR = 4,
-                CharmDuration = 5,
-                ParryingSkill = 3,
+                DEF = 28,
+                HP = 25,
+                STR = 4,
+                CHR = 6,
+                BSTShinyChance = 100,
             }
         },
         MoogleCap = {
@@ -121301,16 +121363,16 @@ return {
         },
         BeastJackcoat = {
             Name = "Beast Jackcoat",
-            Level = 58,
+            Level = 50,
             Id = 12646,
             Model = 80,
             Jobs = {"BST"},
             Type = "Body",
             Stats = {
-                DEF = 44,
-                HP = 20,
-                VIT = 3,
-                CharmDuration = 5,
+                DEF = 45,
+                HP = 25,
+                STR = 4,
+                Accuracy = 5,
             }
         },
         BeckDoublet_1 = {
@@ -134455,10 +134517,11 @@ return {
             Jobs = {"BST"},
             Type = "Body",
             Stats = {
-                DEF = 49,
-                HP = 21,
-                INT = 6,
-                CharmDuration = 6,
+                DEF = 50,
+                HP = 30,
+                STR = 6,
+                Accuracy = 8,
+                BSTReadyTPKept = 10,
             }
         },
         MoogleShirt = {
@@ -147364,17 +147427,17 @@ return {
         },
         BeastGloves = {
             Name = "Beast Gloves",
-            Level = 54,
+            Level = 50,
             Id = 13969,
             Model = 80,
             Jobs = {"BST"},
             Type = "Hands",
             Stats = {
-                DEF = 12,
-                HP = 11,
+                DEF = 16,
+                HP = 12,
                 DEX = 3,
-                CharmDuration = 3,
-                ParryingSkill = 5,
+                Accuracy = 4,
+                RewardRecast = 5,
             }
         },
         BeckBracers_1 = {
@@ -158252,11 +158315,10 @@ return {
             Jobs = {"BST"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
-                HP = 14,
-                AGI = 4,
-                CharmDuration = 4,
-                JugLevelRange = 1,
+                DEF = 20,
+                HP = 18,
+                DEX = 5,
+                Accuracy = 6,
             }
         },
         MorrigansCuffs = {
@@ -158466,7 +158528,6 @@ return {
                 HP = 20,
                 AGI = 5,
                 CharmDuration = 4,
-                JugLevelRange = 1,
             }
         },
         MstGloves_2 = {
@@ -187458,20 +187519,20 @@ return {
         },
         BeastTrousers = {
             Name = "Beast Trousers",
-            Level = 60,
+            Level = 50,
             Id = 14222,
             Model = 80,
             Jobs = {"BST"},
             Type = "Legs",
             Stats = {
-                DEF = 30,
-                HP = 15,
-                CHR = 4,
+                DEF = 33,
+                HP = 20,
+                VIT = 4,
+                CHR = 3,
                 AmorphKiller = 1,
                 AquanKiller = 1,
                 BeastKiller = 1,
                 BirdKiller = 1,
-                CharmDuration = 6,
                 LizardKiller = 1,
                 PlantoidKiller = 1,
                 VerminKiller = 1,
@@ -198465,11 +198526,10 @@ return {
             Jobs = {"BST"},
             Type = "Legs",
             Stats = {
-                DEF = 34,
-                HP = 17,
-                DEX = 4,
-                HHP = 3,
-                CharmDuration = 2,
+                DEF = 36,
+                HP = 25,
+                STR = 5,
+                VIT = 5,
             }
         },
         MorassPants = {
@@ -209676,17 +209736,17 @@ return {
         },
         BeastGaiters = {
             Name = "Beast Gaiters",
-            Level = 52,
+            Level = 50,
             Id = 14097,
             Model = 80,
             Jobs = {"BST"},
             Type = "Feet",
             Stats = {
-                DEF = 10,
-                HP = 11,
-                AGI = 3,
-                CharmDuration = 2,
-                RewardHPBonus = 10,
+                DEF = 14,
+                HP = 12,
+                MND = 3,
+                CHR = 3,
+                RewardHPBonus = 25,
             }
         },
         BeckPigaches = {
@@ -220681,11 +220741,10 @@ return {
             Jobs = {"BST"},
             Type = "Feet",
             Stats = {
-                DEF = 14,
-                HP = 13,
-                VIT = 4,
-                CharmDuration = 3,
-                RewardHPBonus = 20,
+                DEF = 18,
+                HP = 20,
+                STR = 5,
+                MND = 5,
             }
         },
         MoranaPigaches = {

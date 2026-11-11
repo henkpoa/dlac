@@ -29958,9 +29958,9 @@ end)();
 
     -- roster labels match the registrations they gate (a rename on either
     -- side must fail HERE, not vanish a tab in the field)
-    check('FGT24 tab roster carries the six known labels', (function()
+    check('FGT24 tab roster carries the seven known labels', (function()
         local want = { 'Sets', 'Triggers', 'All Equipment', 'Equipped',
-                       'Gear Helpers', 'Job Helpers' };
+                       'Gear Helpers', 'Job Helpers', 'Stable' };
         if #fg.TABS ~= #want then return 'count ' .. #fg.TABS; end
         for i, w in ipairs(want) do
             if fg.TABS[i].label ~= w then return fg.TABS[i].label; end
