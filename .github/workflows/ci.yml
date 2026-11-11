@@ -86,6 +86,9 @@ jobs:
       - name: AscensionXI HELM packet regression
         run: lua5.4 tests/ascensionxi_helm.lua
 
+      - name: AscensionXI HELM compact UI and CEXI isolation
+        run: lua5.4 tests/ascensionxi_helm_ui.lua
+
       - name: HELM gathered-item storage regression
         run: lua5.4 tests/helmstorage.lua
 

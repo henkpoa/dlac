@@ -99,6 +99,10 @@ function M.renderContent(availW)
         if hw.numericGathering and hw.numericGathering() then
             local ok, panel = pcall(require, 'dlac\\ui\\helmui');
             if ok and type(panel.renderPoints) == 'function' then panel.renderPoints('bar'); end
+            if service and type(service.compactSkill) == 'function' then
+                local skill = service.compactSkill(sel);
+                if skill then imgui.TextUnformatted('Skill: ' .. skill); end
+            end
             if sharedGear then
                 local bonuses = hw.bonuses(sel);
                 if bonuses then
