@@ -68,8 +68,10 @@ byte-for-byte verification afterward. Other local addon work was preserved.
 Original files and a SHA-256 manifest are in `C:/Claude/axi26-local-backup/`;
 the installation record is `C:/Claude/axi26-install-local.py`. The 42 compact
 UI checks passed against the **installed modules** using native LuaJIT.
-No running client was controlled. Reload DLAC to load the installed files;
-client visual acceptance is still pending.
+No running client was controlled. The owner reviewed the installed display,
+confirmed it works locally and requested merge. The final isolation/decimal
+negative controls were rerun at acceptance; both were caught, and the
+restored 42-check UI suite passed. No runtime changes followed acceptance.
 
 No launcher pin, catalog refresh, version bump or production release is
 included. At release, follow
@@ -83,7 +85,7 @@ page. Gather a skill-up and allow five seconds for refresh. Close the Hobbies
 window and confirm the badge still updates. Zone and check `--` changes to
 the new snapshot after settling. Hide the badge and verify the existing
 preference still works. On CEXI, category, VP/rating and Off behavior must
-remain unchanged. Client visual acceptance remains pending.
+remain unchanged. Local client acceptance is complete.
 
 Rollback the three runtime file changes and reload DLAC; no persisted data
 needs migration. Keep any corrections in this task's PR.
