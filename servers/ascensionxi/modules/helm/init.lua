@@ -25,6 +25,20 @@ local M = {
     },
 };
 
+-- Compact surfaces share the full panel's snapshot and five-second poll.
+-- Keep both the text and the request specific to the active AscensionXI pack.
+function M.compactSkill(category)
+    if require('dlac\\gear\\serverpack').active() ~= 'ascensionxi' then return nil; end
+    local known = false;
+    for _, name in ipairs(skills.order) do
+        if name == category then known = true; break; end
+    end
+    if not known then return nil; end
+    points.touch();
+    local value = skills.value(category);
+    return category .. ' ' .. (value ~= nil and string.format('%.1f', value) or '--');
+end
+
 require('dlac\\gear\\serverpack').provide('gathering', M);
 
 local transport = require('dlac\\servers\\ascensionxi\\transport');

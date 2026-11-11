@@ -61,9 +61,17 @@ function M.render()
         if imgui.IsItemHovered() then
             imgui.SetTooltip('The one active idle hobby.\nOnly one of Craft / HELM / Fishing / Chocobo runs at a time.');
         end
-        if active.detail ~= nil then
+        local detail = active.detail;
+        if active.key == 'helm' then
+            local pack = try('dlac\\gear\\serverpack');
+            local gathering = pack and pack.service('gathering');
+            if gathering and type(gathering.compactSkill) == 'function' then
+                detail = gathering.compactSkill(detail) or detail;
+            end
+        end
+        if detail ~= nil then
             imgui.SameLine();
-            imgui.TextColored(DIM, '· ' .. tostring(active.detail));
+            imgui.TextColored(DIM, '· ' .. tostring(detail));
         end
         imgui.SameLine();
         if imgui.SmallButton('Off##idlefloatoff') then

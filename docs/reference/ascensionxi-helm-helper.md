@@ -113,6 +113,14 @@ Catalog presence alone is not an acquisition claim.
 
 ## Automatic points and skills
 
+AXI-26 adds the current gathering category's skill with one decimal place to
+the Hobbies window's HELM tab and the small active-HELM badge. For example,
+the bar shows `Skill: Excavation 42.7` and the badge shows `HELM · Excavation 42.7`.
+Unknown skills show `--` until the server responds. Both use the same snapshot
+and five-second polling as the full Gathering Gear page, including when only
+the badge is visible. CEXI keeps its existing category/venture-point displays.
+See [AXI-26 implementation and release checks](axi26-helm-skill.md).
+
 The AscensionXI pack's `helm` module provides the `gathering` service.
 Its `status.lua` polls opcode 0x80 on the existing custom 0x1E0 packet channel
 every five seconds while either HELM surface is visible. Both surfaces share
