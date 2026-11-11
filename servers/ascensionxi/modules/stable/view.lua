@@ -83,11 +83,11 @@ local function popup(c)
     if imgui.BeginPopup('Rename companion##bst') then
         imgui.Text(c.label(selected));
         imgui.SetNextItemWidth(220);
-        imgui.InputText('##nickname', c.names[selected], 16);
+        imgui.InputText('##nickname', c.names[selected], 24);
         if button('Save', not c.readOnly and not c.pending) then c.rename(selected, c.names[selected][1]); imgui.CloseCurrentPopup(); end
         imgui.SameLine();
         if button('Use original name', not c.readOnly and not c.pending) then c.rename(selected, ''); imgui.CloseCurrentPopup(); end
-        imgui.TextColored(dim, '3-15 letters');
+        imgui.TextColored(dim, '3-23 letters and spaces; single spaces between words');
         imgui.EndPopup();
     end
 end

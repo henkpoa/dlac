@@ -65,6 +65,7 @@ for i = #pages, 2, -1 do receive(frame(pages[i], request)); receive(frame(pages[
 tab.render(); assert(context.state == nil, 'never publish incomplete or mismatched snapshots');
 receive(frame(pages[1], request)); tab.render();
 assert(context.state.revision == 9 and context.state.owned[135] and context.state.owned[3].dead);
+assert(context.state.owned[2].name == 'My Lovely Little Friend', 'full 23-character nickname survives the snapshot')
 assert(context.state.roster[1] == 2 and context.state.roster[2] == 3);
 context.find(1); pump(1); request = sends[#sends]; assert(request[5] == 0xF4);
 reply(fixtures.habitats, request); tab.render(); assert(context.habitats.rows[1]:find('East Ronfaure', 1, true));
@@ -112,3 +113,12 @@ job = 9; pump(1); tab.render(); pump(1); request = sends[#sends];
 assert(request[5] == 0xF0); reply(fixtures.state, request); tab.render();
 assert(not context.readOnly, 'switching back to BST restores management');
 print('Stable protocol: real server fixtures, atomic paging, one idle hour, deferred native reads, tab reopen, blocked gate, statuses and zone/job lifecycle passed.');
+
+-- The real Stable action sends all 23 characters plus a terminator.
+handlers.dlac_bst_stable({ id = 0x00A });
+tab.render(); pump(1); reply(fixtures.state, sends[#sends]); tab.render();
+context.rename(2, 'My Lovely Little Friend'); pump(1);
+local rename = encode(sends[#sends]);
+assert(rename:byte(5) == 0xF2 and rename:byte(9) == 5);
+assert(#rename == 48 and rename:sub(25, 47) == 'My Lovely Little Friend' and rename:byte(48) == 0);
+print('Stable 23-character rename request and full snapshot name passed.');
