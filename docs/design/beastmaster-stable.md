@@ -165,3 +165,22 @@ the generated pack and assert that handwritten code and module registration
 remain unchanged. The server generator has a regression for this boundary.
 The owner still checks real in-game rendering. Automated tests do not control
 an already-running game client.
+
+## AXI-6: 23-character companion nicknames (November 11)
+
+AscensionXI-only update paired with AscensionXI PR #1214. Companion input is
+24 bytes (23 ASCII letters/spaces plus terminator). Preset input remains 16.
+Version 5 requests and responses use 40-byte companion records with a 24-byte
+nickname; all following capture/preset offsets advance accordingly. Regenerate
+tests/fixtures/stable/server.lua using AXI tools/bst_playtest/export_dlac_fixtures.lua.
+
+Deploy server #1214 first, including the VARCHAR(23) migration and map rebuild.
+Its handler still accepts version 4, so old DLAC works during rollout with the
+old name width. Then release/reload DLAC. New DLAC rejects version 4 replies.
+No changes to CEXI, shared transport, profile selection or equipment behavior.
+
+Verified real server/client protocol and six Stable/isolation suites. Tests
+cover a 23-character spaced nickname in snapshots and outbound rename requests;
+server_pack_isolation verifies CEXI emits no AXI messages or gauges. Owner client
+acceptance remains pending. Revert this DLAC change before rolling back the
+server; keep the widened database column to preserve newly saved names.

@@ -49,7 +49,7 @@ local messages = {
     IN_ROSTER = 'That companion already occupies a roster slot.', NOT_OWNED = 'Register that companion first.',
     OWNED = 'That form is already registered.', JUG_IN_INVENTORY = 'Move the filled jug into your inventory.',
     INVALID_TOKEN = 'This capture jug is unavailable. Refresh your Stable.',
-    BUSY = 'Finish your current interaction first.', NAME_LENGTH = 'Use 3-15 letters without spaces or punctuation.',
+    BUSY = 'Finish your current interaction first.', NAME_LENGTH = 'Companions: 3-23 letters and spaces, with single spaces between words. Saved rosters: 3-15 letters.',
     NAME_FILTERED = 'That nickname is not allowed.', NAME_FILTER_UNAVAILABLE = 'Nickname checking is unavailable.',
     RELOAD = 'The save could not be confirmed. Refresh before trying again.',
     PRESET_EMPTY = 'Refresh to load your rosters.',
@@ -64,7 +64,7 @@ local function request(op, body)
     end
     if pending then return false; end
     nonce = (nonce + 1) % 4294967295;
-    local payload = p16(4) .. p16(0) .. p32(nonce) .. (body or '');
+    local payload = p16(5) .. p16(0) .. p32(nonce) .. (body or '');
     local seq = (nonce % 255) + 1; -- Sequence zero belongs to unsolicited push frames.
     local packet = { 0, 0, 0, 0, op, seq, 0, 0 };
     for i = 1, #payload do packet[#packet + 1] = payload:byte(i); end
@@ -81,7 +81,7 @@ end
 local function decodeState(body)
     if #body < 78 then return nil; end
     local count, captureCount = u16(body, 74), u16(body, 76);
-    if count > 134 or captureCount > 134 or #body ~= 150 + count * 32 + captureCount * 8 then return nil; end
+    if count > 134 or captureCount > 134 or #body ~= 150 + count * 40 + captureCount * 8 then return nil; end
     local decoded = { revision = u32(body, 32), active = body:byte(37), activeRoster = body:byte(38), roster = {}, owned = {}, captures = {}, discovered = {}, presets = {},
         callSeconds = u32(body, 44), readySeconds = u32(body, 48), reviveSeconds = u32(body, 52), result = readText(body:sub(1, 32)) };
     if decoded.active > 3 or decoded.activeRoster > 3 or body:byte(74) ~= 0 then return nil; end
@@ -92,12 +92,12 @@ local function decodeState(body)
         decoded.discovered[id] = math.floor(bits / 2 ^ (index % 8)) % 2 == 1;
     end
     for index = 0, count - 1 do
-        local offset = 78 + index * 32;
+        local offset = 78 + index * 40;
         local id = u16(body, offset);
         if id < 2 or id > 135 or decoded.owned[id] then return nil; end
         decoded.owned[id] = { id = id, level = body:byte(offset + 3), dead = body:byte(offset + 4) ~= 0,
             hp = u32(body, offset + 4), mp = u32(body, offset + 8), tp = u16(body, offset + 12),
-            name = readText(body:sub(offset + 17, offset + 32)) };
+            name = readText(body:sub(offset + 17, offset + 40)) };
     end
     local assigned = {};
     for _, id in ipairs(decoded.roster) do
@@ -108,14 +108,14 @@ local function decodeState(body)
     end
     local tokens = {};
     for index = 0, captureCount - 1 do
-        local offset = 78 + count * 32 + index * 8;
+        local offset = 78 + count * 40 + index * 8;
         local token, id = u32(body, offset), u16(body, offset + 4);
         if token == 0 or tokens[token] or id < 2 or id > 135 then return nil; end
         tokens[token] = true;
         decoded.captures[#decoded.captures + 1] = { token = token, companion = id, item = u16(body, offset + 6) };
     end
     for index = 1, 3 do
-        local offset = 78 + count * 32 + captureCount * 8 + (index - 1) * 24;
+        local offset = 78 + count * 40 + captureCount * 8 + (index - 1) * 24;
         local name = readText(body:sub(offset + 1, offset + 16));
         local roster, seen = {}, {};
         if u16(body, offset + 22) ~= 0 then return nil; end
@@ -175,7 +175,7 @@ local function onPacket(data)
     local payload = data:sub(9);
     audit('bst-receive', op, seq, string.format('bytes=%d version=%d nonce=%.0f expected=%.0f',
         #data, #payload >= 2 and u16(payload, 0) or -1, #payload >= 8 and u32(payload, 4) or -1, pending.nonce));
-    if #payload < 8 or u16(payload, 0) ~= 4 or u32(payload, 4) ~= pending.nonce then return true; end
+    if #payload < 8 or u16(payload, 0) ~= 5 or u32(payload, 4) ~= pending.nonce then return true; end
     local body = assemble(payload);
     if not body then
         audit('bst-page', op, seq, #payload >= 16 and string.format('index=%d pages=%d size=%d total=%d bytes=%d',
@@ -231,7 +231,7 @@ local function render()
         editRoster = function(index, slot, id) request(0xF1, p32(state.revision) .. string.char(slot, index) .. p16(id)); end,
         preset = function(action, index, name) request(0xF5, p32(state.revision) .. string.char(action, index) .. p16(0) .. fixed(name or '', 16)); end,
         find = function(id) request(0xF4, p16(id) .. p16(0)); end,
-        rename = function(id, name) request(0xF2, p32(state.revision) .. p16(id) .. p16(0) .. fixed(name, 16)); end,
+        rename = function(id, name) request(0xF2, p32(state.revision) .. p16(id) .. p16(0) .. fixed(name, 24)); end,
         register = function(token) request(0xF3, p32(token)); end });
 end
 
