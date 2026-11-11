@@ -1,8 +1,20 @@
 # AscensionXI: authoritative combat telemetry and AutoAcc
 
-Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day; weapon skills for 1-Hit WS sets added 2026-10-18 (`2026.10.18a`, engine v173); ranged shots, the not-engaged rule and the settings added 2026-11-06 (`2026.11.06a`, engine v176).** Read "Status 2026-11-06", "Status 2026-10-18" and "Status 2026-10-05" first; the sections after them are the history of the design.
+Research date: 2026-09-28. Status: **built on 2026-10-05 (dlac `2026.10.05d`, engine v170; AscensionXI server slice 1) and tested in the owner's client the same day; weapon skills for 1-Hit WS sets added 2026-10-18 (`2026.10.18a`, engine v173); ranged shots, the not-engaged rule and the settings added 2026-11-06 (`2026.11.06a`, engine v176); the start in game and the HELLO backoff added 2026-11-09 (`2026.11.11b`).** Read "Status 2026-11-09", "Status 2026-11-06", "Status 2026-10-18" and "Status 2026-10-05" first; the sections after them are the history of the design.
 
 **Backend research agent:** start with the [backend research assignment](#backend-research-assignment) appended below. It defines the remaining investigation and deliverable; the operation IDs, rate budgets and APIs proposed in this document are not already implemented or agreed wire contracts.
+
+## Status 2026-11-09: starting in game, and the HELLO backoff
+
+A prod report on 2026-11-09: a player's box said "Starting" for a whole session, every AutoAcc piece stayed on, and `/addon reload dlac` did not help. The client started only on a zone-in packet (0x00A), so a dlac that finished loading after it (a slow load at login, a reload, a load in game) never sent a HELLO until the next zone line. And a server that did not answer got a HELLO every 1.5 s, without end. The diagnosis, the spec and what was built are in [ascensionxi-autoacc-start-in-game.md](ascensionxi-autoacc-start-in-game.md) (§9). Owner: *"as long as it doesn't spam the server if there is a real problem."* Built in `2026.11.11b`, with no engine or server change.
+
+- **Start in game.** In phase `off`, with no zone edge seen since load, the client starts the way a zone-in does (settle 3 s, then HELLO) once something wants the session and `client._inGame()` says the player is in game: a main job, a party server id, not between a 0x00B and its 0x00A, not `GetIsZoning`. It looks at most once a second, and only while wanted. Before the first 0x00A, the HELLO reply's `charId` is checked against `GetMemberServerId(0)`.
+- **A foreign HELLO reply** is a failed round. It used to leave the client in `hello` with nothing queued.
+- **One backoff for every automatic HELLO** (`helloAgain`): rounds of `TRIES` sends `RETRY` apart, and the next round after 5, 10, 20, 40, then 60 s. It counts a lost HELLO or RESYNC, a foreign reply, and NO_SESSION. An accepted HELLO or a zone-in starts it over; demand does not. A server that never answers gets 36 HELLOs in ten minutes from a client with the box open, against about 400 before, and at most 3 in any minute once capped. BUSY, UNAVAILABLE (30 s), BAD_OP and PROTO_UNSUPPORTED are as before.
+- **The box says it.** After a failed round or UNAVAILABLE, while the session is wanted, the box shows **Unavailable** (*"The server isn't answering right now ... DLAC keeps asking; crossing a zone line asks again right away."*) and the Gear Helpers row `off -- the server is not answering`. NO_SESSION is an answer and keeps "Starting".
+- **The wire log** gets a `note` line when the client starts without a zone-in and at each backoff (`transport.note`).
+- **Tests:** CL-07b, CL-13b, CL-20 to CL-27 and UI-14; CL-05, CL-07, CL-11 and CL-14 now follow the backoff. Sweep: C22 to C40, I07 to I15, U34 and U35; C14 re-pointed.
+- **Owed:** the live checks in that document's §6 (a reload in game, a fresh login, one zone line), then the AscensionXI pin.
 
 ## Status 2026-11-06: ranged shots, not engaged, and the settings
 

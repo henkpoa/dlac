@@ -116,6 +116,12 @@ function M.notePush(op, why)
     audit('push', op, 0, why, M._clock());
 end
 
+-- A module's own decision, no frame: e.g. telemetry starting without a
+-- zone-in, or backing off. One line, so the log shows why it sent or didn't.
+function M.note(op, why)
+    audit('note', op, 0, why, M._clock());
+end
+
 -- T3: the caller gave up on this request (retries spent, cancelled): free the
 -- slot now. A reply that still arrives later is a stray and changes nothing.
 function M.abandon(op, seq)
