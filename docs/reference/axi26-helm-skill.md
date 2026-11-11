@@ -57,13 +57,26 @@ checks passed again. Local runner: `C:/Claude/axi26-check-controls.py`.
 
 ## Review and release
 
-No running client was controlled or patched. No launcher pin, catalog refresh,
-version bump or production release is included. At release, follow
+Installed locally at the owner's request into
+`C:/Spel/AscensionXI - Staging/Ashita/addons/dlac`. The Local launcher profile
+uses `C:/Projects/AscensionXI`, and the addon's server flag explicitly selects
+`ascensionxi`. Its existing `.git` marker protects this working copy from
+launcher addon updates. All three affected runtime files matched the reviewed
+baseline before installation; only those three files were replaced, with
+byte-for-byte verification afterward. Other local addon work was preserved.
+
+Original files and a SHA-256 manifest are in `C:/Claude/axi26-local-backup/`;
+the installation record is `C:/Claude/axi26-install-local.py`. The 42 compact
+UI checks passed against the **installed modules** using native LuaJIT.
+No running client was controlled. Reload DLAC to load the installed files;
+client visual acceptance is still pending.
+
+No launcher pin, catalog refresh, version bump or production release is
+included. At release, follow
 `ascensionxi-release-routine.md` to publish/pin the reviewed DLAC revision;
 this implementation needs no game-server deployment or restart.
 
-Client test: install the reviewed DLAC files into the actual AscensionXI addon
-folder, reload with `/addon reload dlac`, then open `/dl helm bar`. Select HELM
+Client test: reload with `/addon reload dlac`, then open `/dl helm bar`. Select HELM
 in the Hobbies window and arm gathering near a point. The bar and badge should
 name that category and display the same decimal as the full Gathering Gear
 page. Gather a skill-up and allow five seconds for refresh. Close the Hobbies
