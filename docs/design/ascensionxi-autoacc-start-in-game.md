@@ -4,7 +4,7 @@
 two players' wire logs).
 **For:** the dlac agent who builds the fix.
 **State:** built 2026-11-09 on this branch, `claude/autoacc-start-in-game` (dlac
-`2026.11.09a`). §9 says what was built and where it differs from §4. The live checks in
+`2026.11.11b`). §9 says what was built and where it differs from §4. The live checks in
 §6 are owed.
 **Owner's condition:** *"That sounds good, as long as it doesn't spam the server if there
 is a real problem."*
@@ -275,7 +275,7 @@ when the server does not answer.
   [ascensionxi-combat-telemetry-autoacc.md](ascensionxi-combat-telemetry-autoacc.md) and
   turn this document's state line into "built".
 
-## 9. What was built (2026-11-09, `2026.11.09a`)
+## 9. What was built (2026-11-09, `2026.11.11b`)
 
 All in `servers/ascensionxi/modules/telemetry/` unless named. No engine change
 (`dispatch.M.VERSION` stays), no server change.

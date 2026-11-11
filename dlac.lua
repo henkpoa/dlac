@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.09a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.11b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -525,7 +525,7 @@ addon.version = '2026.11.09a';  -- date of the last shipped change (Ashita print
                                 --  frame beat: ui\filetex no longer registers a
                                 --  d3d_present handler mid-draw, which made an
                                 --  older Ashita (CatsEyeXI) unload dlac;
-                                --  11.09a = AscensionXI's accuracy box no
+                                --  11.11b = AscensionXI's accuracy box no
                                 --  longer says "Starting" for a whole session
                                 --  after a late load or a reload: it connects
                                 --  in game without a zone line, and a server

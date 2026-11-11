@@ -12043,7 +12043,7 @@ new prod deploy tomorrow. Another agent is doing Nexus."
 - Not done: the stock-only ability picker still lacks Ranger's Decoy Mark,
   Decoy Shots and Arrow Coating (#1149) and Paladin's Rebuke (#1156).
 
-## 2026-11-09: the accuracy box starts in game, and backs off a silent server (`2026.11.09a`)
+## 2026-11-09: the accuracy box starts in game, and backs off a silent server (`2026.11.11b`)
 
 An AscensionXI session handed over PR #244: a prod player's accuracy box said
 "Starting" for a whole session, and `/addon reload dlac` did not help.

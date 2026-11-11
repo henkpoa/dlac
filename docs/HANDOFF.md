@@ -1115,7 +1115,7 @@ research already recorded. In rough priority order:
   "Order" in that design doc. Since 2026-11-06 (`2026.11.06a`, engine v176) it also
   decides ranged shots, wears every fallback while not engaged, and has its settings
   (Gear Helpers > AutoAcc, `gear/autoaccrules.lua`): read "Status 2026-11-06" there.
-  Since 2026-11-09 (`2026.11.09a`) the client also starts in game without a zone-in (a
+  Since 2026-11-09 (`2026.11.11b`) the client also starts in game without a zone-in (a
   late load or a reload left the box on "Starting"), and every automatic HELLO backs off,
   5 s doubling to 60 s: read "Status 2026-11-09".
 
