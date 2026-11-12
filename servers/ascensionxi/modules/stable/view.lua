@@ -364,7 +364,7 @@ function M.render(c)
     if button('Refresh##bst', not c.pending or c.pendingOp == 0xF4) then c.request(0xF0); end
     imgui.SameLine(); imgui.SmallButton('?##bsthelp');
     tip('Charm > Seal Beast > trade the filled jug to a Stable Master.\nSelect a companion below, then assign it to a roster slot. Use Call Beast in the field.');
-    if c.readOnly then imgui.TextWrapped('Browse your collection on any job. Switch to Beastmaster to manage companions.'); end
+    if c.readOnly then imgui.TextWrapped('Finish zoning before managing companions.'); end
     if not c.state then
         imgui.TextWrapped(c.pending and 'Loading your Stable...' or c.notice);
         imgui.EndChild(); return;
@@ -560,7 +560,7 @@ function M.render(c)
     end
     imgui.Spacing();
     local gauge;
-    if not c.readOnly then gauge = M.charges(c.cooldowns); end
+    if c.combatEnabled then gauge = M.charges(c.cooldowns); end
     readyMoves(entry, gauge);
     if #state.captures > 0 then
         imgui.Spacing(); imgui.TextColored(gold, 'CAPTURED JUGS');

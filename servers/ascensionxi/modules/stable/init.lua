@@ -56,7 +56,8 @@ local messages = {
 };
 
 local function request(op, body)
-    if op ~= 0xF0 and op ~= 0xF4 and not isBST() then return false; end
+    if op == 0xF6 and not isBST() then return false; end
+    if op ~= 0xF0 and op ~= 0xF4 and zoning then return false; end
     -- Player actions take priority over gauge reads. Refresh can abandon a location read.
     if pending and (pending.op == 0xF6 or pending.op == 0xF4 and op == 0xF0) and op ~= 0xF6 then
         if pending.op == 0xF6 then gauge.periodChanged(); end
@@ -227,7 +228,7 @@ local function render()
         if request(0xF0) then attempted, refreshOnOpen = true, false; end
     end
     view.render({ state = state, pending = pending and pending.op ~= 0xF6, pendingOp = pending and pending.op, notice = notice, names = names, habitats = habitats, cooldowns = cooldownView(),
-        catalog = catalog, request = request, assign = assign, label = label, readOnly = not isBST(),
+        catalog = catalog, request = request, assign = assign, label = label, readOnly = zoning, combatEnabled = isBST(),
         editRoster = function(index, slot, id) request(0xF1, p32(state.revision) .. string.char(slot, index) .. p16(id)); end,
         preset = function(action, index, name) request(0xF5, p32(state.revision) .. string.char(action, index) .. p16(0) .. fixed(name or '', 16)); end,
         find = function(id) request(0xF4, p16(id) .. p16(0)); end,
