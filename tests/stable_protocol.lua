@@ -100,10 +100,28 @@ handlers.dlac_bst_stable({ id = 0x00A }); pump(1); assert(tab and #sends == sent
 job = 1; pump(); assert(tab and client._cooldownView() == nil);
 tab.render(); pump(1); request = sends[#sends]; assert(request[5] == 0xF0);
 reply(fixtures.state, request); tab.render();
-assert(context.readOnly and context.state.owned[135], 'WAR can browse the saved collection');
-for _, op in ipairs({0xF1, 0xF2, 0xF3, 0xF5, 0xF6}) do
-    assert(not client._request(op), 'non-BST cannot send mutations or gauge requests');
+assert(not context.readOnly and not context.combatEnabled and context.state.owned[135],
+    'WAR can manage the saved collection without enabling combat clocks');
+local actions = {
+    { 0xF1, function() context.assign(1, 3); end },
+    { 0xF1, function() context.editRoster(2, 1, 3); end },
+    { 0xF2, function() context.rename(3, 'Little Friend'); end },
+    { 0xF3, function() context.register(7); end },
+    { 0xF5, function() context.preset(2, 3); end },
+};
+for _, action in ipairs(actions) do
+    sentBefore = #sends;
+    action[2](); pump(1);
+    request = sends[#sends];
+    assert(#sends == sentBefore + 1 and request[5] == action[1], 'off-job management must send its request');
+    for _, bytes in ipairs(fixtures.state.frames) do
+        local data = frame(bytes, request);
+        receive(data:sub(1, 4) .. string.char(request[5]) .. data:sub(6));
+    end
+    tab.render();
+    assert(not context.pending and context.state.owned[135], 'management reply must restore the usable snapshot');
 end
+assert(not client._request(0xF6), 'non-BST cannot request combat clocks');
 context.find(1); pump(1); request = sends[#sends]; assert(request[5] == 0xF4);
 reply(fixtures.habitats, request); tab.render(); assert(context.habitats.rows[1]);
 sentBefore = #sends;
@@ -111,7 +129,7 @@ for _ = 1, 60 do pump(1 / 60); tab.render(); end
 assert(#sends == sentBefore and client._cooldownView() == nil, 'WAR browsing never polls Ready');
 job = 9; pump(1); tab.render(); pump(1); request = sends[#sends];
 assert(request[5] == 0xF0); reply(fixtures.state, request); tab.render();
-assert(not context.readOnly, 'switching back to BST restores management');
+assert(not context.readOnly and context.combatEnabled, 'switching back to BST restores combat presentation');
 print('Stable protocol: real server fixtures, atomic paging, one idle hour, deferred native reads, tab reopen, blocked gate, statuses and zone/job lifecycle passed.');
 
 -- The real Stable action sends all 23 characters plus a terminator.
