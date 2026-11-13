@@ -119,6 +119,14 @@ function M.habitatOdds(entry, lo, hi)
     return text, best, visible;
 end
 
+-- AXI server catch guidance extends legacy six-column rows with an optional note.
+function M.parseHabitat(row)
+    if type(row) ~= 'string' then return nil; end
+    local zone, mob, lo, hi, count, seconds, suffix = row:match('^([^|]+)|([^|]+)|(%d+)|(%d+)|(%d+)|(%d+)(.*)$');
+    if not zone or (suffix ~= '' and not suffix:match('^|[^|]*$')) then return nil; end
+    return zone, mob, lo, hi, count, seconds, suffix:sub(2);
+end
+
 local function habitats(c, height)
     if not habitatOpen then return; end
     imgui.Separator();
@@ -143,10 +151,12 @@ local function habitats(c, height)
     imgui.Separator();
     local entry = c.catalog[math.floor(selected / 2)];
     for _, row in ipairs(c.habitats.rows) do
-        local zone, mob, lo, hi, count, seconds = row:match('^([^|]+)|([^|]+)|(%d+)|(%d+)|(%d+)|(%d+)$');
+        local zone, mob, lo, hi, count, seconds, note = M.parseHabitat(row);
         if zone then
             imgui.TextWrapped(zone); imgui.NextColumn();
-            imgui.TextWrapped(mob); imgui.NextColumn();
+            imgui.TextWrapped(mob);
+            if note ~= '' then imgui.TextWrapped(note); end
+            imgui.NextColumn();
             local odds, best, chance = M.habitatOdds(entry, tonumber(lo), tonumber(hi));
             local x, y = imgui.GetCursorScreenPos();
             if type(x) == 'table' then y = x[2]; x = x[1]; end
