@@ -12119,3 +12119,22 @@ only grows on height. Maybe we should make tabs to sectionize it better?"
 - Tests: smoke_ui MN12f-r (tab order, per-page counts, stack balance on a
   throwing page, the no-tabs fallback), 1797 checks.
 - Not checked in game.
+
+## 2026-11-13: Window size, fixed sizes in Sets / Triggers follow it (`2026.11.13c`)
+
+Henrik's first in-game look at a large size: the Sets toolbar ("Comm", "Weight")
+and the Triggers toolbar were cut off at the bottom, empty slot boxes cut their
+labels ("Sub", "Rng", "Amm"), and the Triggers section list cut "Blueprints" and
+"Mode library".
+
+- Cause: buttons with a size written in pixels (`{ 62, 22 }`, `{ 0, 22 }`) keep
+  that size while the text inside grows.
+- Every `Button` / `SmallButton` / `Selectable` size in `gearui`, `triggersui`,
+  `equippedui` and `weightsui` now goes through `uiscale.px` (90 lines). Written
+  inline as `require('dlac\\ui\\uiscale').px(n)`: no new chunk local or upvalue
+  in files that sit at LuaJIT's limits.
+- The Sets / Equipped slot grid (box and height), the stats panel width and the
+  Triggers section list width follow the scale too. The floating equipment
+  window passes its own box size and is unchanged.
+- At 100% every number is the one it was.
+- Not checked in game after the change.

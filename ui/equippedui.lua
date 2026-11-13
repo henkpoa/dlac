@@ -313,12 +313,12 @@ local function renderEquippedTab(job, level)
         imgui.TextColored(COL.DIM, 'This tab shows what you are WEARING. There is nothing to show for a job you');
         imgui.TextColored(COL.DIM, 'are not on, and dlac will not guess it.');
         imgui.Spacing();
-        if live ~= nil and imgui.Button('Back to ' .. live .. '##dlac_eqbackjob', { 0, 24 }) then
+        if live ~= nil and imgui.Button('Back to ' .. live .. '##dlac_eqbackjob', { 0, require('dlac\\ui\\uiscale').px(24) }) then
             jbrowse.clear();
         end
         return;
     end
-    if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##eqstats', { 76, 0 }) then
+    if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##eqstats', { require('dlac\\ui\\uiscale').px(76), 0 }) then
         ui.showStats = not ui.showStats;
     end
 
@@ -473,7 +473,7 @@ local function renderEquippedTab(job, level)
     end
 
     local availW = imgui.GetContentRegionAvail();
-    local leftUsed = ui.showStats and (STATS_W + 8) or 0;
+    local leftUsed = ui.showStats and (require('dlac\\ui\\uiscale').px(STATS_W) + 8) or 0;
 
     if ui.showStats then
         S.renderStatsPanel(gearOracle.hasAugments() and 'Worn totals (base+aug)' or 'Worn set totals', S.wornSetTotals());
