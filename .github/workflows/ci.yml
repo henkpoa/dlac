@@ -120,6 +120,7 @@ jobs:
         run: |
           lua5.4 tests/server_pack_isolation.lua
           lua5.4 tests/ascensionxi_stable.lua
+          lua5.4 tests/stable_habitats.lua
           lua5.4 tests/stable_protocol.lua
           lua5.4 tests/stable_gauge.lua
           lua5.4 tests/stable_draw.lua
