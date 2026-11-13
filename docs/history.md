@@ -12071,3 +12071,31 @@ if there is a real problem."
   Sweep: 31 new and re-pointed mutants; the full sweep 222, 221 killed, 1 accepted (C21, as before), 0 open.
 - Owed: the live checks (a reload in game, a fresh login, one zone line), then
   the AscensionXI pin.
+
+## 2026-11-13: Window size, a UI scale for dlac's windows (`2026.11.13a`)
+
+Ticket AXI-24 (Fallen, #suggestions): "With stables being released, UI windows
+getting huge on my 1080p screens - can we get some sort of addon scaling built
+in somewhere?" Henrik: "Can you fix the DLAC version of this scaling then?"
+
+- **The cause.** Ashita 4.3 raised its default interface font from 14px to
+  18px; dlac was laid out for the smaller one.
+- **The setting.** Menu > Settings > Window size (70 to 150% as buttons) and
+  `/dl uiscale <60-150|reset>`, saved per character as `uiscale` in
+  uiflags.lua. 100% is the default.
+- **How.** `ui/uiscale.lua` pushes a resized copy of the current font once per
+  frame around gearui's present hook and pops it in the same frame; pixel
+  counts in the source go through `uiscale.px`. Converted: the main window's
+  default and minimum size, and the whole Stable tab. A change of scale resizes
+  the main window by the same factor once.
+- **Left alone.** The floating equipment window and the Ready / PLD / WHM
+  gauges keep their own scale settings. Fixed pixel widths in the other tabs
+  are not converted yet.
+- **Both Ashitas** (Henrik: "this will be both CEXI and AXI, so needs to work
+  for both"). 4.3 gets `PushFont(nil, size)`. The older client has no sized
+  push, so the current font's `Scale` is set, the font pushed and `Scale`
+  restored at once, the way CatsEyeXI's partyfinder scales text. The first
+  such push is checked; one that did not move the font size is taken back.
+- Tests: new `tests/uiscale.lua` (86 checks, wired into CI); smoke_ui 1778 and
+  the Stable suites unchanged, WSL the same.
+- Owed: the in-game round in `docs/reference/axi24-ui-scale.md`.

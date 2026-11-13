@@ -5735,11 +5735,30 @@ local function drawWindow()
         _setsJob = job;
     end
 
-    imgui.SetNextWindowSize({ 940, 680 }, ImGuiCond_FirstUseEver);
-    imgui.SetNextWindowSizeConstraints({ 480, 340 }, { 1300, 1300 });
+    -- THE UI SCALE (AXI-24): the default size and the floor follow it, and a
+    -- CHANGE of scale resizes the window by the same factor once -- smaller
+    -- text inside a window that kept its old pixel size has not got smaller.
+    -- Function-scoped require (hard rule 1); absent, every number is as before.
+    local scaler = nil;
+    pcall(function() scaler = require('dlac\\ui\\uiscale'); end);
+    local function spx(n) return (scaler ~= nil) and scaler.px(n) or n; end
+    local refit = (scaler ~= nil) and scaler.takeResize() or nil;
+    if refit ~= nil and type(ui._mainSize) == 'table' then
+        imgui.SetNextWindowSize({ math.floor(ui._mainSize[1] * refit + 0.5), math.floor(ui._mainSize[2] * refit + 0.5) }, ImGuiCond_Always or 1);
+    else
+        imgui.SetNextWindowSize({ spx(940), spx(680) }, ImGuiCond_FirstUseEver);
+    end
+    imgui.SetNextWindowSizeConstraints({ spx(480), spx(340) }, { 1300, 1300 });
 
     local isOpen = { M.visible };
     if imgui.Begin('dlac Gear###ffxi_lac_gearui', isOpen, ImGuiWindowFlags_None) then
+        -- Remembered for the refit above (only while the body is open: a
+        -- collapsed window would report just its title bar).
+        pcall(function()
+            local w, h = imgui.GetWindowSize();
+            if type(w) == 'table' then h = w[2] or w.y; w = w[1] or w.x; end
+            if type(w) == 'number' and type(h) == 'number' then ui._mainSize = { w, h }; end
+        end);
         -- Header line: Profiles menu (top-left), job/level + owned count + "Show
         -- all" toggle, then right-aligned buttons.
         if imgui.SmallButton('Profiles##dlac_pm_btn') then
@@ -6120,7 +6139,13 @@ M._renderFrame = function()
         pcall(function() fgMod = require('dlac\\ui\\floatgear'); end);
         if fgMod ~= nil then
             local fgThemed = style ~= nil and style.push();
+            -- It carries its OWN scale slider (Equipped tab), so the UI scale
+            -- steps aside for this one draw -- two scales multiplied would
+            -- make the slider lie about its number (ui\uiscale, AXI-24).
+            local fgScale, fgTok = nil, false;
+            pcall(function() fgScale = require('dlac\\ui\\uiscale'); fgTok = fgScale.suspend(); end);
             pcall(fgMod.render);
+            if fgScale ~= nil then pcall(fgScale.resume, fgTok); end
             if fgThemed then style.pop(); end
         end
     end
@@ -6248,8 +6273,13 @@ end;
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     local bracket = style ~= nil and type(style.frameBegin) == 'function';
     if bracket then style.frameBegin(); end
+    -- THE UI SCALE (AXI-24): a resized font around everything dlac draws this
+    -- frame. Function-scoped require -- no new chunk local (hard rule 1).
+    local scaler = nil;
+    pcall(function() scaler = require('dlac\\ui\\uiscale'); scaler.frameBegin(); end);
     local ok, err = pcall(M._renderFrame);
-    -- Closed on every path, an error included: the style stack is shared.
+    -- Closed on every path, an error included: the style AND font stacks are shared.
+    if scaler ~= nil then pcall(scaler.frameEnd); end
     if bracket then style.frameEnd(); end
     if not ok then error(err, 0); end
 end);
@@ -6283,8 +6313,27 @@ ashita.events.register('command', 'dlac-ui', function(e)
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'repair' and sub ~= 'autosync' and sub ~= 'debug'
        and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport'
-       and sub ~= 'gearwarn' and sub ~= 'buildstored' then return; end
+       and sub ~= 'gearwarn' and sub ~= 'buildstored' and sub ~= 'uiscale' then return; end
     e.blocked = true;
+
+    if sub == 'uiscale' then        -- the size of dlac's windows (Menu > Settings; AXI-24)
+        local sc = require('dlac\\ui\\uiscale');
+        if args[2] ~= nil then
+            local v = sc.parse(args[2]);
+            if v == nil then
+                print('[dlac] UI scale: "' .. tostring(args[2]) .. '" is not a size. Try /dl uiscale 80 (60 to 150), or /dl uiscale reset.');
+                return;
+            end
+            sc.set(v);
+            sf.saveUiFlags();          -- persist; command wins over the on-disk value
+        end
+        if not sc.supported() then
+            print('[dlac] UI scale ' .. sc.label(sc.saved()) .. ' is saved, but this Ashita cannot resize the font per addon -- dlac draws at 100% here.');
+        else
+            print('[dlac] UI scale ' .. sc.label(sc.saved()) .. '.  (/dl uiscale 60-150, or /dl uiscale reset)');
+        end
+        return;
+    end
 
     if sub == 'repair' then
         local n = sf.repairGear();

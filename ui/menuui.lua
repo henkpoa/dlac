@@ -519,6 +519,36 @@ local function renderSettingsBody()
         if on then imgui.PopStyleColor(1); end
     end
 
+    -- THE UI SCALE (AXI-24): the size of dlac's own windows, as preset buttons
+    -- rather than a slider -- a slider that resizes the popup it sits in slides
+    -- out from under the mouse mid-drag. /dl uiscale takes any value between.
+    -- Function-scoped require; a missing module costs this one row.
+    pcall(function()
+        local sc = require('dlac\\ui\\uiscale');
+        if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
+            -- '%%': the tip ends in SetTooltip, which is a printf sink.
+            uistyl.helpLabel(imgui, 'Window size:',
+                'How large dlac draws its windows -- text, buttons and all.\nNewer Ashita versions use a bigger interface font than dlac was laid out for;\n80%% is close to the old size.\n\nThe floating equipment window and the job gauges keep their own size settings.\nAny size from 60 to 150: /dl uiscale 85', COL.HEADER);
+        else
+            imgui.TextColored(COL.HEADER, 'Window size:');
+        end
+        if not sc.supported() then
+            imgui.TextColored(COL.DIM, 'Not available on this Ashita version.');
+            return;
+        end
+        local now = sc.saved();
+        for i, v in ipairs(sc.PRESETS) do
+            if i > 1 then imgui.SameLine(0, 4); end
+            local on = (math.abs(v - now) < 0.005);
+            if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+            if imgui.SmallButton(string.format('%d%%##dlacuisc_%d', math.floor(v * 100 + 0.5), i)) and not on then
+                sc.set(v);
+                ui._flagsDirty = true;
+            end
+            if on then imgui.PopStyleColor(1); end
+        end
+    end);
+
     imgui.Separator();
 
     -- Same wording as the tab's own tick (they are ONE flag): "Show all

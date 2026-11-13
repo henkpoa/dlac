@@ -2,6 +2,15 @@
 local imgui = require('imgui');
 local textures = require('dlac\\ui\\filetex');
 local grid = require('dlac\\servers\\ascensionxi\\modules\\stable\\grid');
+-- The UI scale (dlac\ui\uiscale, AXI-24): text follows the scaled font by
+-- itself; every pixel count below goes through px() so the layout follows too.
+-- Absent (an older core), both are the identity and the tab is as it was.
+local uiscale = (function()
+    local ok, m = pcall(require, 'dlac\\ui\\uiscale');
+    return (ok and type(m) == 'table' and type(m.px) == 'function' and type(m.get) == 'function') and m or nil;
+end)();
+local function px(n) return uiscale and uiscale.px(n) or n; end
+local function uiScale() return uiscale and uiscale.get() or 1; end
 local M = {};
 local selected, renameOpen = 2, false;
 local habitatOpen, formFilter, ownershipFilter = false, 'all', 'all';
@@ -23,7 +32,7 @@ end
 
 local function literalTooltip(text)
     imgui.BeginTooltip();
-    imgui.PushTextWrapPos(380);
+    imgui.PushTextWrapPos(px(380));
     local ok, err = pcall(plain, white, text);
     imgui.PopTextWrapPos();
     imgui.EndTooltip();
@@ -63,7 +72,7 @@ end
 local function popup(c)
     if detailsOpen then imgui.OpenPopup('Ability details##bst'); detailsOpen = false; end
     if imgui.BeginPopup('Ability details##bst') then
-        imgui.BeginChild('##bstmovebody', { 480, 420 }, false);
+        imgui.BeginChild('##bstmovebody', { px(480), px(420) }, false);
         if detailMove then abilityInfo(detailMove, nil, true); end
         imgui.EndChild();
         if imgui.Button('Close##bstmove') then imgui.CloseCurrentPopup(); end
@@ -72,7 +81,7 @@ local function popup(c)
     if presetOpen then imgui.OpenPopup('Rename roster##bst'); presetOpen = false; end
     if imgui.BeginPopup('Rename roster##bst') then
         imgui.TextColored(gold, 'ROSTER ' .. slots[presetIndex]);
-        imgui.SetNextItemWidth(210);
+        imgui.SetNextItemWidth(px(210));
         imgui.InputText('Name##preset', presetName, 16);
         tip('3-15 letters.');
         if button('Rename##preset', not c.readOnly and not c.pending and presetName[1] ~= '') then c.preset(3, presetIndex, presetName[1]); imgui.CloseCurrentPopup(); end
@@ -82,7 +91,7 @@ local function popup(c)
     if renameOpen then imgui.OpenPopup('Rename companion##bst'); renameOpen = false; end
     if imgui.BeginPopup('Rename companion##bst') then
         imgui.Text(c.label(selected));
-        imgui.SetNextItemWidth(220);
+        imgui.SetNextItemWidth(px(220));
         imgui.InputText('##nickname', c.names[selected], 24);
         if button('Save', not c.readOnly and not c.pending) then c.rename(selected, c.names[selected][1]); imgui.CloseCurrentPopup(); end
         imgui.SameLine();
@@ -276,17 +285,17 @@ function M.charges(clocks, scale)
     local reduction = 30 - clocks.periodSeconds;
     if reduction > 0 then tooltip = tooltip .. string.format('\nReady Recharge merits: -%ds', reduction); end
     tip(tooltip);
-    return { draw = dl, x = x + pad, y = cellY, width = cellWidth, height = cellHeight, gap = gap, charges = clocks.charges };
+    return { draw = dl, x = x + pad, y = cellY, width = cellWidth, height = cellHeight, gap = gap, charges = clocks.charges, scale = scale };
 end
 
 abilityInfo = function(move, gauge, expanded)
-    imgui.PushTextWrapPos(expanded and 460 or 380);
+    imgui.PushTextWrapPos(px(expanded and 460 or 380));
     plain(gold, move.name);
     imgui.SameLine();
     local x, y = imgui.GetCursorScreenPos();
     local dl = imgui.GetWindowDrawList();
     local _, fontHeight = measure(move.name);
-    local cell = math.max(18, fontHeight or 16);
+    local cell = math.max(px(18), fontHeight or 16);
     for cost = 1, move.charges do paw(dl, x + cell / 2 + (cost - 1) * cell, y + cell / 2, 0.72 * cell / 18, rgba(208, 177, 110)); end
     imgui.Dummy({ move.charges * cell, cell });
     plain(dim, (move.target or 'Companion') .. ' | Lv. ' .. move.level);
@@ -319,7 +328,8 @@ local function readyMoves(entry, gauge)
     imgui.TextColored(dim, 'READY MOVES');
     local width = imgui.GetContentRegionAvail();
     local _, fontHeight = measure('READY');
-    local rowHeight = math.max(24, (fontHeight or 16) + 8);
+    local rowHeight = math.max(px(24), (fontHeight or 16) + 8);
+    local pawStep, pawScale = px(20), 0.72 * uiScale();
     for _, move in ipairs(entry.moves) do
         local x, y = imgui.GetCursorScreenPos();
         local hovered;
@@ -329,13 +339,13 @@ local function readyMoves(entry, gauge)
         hovered = imgui.IsItemHovered();
         local dl = imgui.GetWindowDrawList();
         if hovered then dl:AddRectFilled({ x, y }, { x + width, y + rowHeight }, rgba(191, 159, 89, 0.13), 4); end
-        local iconsLeft = x + width - 3 * 20;
+        local iconsLeft = x + width - 3 * pawStep;
         dl:PushClipRect({ x, y }, { iconsLeft - 6, y + rowHeight }, true);
         dl:AddText({ x + 2, y + 4 }, rgba(148, 156, 168), string.format('%2d', move.level));
         dl:AddText({ x + measure('00') + 12, y + 4 }, rgba(224, 224, 228), move.name);
         dl:PopClipRect();
         for cost = 1, move.charges do
-            paw(dl, iconsLeft + 10 + (cost - 1) * 20, y + rowHeight / 2, 0.72, rgba(208, 177, 110));
+            paw(dl, iconsLeft + pawStep / 2 + (cost - 1) * pawStep, y + rowHeight / 2, pawScale, rgba(208, 177, 110));
         end
         if hovered then
             imgui.SetMouseCursor(ImGuiMouseCursor_Hand or 7);
@@ -352,7 +362,7 @@ local function readyMoves(entry, gauge)
                         local color = missing and rgba(235, 111, 108) or rgba(255, 226, 157);
                         gauge.draw:AddRectFilled({ left, gauge.y }, { left + gauge.width, gauge.y + gauge.height }, rgba(18, 21, 25, 0.42), 5);
                         gauge.draw:AddRect({ left, gauge.y }, { left + gauge.width, gauge.y + gauge.height }, color, 5, 0, 2);
-                        paw(gauge.draw, left + gauge.width / 2, gauge.y + 14, 1, color);
+                        paw(gauge.draw, left + gauge.width / 2, gauge.y + 14 * (gauge.scale or 1), gauge.scale or 1, color);
                     end
                 end
             end
@@ -393,10 +403,10 @@ function M.render(c)
     imgui.Spacing();
 
     local available, bodyHeight = imgui.GetContentRegionAvail();
-    local sideBySide = available >= 850;
-    local detailWidth = sideBySide and math.max(280, math.min(360, math.floor(available * 0.25))) or available;
+    local sideBySide = available >= px(850);
+    local detailWidth = sideBySide and math.max(px(280), math.min(px(360), math.floor(available * 0.25))) or available;
     local width = sideBySide and available - detailWidth - 8 or available;
-    imgui.BeginChild('##bstcollection', { width, sideBySide and 0 or math.max(420, bodyHeight * 0.65) }, false);
+    imgui.BeginChild('##bstcollection', { width, sideBySide and 0 or math.max(px(420), bodyHeight * 0.65) }, false);
     if selectedRoster == nil or selectedRoster == 0 and state.activeRoster ~= 0 then selectedRoster = state.activeRoster; end
     if state.activeRoster == 0 then
         if imgui.RadioButton('Current##roster0', selectedRoster == 0) then selectedRoster = 0; end
@@ -427,24 +437,24 @@ function M.render(c)
         tip('Assignments and removals save automatically at the Stable Master.');
     end
     imgui.Spacing();
-    local stacked = width < 600;
+    local stacked = width < px(600);
     local slotWidth = stacked and width or math.floor((width - 16) / 3);
     for slot = 1, 3 do
         if slot > 1 and not stacked then imgui.SameLine(); end
         imgui.PushID('bst-roster-' .. slot);
-        imgui.BeginChild('##slot', { slotWidth, 132 }, true);
+        imgui.BeginChild('##slot', { slotWidth, px(132) }, true);
         local id = roster.roster[slot];
         imgui.TextColored(gold, slots[slot]); imgui.SameLine();
         imgui.TextColored(isActive and state.active == slot and green or dim, isActive and state.active == slot and 'CALLED' or 'SLOT');
         if id ~= 0 then
-            portrait(c, id, { 54, 54 }, false); imgui.SameLine();
+            portrait(c, id, { px(54), px(54) }, false); imgui.SameLine();
             imgui.BeginGroup();
             imgui.TextWrapped(c.label(id));
             local pet = state.owned[id];
             imgui.TextColored(pet and pet.dead and { 0.9, 0.4, 0.4, 1 } or dim, pet and pet.dead and 'Fallen' or 'Ready');
             imgui.EndGroup();
         else
-            imgui.TextColored(dim, '+  Empty slot'); imgui.Dummy({ 0, 30 });
+            imgui.TextColored(dim, '+  Empty slot'); imgui.Dummy({ 0, px(30) });
         end
         local canAssign = state.owned[selected] and not rosterSlot(roster, selected);
         if button('Assign selected##slot', not c.readOnly and not c.pending and canAssign) then assign(slot, selected); end
@@ -460,9 +470,9 @@ function M.render(c)
     end
 
     imgui.Spacing();
-    imgui.SetNextItemWidth(math.max(120, math.min(240, width - 210)));
+    imgui.SetNextItemWidth(math.max(px(120), math.min(px(240), width - px(210))));
     imgui.InputText('Search##bst', search, 64);
-    if width >= 900 then imgui.SameLine(); end
+    if width >= px(900) then imgui.SameLine(); end
     for index, filter in ipairs({ { 'all', 'All companions' }, { 'regular', 'Regular' }, { 'shiny', 'Shinies (' .. shiny .. ')' } }) do
         if index > 1 then imgui.SameLine(); end
         if imgui.RadioButton(filter[2] .. '##form', formFilter == filter[1]) then
@@ -477,13 +487,14 @@ function M.render(c)
     end
 
     local gridWidth, remainingHeight = imgui.GetContentRegionAvail();
-    local habitatHeight = habitatOpen and math.min(250, math.max(120, remainingHeight * 0.4)) or 0;
-    local columns = math.max(1, math.floor(gridWidth / 155));
+    local habitatHeight = habitatOpen and math.min(px(250), math.max(px(120), remainingHeight * 0.4)) or 0;
+    local columns = math.max(1, math.floor(gridWidth / px(155)));
     local cardWidth = math.floor((gridWidth - 18 - (columns - 1) * 8) / columns);
-    imgui.BeginChild('##bstgrid', { gridWidth, math.max(120, remainingHeight - (habitatOpen and habitatHeight + 36 or 0)) }, false);
+    imgui.BeginChild('##bstgrid', { gridWidth, math.max(px(120), remainingHeight - (habitatOpen and habitatHeight + 36 or 0)) }, false);
     local cards = grid.cards(c.catalog, state, search[1], formFilter, ownershipFilter);
     local visible = #cards;
-    local rowHeight = cardWidth + 98;
+    local cardHeight = cardWidth + px(90);   -- the portrait, then four lines of text
+    local rowHeight = cardHeight + 8;
     local origin = imgui.GetCursorPosY();
     local first, last, total = grid.rows(visible, columns, rowHeight, imgui.GetScrollY(), imgui.GetWindowHeight(), origin);
     imgui.PushStyleVar(ImGuiStyleVar_ItemSpacing or 0, { 8, 8 });
@@ -499,14 +510,14 @@ function M.render(c)
             imgui.PushID('bst-card-' .. id);
             local x, y = imgui.GetCursorScreenPos();
             local hovered = imgui.IsWindowHovered(ImGuiHoveredFlags_ChildWindows or 1) and
-                imgui.IsMouseHoveringRect({ x, y }, { x + cardWidth, y + cardWidth + 90 }, true);
+                imgui.IsMouseHoveringRect({ x, y }, { x + cardWidth, y + cardHeight }, true);
             if hovered and imgui.IsMouseClicked(0) then select(id); end
             local highlighted = hovered or selected == id;
             if highlighted then
                 imgui.PushStyleColor(ImGuiCol_ChildBg, hovered and { 0.16, 0.17, 0.21, 1 } or { 0.13, 0.12, 0.10, 1 });
                 imgui.PushStyleColor(ImGuiCol_Border, selected == id and gold or { 0.60, 0.65, 0.75, 1 });
             end
-            imgui.BeginChild('##companion', { cardWidth, cardWidth + 90 }, true);
+            imgui.BeginChild('##companion', { cardWidth, cardHeight }, true);
             portrait(c, id, { cardWidth - 16, cardWidth - 16 }, not pet);
             -- Put the shiny badge on its own line and wrap long names instead
             -- of clipping both the name and ownership inside a small card.
@@ -532,7 +543,7 @@ function M.render(c)
     habitats(c, habitatHeight);
     imgui.EndChild();
     if sideBySide then imgui.SameLine(); end
-    imgui.BeginChild('##bstdetails', { detailWidth, sideBySide and 0 or 400 }, true);
+    imgui.BeginChild('##bstdetails', { detailWidth, sideBySide and 0 or px(400) }, true);
     local pet, entry = state.owned[selected], c.catalog[math.floor(selected / 2)];
     -- Every companion reserves the same identity rows, including unnamed forms.
     imgui.Text(c.label(selected));
@@ -543,11 +554,11 @@ function M.render(c)
     end
     imgui.TextColored(dim, pet and pet.name ~= '' and entry.name or (selected % 2 == 1 and 'Shiny' or 'Regular'));
     imgui.TextColored(dim, entry.family .. ' family');
-    local portraitSize = math.min(220, detailWidth - 32);
+    local portraitSize = math.min(px(220), detailWidth - 32);
     portrait(c, selected, { portraitSize, portraitSize }, not pet);
     imgui.TextColored(dim, pet and pet.level > 0 and string.format('Lv.%d   HP %d   TP %d', pet.level, pet.hp, pet.tp) or pet and 'Registered' or 'Not registered');
     local _, fontHeight = measure('Rename');
-    local actionHeight = math.max(24, (fontHeight or 16) + 8);
+    local actionHeight = math.max(px(24), (fontHeight or 16) + 8);
     if pet then
         if button('Rename', not c.readOnly and not c.pending, { 0, actionHeight }) then renameOpen = true; end
         local slot = rosterSlot(roster, selected);
@@ -570,7 +581,7 @@ function M.render(c)
     end
     imgui.Spacing();
     local gauge;
-    if c.combatEnabled then gauge = M.charges(c.cooldowns); end
+    if c.combatEnabled then gauge = M.charges(c.cooldowns, uiScale()); end
     readyMoves(entry, gauge);
     if #state.captures > 0 then
         imgui.Spacing(); imgui.TextColored(gold, 'CAPTURED JUGS');
