@@ -12099,3 +12099,23 @@ in somewhere?" Henrik: "Can you fix the DLAC version of this scaling then?"
 - Tests: new `tests/uiscale.lua` (86 checks, wired into CI); smoke_ui 1778 and
   the Stable suites unchanged, WSL the same.
 - Owed: the in-game round in `docs/reference/axi24-ui-scale.md`.
+
+## 2026-11-13: Settings in tabs (`2026.11.13b`)
+
+Henrik, after the Window size row landed: "We need to fix the settings menu, it
+only grows on height. Maybe we should make tabs to sectionize it better?"
+
+- The Settings popup was one column of 26 ticks plus three button rows, a row
+  taller with every feature. It is now four tabs (`ui/menuui.lua`):
+  **Display** (open mode, Window size, the floating windows and monitors),
+  **Gear** (Repair gear data, the library and Auto-build switches),
+  **Features** (tabs and menu rows, the two lists side by side),
+  **Advanced** (Debug mode, the two other-addon switches, the server pack).
+- No setting was added, removed or renamed; the "Also reachable where they are
+  used" divider is gone because the tabs do that job.
+- The popup keeps a least width (`M._SETTINGS_W`, scaled) so it does not change
+  width between tabs. A page that throws still closes its tab. A binding
+  without the tab API gets the four pages one under the other.
+- Tests: smoke_ui MN12f-r (tab order, per-page counts, stack balance on a
+  throwing page, the no-tabs fallback), 1797 checks.
+- Not checked in game.

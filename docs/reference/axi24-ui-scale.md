@@ -11,7 +11,7 @@ screen; the Stable tab, the widest one, no longer fit comfortably at 1080p.
 
 ## What it does
 
-- **Menu > Settings > Window size**: 70 / 80 / 90 / 100 / 110 / 125 / 150%. Saved per
+- **Menu > Settings > Display > Window size**: 70 / 80 / 90 / 100 / 110 / 125 / 150%. Saved per
   character in `uiflags.lua` (`uiscale`). 100% is the default, so nothing changes
   for anyone who does not touch it. 80% is close to the old size.
 - **`/dl uiscale 85`** takes any size from 60 to 150; `/dl uiscale reset` returns to
@@ -53,7 +53,7 @@ so text can look soft above 100%.
 Built and tested headless only (`tests/uiscale.lua`, 86 checks). Owed in game, on
 **both** clients (AscensionXI and CatsEyeXI):
 
-1. Settings > Window size > 80%: text shrinks in the main window and the window
+1. Settings > Display > Window size > 80%: text shrinks in the main window and the window
    itself gets smaller; the Stable tab shows more, smaller cards.
 2. `/addon reload dlac`: the size is remembered.
 3. The floating equipment window and the job gauges do not change size.
@@ -63,6 +63,6 @@ Built and tested headless only (`tests/uiscale.lua`, 86 checks). Owed in game, o
 ## Wiki text (DLAC page, Settings section)
 
 > **Window size.** If dlac's windows are too large on your screen, open
-> **Menu > Settings** and pick a **Window size** (70% to 150%), or type
+> **Menu > Settings > Display** and pick a **Window size** (70% to 150%), or type
 > `/dl uiscale 80`. The floating equipment window and the job gauges have their
 > own size settings.
