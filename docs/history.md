@@ -12071,3 +12071,70 @@ if there is a real problem."
   Sweep: 31 new and re-pointed mutants; the full sweep 222, 221 killed, 1 accepted (C21, as before), 0 open.
 - Owed: the live checks (a reload in game, a fresh login, one zone line), then
   the AscensionXI pin.
+
+## 2026-11-13: Window size, a UI scale for dlac's windows (`2026.11.13a`)
+
+Ticket AXI-24 (Fallen, #suggestions): "With stables being released, UI windows
+getting huge on my 1080p screens - can we get some sort of addon scaling built
+in somewhere?" Henrik: "Can you fix the DLAC version of this scaling then?"
+
+- **The cause.** Ashita 4.3 raised its default interface font from 14px to
+  18px; dlac was laid out for the smaller one.
+- **The setting.** Menu > Settings > Window size (70 to 150% as buttons) and
+  `/dl uiscale <60-150|reset>`, saved per character as `uiscale` in
+  uiflags.lua. 100% is the default.
+- **How.** `ui/uiscale.lua` pushes a resized copy of the current font once per
+  frame around gearui's present hook and pops it in the same frame; pixel
+  counts in the source go through `uiscale.px`. Converted: the main window's
+  default and minimum size, and the whole Stable tab. A change of scale resizes
+  the main window by the same factor once.
+- **Left alone.** The floating equipment window and the Ready / PLD / WHM
+  gauges keep their own scale settings. Fixed pixel widths in the other tabs
+  are not converted yet.
+- **Both Ashitas** (Henrik: "this will be both CEXI and AXI, so needs to work
+  for both"). 4.3 gets `PushFont(nil, size)`. The older client has no sized
+  push, so the current font's `Scale` is set, the font pushed and `Scale`
+  restored at once, the way CatsEyeXI's partyfinder scales text. The first
+  such push is checked; one that did not move the font size is taken back.
+- Tests: new `tests/uiscale.lua` (86 checks, wired into CI); smoke_ui 1778 and
+  the Stable suites unchanged, WSL the same.
+- Owed: the in-game round in `docs/reference/axi24-ui-scale.md`.
+
+## 2026-11-13: Settings in tabs (`2026.11.13b`)
+
+Henrik, after the Window size row landed: "We need to fix the settings menu, it
+only grows on height. Maybe we should make tabs to sectionize it better?"
+
+- The Settings popup was one column of 26 ticks plus three button rows, a row
+  taller with every feature. It is now four tabs (`ui/menuui.lua`):
+  **Display** (open mode, Window size, the floating windows and monitors),
+  **Gear** (Repair gear data, the library and Auto-build switches),
+  **Features** (tabs and menu rows, the two lists side by side),
+  **Advanced** (Debug mode, the two other-addon switches, the server pack).
+- No setting was added, removed or renamed; the "Also reachable where they are
+  used" divider is gone because the tabs do that job.
+- The popup keeps a least width (`M._SETTINGS_W`, scaled) so it does not change
+  width between tabs. A page that throws still closes its tab. A binding
+  without the tab API gets the four pages one under the other.
+- Tests: smoke_ui MN12f-r (tab order, per-page counts, stack balance on a
+  throwing page, the no-tabs fallback), 1797 checks.
+- Not checked in game.
+
+## 2026-11-13: Window size, fixed sizes in Sets / Triggers follow it (`2026.11.13c`)
+
+Henrik's first in-game look at a large size: the Sets toolbar ("Comm", "Weight")
+and the Triggers toolbar were cut off at the bottom, empty slot boxes cut their
+labels ("Sub", "Rng", "Amm"), and the Triggers section list cut "Blueprints" and
+"Mode library".
+
+- Cause: buttons with a size written in pixels (`{ 62, 22 }`, `{ 0, 22 }`) keep
+  that size while the text inside grows.
+- Every `Button` / `SmallButton` / `Selectable` size in `gearui`, `triggersui`,
+  `equippedui` and `weightsui` now goes through `uiscale.px` (90 lines). Written
+  inline as `require('dlac\\ui\\uiscale').px(n)`: no new chunk local or upvalue
+  in files that sit at LuaJIT's limits.
+- The Sets / Equipped slot grid (box and height), the stats panel width and the
+  Triggers section list width follow the scale too. The floating equipment
+  window passes its own box size and is unchanged.
+- At 100% every number is the one it was.
+- Not checked in game after the change.

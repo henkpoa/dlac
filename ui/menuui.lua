@@ -480,23 +480,25 @@ end
 -- ---------------------------------------------------------------------------
 -- The Settings panel.
 -- ---------------------------------------------------------------------------
-local function renderSettingsBody()
+-- Source pixels at dlac's UI scale (ui\uiscale); the identity when it is absent.
+local function px(n)
+    local ok, v = pcall(function() return require('dlac\\ui\\uiscale').px(n); end);
+    return (ok and type(v) == 'number') and v or n;
+end
+
+-- ---------------------------------------------------------------------------
+-- The Settings panel, in TABS (Henrik 2026-11-13: "it only grows on height.
+-- Maybe we should make tabs to sectionize it better?"). It was one column of
+-- ~26 ticks that got a row taller with every feature; each tab is now a short
+-- page, and Features lays its two lists side by side.
+--
+--   Display   how and where dlac's windows show
+--   Gear      the gear library and Auto-build
+--   Features  which tabs / menu rows exist on this character
+--   Advanced  debug, other addons, the server pack
+-- ---------------------------------------------------------------------------
+local function setDisplay()
     local ui, COL = D.ui, D.COL;
-    local sf, optim = D.sf, D.optim;
-
-    imgui.TextColored(COL.HEADER, 'Settings');
-    imgui.TextColored(COL.DIM, 'Remembered for this character.');
-    imgui.Separator();
-
-    if sf ~= nil and type(sf.repairGear) == 'function' then
-        if imgui.Button('Repair gear data##dlac_catalogrepair') then
-            local n = sf.repairGear();
-            if n == 0 then print('[dlac] gear data check finished. Any repair errors are shown in chat.'); end
-        end
-        if imgui.IsItemHovered() then
-            imgui.SetTooltip('Correct equipment slots, levels and jobs from the server catalog.\nA backup is kept and saved set references continue to work.\nIf repairs are needed, DLAC reloads; commit pending set edits first.');
-        end
-    end
 
     -- The 3-value open setting, as a segmented button row. BeginCombo would work, but
     -- three tinted buttons need no popup-inside-a-popup and read at a glance (the
@@ -519,7 +521,71 @@ local function renderSettingsBody()
         if on then imgui.PopStyleColor(1); end
     end
 
+    -- THE UI SCALE (AXI-24): the size of dlac's own windows, as preset buttons
+    -- rather than a slider -- a slider that resizes the popup it sits in slides
+    -- out from under the mouse mid-drag. /dl uiscale takes any value between.
+    -- Function-scoped require; a missing module costs this one row.
+    pcall(function()
+        local sc = require('dlac\\ui\\uiscale');
+        if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
+            -- '%%': the tip ends in SetTooltip, which is a printf sink.
+            uistyl.helpLabel(imgui, 'Window size:',
+                'How large dlac draws its windows -- text, buttons and all.\nNewer Ashita versions use a bigger interface font than dlac was laid out for;\n80%% is close to the old size.\n\nThe floating equipment window and the job gauges keep their own size settings.\nAny size from 60 to 150: /dl uiscale 85', COL.HEADER);
+        else
+            imgui.TextColored(COL.HEADER, 'Window size:');
+        end
+        if not sc.supported() then
+            imgui.TextColored(COL.DIM, 'Not available on this Ashita version.');
+            return;
+        end
+        local now = sc.saved();
+        for i, v in ipairs(sc.PRESETS) do
+            if i > 1 then imgui.SameLine(0, 4); end
+            local on = (math.abs(v - now) < 0.005);
+            if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+            if imgui.SmallButton(string.format('%d%%##dlacuisc_%d', math.floor(v * 100 + 0.5), i)) and not on then
+                sc.set(v);
+                ui._flagsDirty = true;
+            end
+            if on then imgui.PopStyleColor(1); end
+        end
+    end);
+
     imgui.Separator();
+
+    settingCheck('gearfloat', 'Floating equipment window',
+        'The small always-on-screen equipment window, independent of this one.\nAlso on the Equipped tab.',
+        function() return ui._gearFloat == true; end,
+        function(v) ui._gearFloat = v; end);
+
+    settingCheck('tpfloat', 'Teleports floating button',
+        'The always-on-screen Teleports button, independent of this window.\nAlso in the Teleports menu footer.',
+        function() return ui._tpFloat == true; end,
+        function(v) ui._tpFloat = v; end);
+
+    settingCheck('tgmon', 'Trigger monitor',
+        'The live window showing which triggers fired on your last action.\nAlso on the Triggers tab.',
+        function() return ui._tgMon == true; end,
+        function(v) ui._tgMon = v; end);
+
+    settingCheck('arbmon', 'Arbiter monitor',
+        'The live window showing what WON each equipment slot on the last gear\ndecision and why -- hover a slot for the full contest -- plus a history of\ndecisions. Also under Gear Helpers > Claim Priority.',
+        function() return ui._arbMon == true; end,
+        function(v) ui._arbMon = v; end);
+end
+
+local function setGear()
+    local ui, sf, optim = D.ui, D.sf, D.optim;
+
+    if sf ~= nil and type(sf.repairGear) == 'function' then
+        if imgui.Button('Repair gear data##dlac_catalogrepair') then
+            local n = sf.repairGear();
+            if n == 0 then print('[dlac] gear data check finished. Any repair errors are shown in chat.'); end
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Correct equipment slots, levels and jobs from the server catalog.\nA backup is kept and saved set references continue to work.\nIf repairs are needed, DLAC reloads; commit pending set edits first.');
+        end
+    end
 
     -- Same wording as the tab's own tick (they are ONE flag): "Show all
     -- equipment" read as a preference and nobody found it here.
@@ -558,15 +624,7 @@ local function renderSettingsBody()
                 -- should come on the job you are standing on, not the next one.
                 if v then pcall(function() require("dlac\\gear\\gearcheck").rearm(); end); end
             end);
-
-        settingCheck('debug', 'Debug mode',
-            'Reveal the developer tools: the Scan / Stage / Commit / Augs rows in this\nmenu, plus extra chat output. (Same switch as /dl debug.)',
-            function() return sf.flags.debug == true; end,
-            function(v) sf.flags.debug = v; end);
     end
-
-    imgui.Separator();
-    imgui.TextColored(COL.DIM, 'Also reachable where they are used:');
 
     if optim ~= nil then
         settingCheck('buildmax', 'Build as lv.75',
@@ -577,26 +635,56 @@ local function renderSettingsBody()
                 if type(ui.buildMax) == 'table' then ui.buildMax[1] = v; end
             end);
     end
+end
 
-    settingCheck('gearfloat', 'Floating equipment window',
-        'The small always-on-screen equipment window, independent of this one.\nAlso on the Equipped tab.',
-        function() return ui._gearFloat == true; end,
-        function(v) ui._gearFloat = v; end);
+-- FEATURES (lib\featuregate): which dlac surfaces exist for this character.
+-- Defaults come from the server pack (servers\<id>\features.lua); a tick here
+-- is the character's own override and is remembered like every other Setting.
+-- Hiding a tab or row never unloads anything -- it is the surface that goes,
+-- not the module. Two lists, side by side: stacked they were the tallest part
+-- of the old panel.
+local function setFeatures()
+    local COL = D.COL;
+    if fgate == nil then
+        imgui.TextColored(COL.DIM, 'Not available.');
+        return;
+    end
+    if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
+        uistyl.helpLabel(imgui, 'Features',
+            'Which parts of dlac exist on this character.\nThe defaults come from the server pack -- what is proven on this\nserver starts on, the rest starts off. Your ticks here override the\ndefaults and are remembered.', COL.HEADER);
+    else
+        imgui.TextColored(COL.HEADER, 'Features');
+    end
+    imgui.BeginGroup();
+    imgui.TextColored(COL.DIM, 'Tabs in the main window:');
+    for _, t in ipairs(fgate.tabOptions()) do
+        settingCheck('ftab_' .. t.key, t.label,
+            'Show the ' .. t.label .. ' tab in the main dlac window.',
+            function() return fgate.enabled('tab', t.key) == true; end,
+            function(v) fgate.set('tab', t.key, v); end);
+    end
+    imgui.EndGroup();
+    imgui.SameLine(0, px(28));
+    imgui.BeginGroup();
+    imgui.TextColored(COL.DIM, 'Rows in this menu:');
+    for _, r in ipairs(fgate.MENU) do
+        settingCheck('fmenu_' .. r.key, r.label,
+            'Show the ' .. r.label .. ' row in the header menu.',
+            function() return fgate.enabled('menu', r.key) == true; end,
+            function(v) fgate.set('menu', r.key, v); end);
+    end
+    imgui.EndGroup();
+end
 
-    settingCheck('tpfloat', 'Teleports floating button',
-        'The always-on-screen Teleports button, independent of this window.\nAlso in the Teleports menu footer.',
-        function() return ui._tpFloat == true; end,
-        function(v) ui._tpFloat = v; end);
+local function setAdvanced()
+    local COL, sf = D.COL, D.sf;
+    if sf ~= nil then
 
-    settingCheck('tgmon', 'Trigger monitor',
-        'The live window showing which triggers fired on your last action.\nAlso on the Triggers tab.',
-        function() return ui._tgMon == true; end,
-        function(v) ui._tgMon = v; end);
-
-    settingCheck('arbmon', 'Arbiter monitor',
-        'The live window showing what WON each equipment slot on the last gear\ndecision and why -- hover a slot for the full contest -- plus a history of\ndecisions. Also under Gear Helpers > Claim Priority.',
-        function() return ui._arbMon == true; end,
-        function(v) ui._arbMon = v; end);
+        settingCheck('debug', 'Debug mode',
+            'Reveal the developer tools: the Scan / Stage / Commit / Augs rows in this\nmenu, plus extra chat output. (Same switch as /dl debug.)',
+            function() return sf.flags.debug == true; end,
+            function(v) sf.flags.debug = v; end);
+    end
 
     settingCheck('stream', 'Gear data stream (this session)',
         'Broadcast every gear decision to other addons on this machine (the\nIntegration surface -- e.g. a damage parser correlating your gear). Session\nonly: never saved, dies on logout. Same switch as /dl stream.',
@@ -668,36 +756,55 @@ local function renderSettingsBody()
             end
         end
     end);
+end
 
-    -- ------------------------------------------------------------------
-    -- FEATURES (lib\featuregate): which dlac surfaces exist for this
-    -- character. Defaults come from the server pack (servers\<id>\
-    -- features.lua); a tick here is the character's own override and is
-    -- remembered like every other Setting. Hiding a tab or row never
-    -- unloads anything -- it is the surface that goes, not the module.
-    -- ------------------------------------------------------------------
-    if fgate ~= nil then
-        imgui.Separator();
-        if uistyl ~= nil and type(uistyl.helpLabel) == 'function' then
-            uistyl.helpLabel(imgui, 'Features',
-                'Which parts of dlac exist on this character.\nThe defaults come from the server pack -- what is proven on this\nserver starts on, the rest starts off. Your ticks here override the\ndefaults and are remembered.', COL.HEADER);
-        else
-            imgui.TextColored(COL.HEADER, 'Features');
+-- The tab roster. `key` is the ImGui id, so renaming a label never loses the
+-- selected tab. Exported for the headless suite.
+local SETTINGS_TABS = {
+    { key = 'display',  label = 'Display',  draw = setDisplay },
+    { key = 'gear',     label = 'Gear',     draw = setGear },
+    { key = 'features', label = 'Features', draw = setFeatures },
+    { key = 'advanced', label = 'Advanced', draw = setAdvanced },
+};
+M._SETTINGS_TABS = SETTINGS_TABS;
+M._SETTINGS_W = 430;   -- the panel's least width, so it does not jump between tabs
+
+local function renderSettingsBody()
+    local COL = D.COL;
+
+    imgui.TextColored(COL.HEADER, 'Settings');
+    imgui.SameLine(0, 8);
+    imgui.TextColored(COL.DIM, 'Remembered for this character.');
+    -- A popup is as wide as its widest row: without this floor the panel would
+    -- change width with every tab, and the tab strip would move under the mouse.
+    imgui.Dummy({ px(M._SETTINGS_W), 0 });
+
+    -- A stripped binding without tabs gets the same four pages, one under the
+    -- other (the weightsui guard).
+    local hasTabs = type(imgui.BeginTabBar) == 'function'
+        and type(imgui.BeginTabItem) == 'function'
+        and type(imgui.EndTabItem) == 'function'
+        and type(imgui.EndTabBar) == 'function';
+    if not hasTabs then
+        for _, t in ipairs(SETTINGS_TABS) do
+            imgui.Separator();
+            imgui.TextColored(COL.HEADER, t.label);
+            t.draw();
         end
-        imgui.TextColored(COL.DIM, 'Tabs in the main window:');
-        for _, t in ipairs(fgate.tabOptions()) do
-            settingCheck('ftab_' .. t.key, t.label,
-                'Show the ' .. t.label .. ' tab in the main dlac window.',
-                function() return fgate.enabled('tab', t.key) == true; end,
-                function(v) fgate.set('tab', t.key, v); end);
+        return;
+    end
+    if imgui.BeginTabBar('##dlac_settabs', ImGuiTabBarFlags_None) then
+        for _, t in ipairs(SETTINGS_TABS) do
+            if imgui.BeginTabItem(t.label .. '###dlacsettab_' .. t.key) then
+                -- Guarded per page: a page that throws must still reach its
+                -- EndTabItem, or the tab stack tears (native UB, no pcall above
+                -- this catches it).
+                local ok, err = pcall(t.draw);
+                imgui.EndTabItem();
+                if not ok then imgui.EndTabBar(); error(err, 0); end
+            end
         end
-        imgui.TextColored(COL.DIM, 'Rows in this menu:');
-        for _, r in ipairs(fgate.MENU) do
-            settingCheck('fmenu_' .. r.key, r.label,
-                'Show the ' .. r.label .. ' row in the header menu.',
-                function() return fgate.enabled('menu', r.key) == true; end,
-                function(v) fgate.set('menu', r.key, v); end);
-        end
+        imgui.EndTabBar();
     end
 end
 

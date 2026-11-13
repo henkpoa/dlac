@@ -148,7 +148,11 @@ sf.saveUiFlags = function()
         -- also what every uiflags.lua written before 2026-08-26 reads as.
         local fOn, fOff = '', '';
         pcall(function() fOn, fOff = require('dlac\\lib\\featuregate').export(); end);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q }\n',
+        -- The UI scale (ui\uiscale, AXI-24): the player's SAVED choice, which
+        -- an Ashita that cannot honour it still keeps for the day it can.
+        local uisc = 1.0;
+        pcall(function() uisc = require('dlac\\ui\\uiscale').saved(); end);
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q, uiscale = %.2f }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
@@ -158,7 +162,7 @@ sf.saveUiFlags = function()
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
             tostring(sf.flags.gearwarn ~= false),
             tostring(sf.flags.buildstored ~= false),
-            tostring(fOn), tostring(fOff)));
+            tostring(fOn), tostring(fOff), tonumber(uisc) or 1.0));
     end);
 end
 
@@ -235,6 +239,11 @@ sf.loadUiFlags = function()
             -- "Show all" -- absent key = OFF, its long-standing default.
             if type(t.showall) == 'boolean' and type(ui.showAll) == 'table' then
                 ui.showAll[1] = t.showall;
+            end
+            -- The UI scale: absent key (every uiflags.lua before 2026-11-13) =
+            -- 100%, the size those installs had. Quiet -- a load moves nothing.
+            if type(t.uiscale) == 'number' then
+                pcall(function() require('dlac\\ui\\uiscale').set(t.uiscale, true); end);
             end
             -- The character's feature flips (Menu > Settings > Features).
             -- Absent keys (every pre-2026-08-26 uiflags.lua) = no flips: the

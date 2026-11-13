@@ -339,7 +339,7 @@ local hasMenu = (imgui ~= nil)
 local _buffPickQ = { '' };
 local function buffPickCombo(comboId, label)
     local picked = nil;
-    if imgui.Button(label .. '###' .. comboId .. '_btn', { 170, 0 }) then
+    if imgui.Button(label .. '###' .. comboId .. '_btn', { require('dlac\\ui\\uiscale').px(170), 0 }) then
         _buffPickQ[1] = '';
         imgui.OpenPopup(comboId .. '_pop');
     end
@@ -1286,7 +1286,7 @@ end
 local _setPickQ = { '' };
 local function setPickCombo(comboId, label, exclude, includeNone)
     local picked = nil;
-    if imgui.Button(label .. '###' .. comboId .. '_btn', { 170, 0 }) then
+    if imgui.Button(label .. '###' .. comboId .. '_btn', { require('dlac\\ui\\uiscale').px(170), 0 }) then
         _setPickQ[1] = '';
         imgui.OpenPopup(comboId .. '_pop');
     end
@@ -1352,7 +1352,7 @@ local function renderGearWarnings(noHeader)
         local flags = (n > 0 and ImGuiTreeNodeFlags_DefaultOpen ~= nil) and ImGuiTreeNodeFlags_DefaultOpen or 0;
         if not imgui.CollapsingHeader(string.format('Gear warnings (%d)###trgsec_warn', n), flags) then return; end
     end
-    if imgui.Button('Re-check now##trgwarnrefresh', { 0, 20 }) then
+    if imgui.Button('Re-check now##trgwarnrefresh', { 0, require('dlac\\ui\\uiscale').px(20) }) then
         pcall(gc.invalidate);
         pcall(gc.chatWarn, true);
     end
@@ -1600,7 +1600,7 @@ local function renderModeDeleteWindow()
             end
         end
         imgui.Spacing();
-        if imgui.Button('Delete mode + ALL references##modedelall', { 0, 22 }) then
+        if imgui.Button('Delete mode + ALL references##modedelall', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             local rr = modeCondRefs(trig.data, d.name, true);
             local sr = (deps ~= nil and type(deps.modeSetRefs) == 'function')
                 and deps.modeSetRefs(d.name, true) or { touched = {} };
@@ -1616,13 +1616,13 @@ local function renderModeDeleteWindow()
             imgui.SetTooltip('Rules gated only on this mode are removed; a mode-list rule just loses the name.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need /dl reload.');
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Delete mode only##modedelonly', { 0, 22 }) then
+        if imgui.Button('Delete mode only##modedelonly', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             deleteModeNow(d.name);
             trigSetStatus(string.format('Deleted mode "%s" -- its references remain as listed.', d.name), false);
             modeUI.del = nil;
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Cancel##modedelcancel', { 0, 22 }) then modeUI.del = nil; end
+        if imgui.Button('Cancel##modedelcancel', { 0, require('dlac\\ui\\uiscale').px(22) }) then modeUI.del = nil; end
     end
     imgui.End();
     if not open[1] then modeUI.del = nil; end
@@ -1732,7 +1732,7 @@ local function renderModeLocksBody(mode, def, cond)
             end
         end
 
-        imgui.BeginChild('##dlac_mlrows', { 0, -58 }, false);
+        imgui.BeginChild('##dlac_mlrows', { 0, -require('dlac\\ui\\uiscale').px(58) }, false);
         for _, slot in ipairs(LOCK_SLOTS) do
             local sn = (cur ~= nil) and cur[slot] or nil;
             imgui.TextColored(sn and COL_SCORE or COL_DIM, string.format('%-6s', slot));
@@ -1805,7 +1805,7 @@ local function renderModeLocksBody(mode, def, cond)
             end
         end
 
-        if imgui.Button('Save & apply##mlsave', { 0, 22 }) then
+        if imgui.Button('Save & apply##mlsave', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             trigCommit();
             trigSetStatus(string.format('Mode locks saved for %s (%d slot%s).',
                 tostring(L.cond), nLocked, (nLocked == 1) and '' or 's'), false);
@@ -1814,7 +1814,7 @@ local function renderModeLocksBody(mode, def, cond)
             imgui.SetTooltip('Writes the trigger file and reloads it -- live immediately.');
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Clear this value##mlclear', { 0, 22 }) then
+        if imgui.Button('Clear this value##mlclear', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             if type(def.locks) == 'table' then
                 def.locks[L.cond] = nil;
                 if next(def.locks) == nil then def.locks = nil; end
@@ -1823,7 +1823,7 @@ local function renderModeLocksBody(mode, def, cond)
         end
         if imgui.IsItemHovered() then imgui.SetTooltip(esc('Remove every lock for  mode = ' .. tostring(L.cond))); end
         imgui.SameLine(0, 8);
-        if imgui.Button('Close##mlclose', { 0, 22 }) then close = true; end
+        if imgui.Button('Close##mlclose', { 0, require('dlac\\ui\\uiscale').px(22) }) then close = true; end
         if trig.dirty then
             imgui.SameLine(0, 10);
             imgui.TextColored(COL_ERR, 'uncommitted');
@@ -2445,7 +2445,7 @@ local function renderModeBox(m, def, cur, colX)
     if isCycle then
         local shown = (type(cur) == 'string') and cur or (def.values[1] or '?');
         if styled then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.42, 0.58, 1.0 }); end
-        if imgui.Button(string.format('%s: %s##trgmode_%s', m, shown, m), { 0, 24 }) then
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, shown, m), { 0, require('dlac\\ui\\uiscale').px(24) }) then
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m); end);
             trig._modeStateAt = -1;
         end
@@ -2458,7 +2458,7 @@ local function renderModeBox(m, def, cur, colX)
         if styled then
             imgui.PushStyleColor(ImGuiCol_Button, on and { 0.15, 0.55, 0.20, 1.0 } or { 0.22, 0.22, 0.27, 1.0 });
         end
-        if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, 24 }) then
+        if imgui.Button(string.format('%s: %s##trgmode_%s', m, on and 'ON' or 'off', m), { 0, require('dlac\\ui\\uiscale').px(24) }) then
             pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl mode ' .. m .. ' toggle'); end);
             trig._modeStateAt = -1;
         end
@@ -2586,7 +2586,7 @@ local function renderModesSection(defs, modes)
     for _, m in ipairs(cycles) do renderModeBox(m, defs[m], mstate[string.lower(m)], colX); end
 
     imgui.Spacing();
-    if imgui.Button('+ Mode...##trgaddmode', { 0, 26 }) then
+    if imgui.Button('+ Mode...##trgaddmode', { 0, require('dlac\\ui\\uiscale').px(26) }) then
         modeUI.name[1] = ''; modeUI.kind = 'toggle'; modeUI.values = {};
         modeUI.valInput[1] = ''; modeUI.bind[1] = ''; modeUI.set = nil; modeUI.editing = nil;
         trig._openModePopup = true;
@@ -2996,7 +2996,7 @@ local function renderTrigAddPopup()
         curLabel = (cur and (cur.label or trigPrettyKey(string.lower(cur.key)))) or '?';
     end
     imgui.TextColored(COL_DIM, 'condition:'); imgui.SameLine(0, 4);
-    if imgui.Button(curLabel .. '###trgcondbtn', { 200, 0 }) then
+    if imgui.Button(curLabel .. '###trgcondbtn', { require('dlac\\ui\\uiscale').px(200), 0 }) then
         trig._condDrill = false;
         imgui.OpenPopup('##trgcondmenu');
     end
@@ -3612,7 +3612,7 @@ local function renderGroupImportPopup(groups)
         imgui.PopItemWidth();
     end
 
-    if imgui.Button('Import##grpimpgo', { 0, 24 }) then
+    if imgui.Button('Import##grpimpgo', { 0, require('dlac\\ui\\uiscale').px(24) }) then
         local parsed, errs = gimp.parse(groupUI.importText[1]);
         if parsed == nil then
             groupUI.plan = nil;
@@ -3627,7 +3627,7 @@ local function renderGroupImportPopup(groups)
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Parse the pasted table and preview what would be created / overwritten.'); end
     imgui.SameLine(0, 6);
-    if imgui.Button('Clear##grpimpclr', { 0, 24 }) then
+    if imgui.Button('Clear##grpimpclr', { 0, require('dlac\\ui\\uiscale').px(24) }) then
         groupUI.importText[1] = ''; groupUI.plan = nil; groupSetStatus('', false);
     end
 
@@ -3650,13 +3650,13 @@ local function renderGroupImportPopup(groups)
         end
         if plan.pending then
             if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-            if imgui.Button(string.format('Overwrite %d & import###grpimpconfirm', #plan.overwritten), { 0, 24 }) then
+            if imgui.Button(string.format('Overwrite %d & import###grpimpconfirm', #plan.overwritten), { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 applyImportPlan(plan, groups);
             end
             if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then imgui.SetTooltip('Replaces the named existing group(s) with the pasted members. Commit still saves to disk.'); end
             imgui.SameLine(0, 6);
-            if imgui.Button('Cancel##grpimpcancel', { 0, 24 }) then
+            if imgui.Button('Cancel##grpimpcancel', { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 groupUI.plan = nil; groupSetStatus('Import cancelled -- nothing changed.', false);
             end
         end
@@ -3736,7 +3736,7 @@ local function renderGroupAutoImportPopup(groups)
             for _, nt in ipairs(groupUI.autoNotes) do imgui.TextColored(COL_DIM, '   ' .. esc(nt)); end
         end
         imgui.Spacing();
-        if imgui.Button(string.format('Import %d selected##grpautogo', nMarked), { 0, 24 }) then
+        if imgui.Button(string.format('Import %d selected##grpautogo', nMarked), { 0, require('dlac\\ui\\uiscale').px(24) }) then
             local picked = {};
             for _, c in ipairs(cands) do
                 if groupUI.autoMarks[c.name] == true then picked[c.name] = c.members; end
@@ -3766,12 +3766,12 @@ local function renderGroupAutoImportPopup(groups)
         end
         if plan.pending then
             if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-            if imgui.Button(string.format('Overwrite %d & import###grpautoconfirm', #plan.overwritten), { 0, 24 }) then
+            if imgui.Button(string.format('Overwrite %d & import###grpautoconfirm', #plan.overwritten), { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 applyImportPlan(plan, groups);
             end
             if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
             imgui.SameLine(0, 6);
-            if imgui.Button('Cancel##grpautocancel', { 0, 24 }) then
+            if imgui.Button('Cancel##grpautocancel', { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 groupUI.autoPlan = nil; groupSetStatus('Auto-import cancelled -- nothing changed.', false);
             end
         end
@@ -3815,7 +3815,7 @@ local function renderGroupBrowsePopup(job)
     local inGroup = {};
     for _, m in ipairs(groups[nm]) do inGroup[string.lower(tostring(m))] = true; end
 
-    imgui.BeginChild('##grpbrowselist', { 380, 300 }, true);
+    imgui.BeginChild('##grpbrowselist', { require('dlac\\ui\\uiscale').px(380), require('dlac\\ui\\uiscale').px(300) }, true);
     local shown = 0;
     for _, e in ipairs(list) do
         if ap.matches(e, terms) then
@@ -3848,7 +3848,7 @@ local function renderGroupBrowsePopup(job)
     local n = 0; for _ in pairs(groupUI.browseMarks) do n = n + 1; end
     local canAdd = n > 0;
     if canAdd and ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.20, 0.45, 0.20, 1.0 }); end
-    if imgui.Button(string.format('Add %d marked##grpbadd', n), { 0, 24 }) and canAdd then
+    if imgui.Button(string.format('Add %d marked##grpbadd', n), { 0, require('dlac\\ui\\uiscale').px(24) }) and canAdd then
         local added = 0;
         for _, name in pairs(groupUI.browseMarks) do
             if gm.addMember(groups, nm, name) then added = added + 1; end
@@ -3860,7 +3860,7 @@ local function renderGroupBrowsePopup(job)
     end
     if canAdd and ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
     imgui.SameLine(0, 8);
-    if imgui.Button('Close##grpbclose', { 0, 24 }) then imgui.CloseCurrentPopup(); end
+    if imgui.Button('Close##grpbclose', { 0, require('dlac\\ui\\uiscale').px(24) }) then imgui.CloseCurrentPopup(); end
     imgui.SameLine(0, 10);
     imgui.TextColored(COL_DIM, string.format('%d marked', n));
     imgui.EndPopup();
@@ -3901,13 +3901,13 @@ function M.renderGroups(job, level)
     -- Commit / Revert row (the SAME file the Triggers tab writes).
     local dirty = trig.dirty and ImGuiCol_Button ~= nil;
     if dirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button('Commit##grpcommit', { 0, 22 }) then trigCommit(); end
+    if imgui.Button('Commit##grpcommit', { 0, require('dlac\\ui\\uiscale').px(22) }) then trigCommit(); end
     if dirty then imgui.PopStyleColor(1); end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Writes triggers\\' .. tostring(abbr) .. '.lua and hot-reloads the engine -- live immediately.');
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Revert##grprevert', { 0, 22 }) then trigLoad(true); groupSetStatus('Reverted to the on-disk groups.', false); end
+    if imgui.Button('Revert##grprevert', { 0, require('dlac\\ui\\uiscale').px(22) }) then trigLoad(true); groupSetStatus('Reverted to the on-disk groups.', false); end
     local st  = (groupUI.status ~= '') and groupUI.status or trig.status;
     local se  = (groupUI.status ~= '') and groupUI.statusErr or trig.statusErr;
     if st ~= '' then
@@ -3921,7 +3921,7 @@ function M.renderGroups(job, level)
     -- 1's flow) and opens its picker.
     imgui.Spacing();
     if hasGroupImport then
-        if imgui.Button('Import##grpimptop', { 0, 24 }) then
+        if imgui.Button('Import##grpimptop', { 0, require('dlac\\ui\\uiscale').px(24) }) then
             groupUI.plan = nil;
             groupUI._openImport = true;
         end
@@ -3931,7 +3931,7 @@ function M.renderGroups(job, level)
     end
     if hasGroupScan then
         if hasGroupImport then imgui.SameLine(0, 6); end
-        if imgui.Button('Auto-Import##grpautotop', { 0, 24 }) then
+        if imgui.Button('Auto-Import##grpautotop', { 0, require('dlac\\ui\\uiscale').px(24) }) then
             groupAutoScan();
             groupUI._openAuto = true;
         end
@@ -3964,7 +3964,7 @@ function M.renderGroups(job, level)
     for _, nm in ipairs(names) do renderGroupBox(nm, groups, colX); end
 
     imgui.Spacing();
-    if imgui.Button('+ Group...##grpadd', { 0, 26 }) then
+    if imgui.Button('+ Group...##grpadd', { 0, require('dlac\\ui\\uiscale').px(26) }) then
         groupUI.newName[1] = ''; groupUI._openAdd = true;
     end
     if imgui.IsItemHovered() then
@@ -4108,7 +4108,7 @@ local function renderBpViewPopup()
         imgui.PopItemWidth();
     end
     if hasClipboard then
-        if imgui.Button(all and 'Copy all to clipboard##bpviewcopy' or 'Copy to clipboard##bpviewcopy', { 0, 24 }) then
+        if imgui.Button(all and 'Copy all to clipboard##bpviewcopy' or 'Copy to clipboard##bpviewcopy', { 0, require('dlac\\ui\\uiscale').px(24) }) then
             bpCopyToClipboard(txt, all and 'Copied the whole library to the clipboard.' or 'Copied the Blueprint to the clipboard.');
         end
         if imgui.IsItemHovered() then imgui.SetTooltip('Puts the text on the clipboard in one click.'); end
@@ -4116,7 +4116,7 @@ local function renderBpViewPopup()
     else
         imgui.TextColored(COL_DIM, '(no clipboard API -- select the text and Ctrl+C)');
     end
-    if imgui.Button('Close##bpviewclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+    if imgui.Button('Close##bpviewclose', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(24) }) then imgui.CloseCurrentPopup(); end
     imgui.EndPopup();
 end
 
@@ -4198,25 +4198,25 @@ local function renderBpImportPopup()
         end
         if plan.pending then
             if #plan.collided == 0 then
-                if imgui.Button('Import##bpimpgo', { 0, 24 }) then bpApplyImport(false); end
+                if imgui.Button('Import##bpimpgo', { 0, require('dlac\\ui\\uiscale').px(24) }) then bpApplyImport(false); end
                 if imgui.IsItemHovered() then imgui.SetTooltip('Add these Blueprints to your library and save.'); end
             else
-                if imgui.Button('Import new only##bpimpnew', { 0, 24 }) then bpApplyImport(false); end
+                if imgui.Button('Import new only##bpimpnew', { 0, require('dlac\\ui\\uiscale').px(24) }) then bpApplyImport(false); end
                 if imgui.IsItemHovered() then imgui.SetTooltip('Add only the non-colliding Blueprints; keep your existing ones.'); end
                 imgui.SameLine(0, 6);
                 if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-                if imgui.Button(string.format('Overwrite %d & import##bpimpover', #plan.collided), { 0, 24 }) then bpApplyImport(true); end
+                if imgui.Button(string.format('Overwrite %d & import##bpimpover', #plan.collided), { 0, require('dlac\\ui\\uiscale').px(24) }) then bpApplyImport(true); end
                 if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
                 if imgui.IsItemHovered() then imgui.SetTooltip('Replace the named existing Blueprint(s) with the pasted ones, and import the rest.'); end
             end
             imgui.SameLine(0, 6);
         end
-        if imgui.Button('Clear##bpimpclr', { 0, 24 }) then
+        if imgui.Button('Clear##bpimpclr', { 0, require('dlac\\ui\\uiscale').px(24) }) then
             bpUI.importText[1] = ''; bpUI.importPlan = nil; bpUI.importParsedLen = -1;
         end
     else
         imgui.Separator();
-        if imgui.Button('Close##bpimpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+        if imgui.Button('Close##bpimpclose', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(24) }) then imgui.CloseCurrentPopup(); end
     end
     imgui.EndPopup();
 end
@@ -4506,21 +4506,21 @@ local function renderModeStampWindow()
             end
         end
         imgui.Spacing();
-        if imgui.Button('Overwrite + clean up references##mlstampgo', { 0, 22 }) then
+        if imgui.Button('Overwrite + clean up references##mlstampgo', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             mlStampNow(s.entry, 'overwrite');
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Rules gated only on a dropped value are removed; a mode-list rule just loses it.\nSet entries gated only on it are deleted; list gates keep their other modes.\nTrigger changes are live immediately; set changes need /dl reload.');
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Append instead (keep everything)##mlstampapp', { 0, 22 }) then
+        if imgui.Button('Append instead (keep everything)##mlstampapp', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             mlStampNow(s.entry, 'append');
         end
         if imgui.IsItemHovered() then
             imgui.SetTooltip('Merge the values instead of replacing them. Nothing is dropped, so nothing\nis referenced-and-dead afterwards.');
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Cancel##mlstampno', { 0, 22 }) then mlUI.stamp = nil; end
+        if imgui.Button('Cancel##mlstampno', { 0, require('dlac\\ui\\uiscale').px(22) }) then mlUI.stamp = nil; end
     end
     imgui.End();
     if not open[1] then mlUI.stamp = nil; end
@@ -4549,7 +4549,7 @@ function M.renderModeLibrary(job, level)
     end
 
     -- Top row: capture from this job + share/import.
-    if imgui.Button('Save this job\'s modes...##mlsaveall', { 0, 22 }) then
+    if imgui.Button('Save this job\'s modes...##mlsaveall', { 0, require('dlac\\ui\\uiscale').px(22) }) then
         local caps, refused = mlib.captureAll((trig.data ~= nil and trig.data.Modes) or {});
         local added, skipped = 0, 0;
         mlLoad(false);
@@ -4564,14 +4564,14 @@ function M.renderModeLibrary(job, level)
         imgui.SetTooltip('Copy every mode defined on THIS job into your library.\nModes already in the library are left alone -- use Replace on a row to update one.');
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Copy all##mlcopyall', { 0, 22 }) then
+    if imgui.Button('Copy all##mlcopyall', { 0, require('dlac\\ui\\uiscale').px(22) }) then
         mlUI.viewIdx = 'all';
         mlUI.viewText = mlib.serialize(mlUI.lib or {});
         mlUI.viewBuf[1] = mlUI.viewText;
         mlUI._openView = true;
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Import...##mlimport', { 0, 22 }) then
+    if imgui.Button('Import...##mlimport', { 0, require('dlac\\ui\\uiscale').px(22) }) then
         mlUI.importText[1] = ''; mlUI.importPlan = nil; mlUI.importParsedLen = -1;
         mlUI._openImport = true;
     end
@@ -4644,7 +4644,7 @@ function M.renderModeLibrary(job, level)
         imgui.PushItemWidth(220);
         imgui.InputText('##mlrenbuf', mlUI.renameBuf, 24);
         imgui.PopItemWidth();
-        if imgui.Button('Rename##mlrengo', { 0, 22 }) then
+        if imgui.Button('Rename##mlrengo', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             local ok, err = mlib.rename(mlUI.lib, mlUI.renaming, mlUI.renameBuf[1]);
             if ok then mlSave(); mlSetStatus('Renamed.', false); else mlSetStatus(tostring(err), true); end
             mlUI.renaming = nil; imgui.CloseCurrentPopup();
@@ -4662,7 +4662,7 @@ function M.renderModeLibrary(job, level)
         else
             imgui.InputText('##mlviewtext1', mlUI.viewBuf, 16384);
         end
-        if imgui.Button('Close##mlviewclose', { 0, 22 }) then imgui.CloseCurrentPopup(); end
+        if imgui.Button('Close##mlviewclose', { 0, require('dlac\\ui\\uiscale').px(22) }) then imgui.CloseCurrentPopup(); end
         imgui.EndPopup();
     end
 
@@ -4694,7 +4694,7 @@ function M.renderModeLibrary(job, level)
             if #plan.collided > 0 then
                 imgui.TextColored(COL_ERR, 'Would overwrite: ' .. esc(table.concat(plan.collided, ', ')));
             end
-            if imgui.Button('Import new only##mlimpnew', { 0, 22 }) then
+            if imgui.Button('Import new only##mlimpnew', { 0, require('dlac\\ui\\uiscale').px(22) }) then
                 local r = mlib.applyImport(mlUI.lib, plan.entries, false);
                 mlSave();
                 mlSetStatus(string.format('Imported %d; skipped %d.', r.created, r.refused), false);
@@ -4702,7 +4702,7 @@ function M.renderModeLibrary(job, level)
             end
             if #plan.collided > 0 then
                 imgui.SameLine(0, 8);
-                if imgui.Button('Overwrite + import##mlimpall', { 0, 22 }) then
+                if imgui.Button('Overwrite + import##mlimpall', { 0, require('dlac\\ui\\uiscale').px(22) }) then
                     local r = mlib.applyImport(mlUI.lib, plan.entries, true);
                     mlSave();
                     mlSetStatus(string.format('Imported %d, updated %d.', r.created, r.updated), false);
@@ -4711,7 +4711,7 @@ function M.renderModeLibrary(job, level)
             end
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Cancel##mlimpno', { 0, 22 }) then imgui.CloseCurrentPopup(); end
+        if imgui.Button('Cancel##mlimpno', { 0, require('dlac\\ui\\uiscale').px(22) }) then imgui.CloseCurrentPopup(); end
         imgui.EndPopup();
     end
 end
@@ -5248,7 +5248,7 @@ local function cpSection(kind, title, unit, empty)
 
     local n, dups = rc.selection(rows, picked);
     if n > 0 then
-        if imgui.Button(string.format('Copy to %d %s%s##trgcpgo_%s', n, unit, (n == 1) and '' or 's', kind), { 0, 24 }) then
+        if imgui.Button(string.format('Copy to %d %s%s##trgcpgo_%s', n, unit, (n == 1) and '' or 's', kind), { 0, require('dlac\\ui\\uiscale').px(24) }) then
             cpApply(kind);
         end
         if imgui.IsItemHovered() then
@@ -5292,7 +5292,7 @@ local function renderTrigCopyPopup()
             .. 'and Groups do not travel either way.');
     end
     imgui.SameLine(0, 12);
-    if imgui.Button('Close##trgcpclose', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+    if imgui.Button('Close##trgcpclose', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(24) }) then imgui.CloseCurrentPopup(); end
     if cpUI.status ~= '' then
         imgui.PushTextWrapPos(0.0);
         imgui.TextColored(cpUI.statusErr and COL_ERR or COL_SCORE, esc(cpUI.status));
@@ -5346,7 +5346,7 @@ function M.render(job, level)
     if trig.data == nil then
         imgui.TextColored(COL_DIM, 'No trigger file for ' .. tostring(abbr) .. ' yet.');
         if trig.err ~= nil and trig.err ~= 'no file' then imgui.TextColored(COL_ERR, esc(tostring(trig.err))); end
-        if imgui.Button('Create starter triggers##trginit', { 0, 24 }) then
+        if imgui.Button('Create starter triggers##trginit', { 0, require('dlac\\ui\\uiscale').px(24) }) then
             deps.seedTriggersFile(deps.charBase(), abbr);
             trigLoad(true);
         end
@@ -5491,15 +5491,15 @@ function M.render(job, level)
     -- Controls row: Commit (red when dirty) / Revert / Explain + status.
     local dirty = trig.dirty and ImGuiCol_Button ~= nil;
     if dirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button('Commit##trgcommit', { 0, 22 }) then trigCommit(); end
+    if imgui.Button('Commit##trgcommit', { 0, require('dlac\\ui\\uiscale').px(22) }) then trigCommit(); end
     if dirty then imgui.PopStyleColor(1); end
     if imgui.IsItemHovered() then
         imgui.SetTooltip('Writes triggers\\' .. tostring(abbr) .. '.lua and hot-reloads the engine -- live immediately, no /lac reload.');
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Revert##trgrevert', { 0, 22 }) then trigLoad(true); trigSetStatus('Reverted to the on-disk rules.', false); end
+    if imgui.Button('Revert##trgrevert', { 0, require('dlac\\ui\\uiscale').px(22) }) then trigLoad(true); trigSetStatus('Reverted to the on-disk rules.', false); end
     imgui.SameLine(0, 6);
-    if imgui.Button('Explain last action##trgwhy', { 0, 22 }) then
+    if imgui.Button('Explain last action##trgwhy', { 0, require('dlac\\ui\\uiscale').px(22) }) then
         pcall(function() AshitaCore:GetChatManager():QueueCommand(1, '/dl why'); end);
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Prints which triggers fired for the last actions to the chat log (/dl why).'); end
@@ -5551,10 +5551,10 @@ function M.render(job, level)
     -- value would fall through to the handler branch below and render an empty
     -- "Automations rules" list.
     if trig.section == 'Automations' then trig.section = 'Modes'; end
-    imgui.BeginChild('##trgnav', { 148, -1 }, false);
+    imgui.BeginChild('##trgnav', { require('dlac\\ui\\uiscale').px(148), -1 }, false);
     local function navItem(id, label)
         imgui.PushID('trgnav_' .. id);
-        if imgui.Selectable(label, trig.section == id, ImGuiSelectableFlags_None, { 0, 19 }) then
+        if imgui.Selectable(label, trig.section == id, ImGuiSelectableFlags_None, { 0, require('dlac\\ui\\uiscale').px(19) }) then
             trig.section = id;
         end
         imgui.PopID();
@@ -5643,7 +5643,7 @@ function M.render(job, level)
             trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
-        if imgui.Button('+ Add rule##trgadd_' .. h, { 0, 28 }) then
+        if imgui.Button('+ Add rule##trgadd_' .. h, { 0, require('dlac\\ui\\uiscale').px(28) }) then
             trig.addFor = h; trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig._addDef = 1;
             trig.addNote, trig.addSwap = nil, nil;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;

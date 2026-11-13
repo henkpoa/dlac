@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.11c';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.13c';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -533,7 +533,16 @@ addon.version = '2026.11.11c';  -- date of the last shipped change (Ashita print
                                 --  often, at most three times a minute;
                                 --  11.11c = a ring, earring or other timed
                                 --  Teleports use warns "Stop moving" 2s
-                                --  before it goes off -- run until then)
+                                --  before it goes off -- run until then;
+                                --  11.13a = Menu > Settings > Window size (and
+                                --  /dl uiscale): dlac's windows at 70-150%,
+                                --  for the bigger font newer Ashita draws with;
+                                --  11.13b = Settings in four tabs -- Display,
+                                --  Gear, Features, Advanced -- instead of one
+                                --  ever-taller column;
+                                --  11.13c = Window size: button heights and
+                                --  widths, the slot grid, the stats panel and
+                                --  the Triggers section list follow the scale)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

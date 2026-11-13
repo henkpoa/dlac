@@ -1952,7 +1952,7 @@ local function renderHeaderButtons()
         if pend ~= nil then
             btns[#btns+1] = { w = 26,
               render = function()
-                  local clicked = imgui.Button('##hdrtpstop', { 26, 22 });
+                  local clicked = imgui.Button('##hdrtpstop', { require('dlac\\ui\\uiscale').px(26), require('dlac\\ui\\uiscale').px(22) });
                   pcall(function()
                       local x, y = imgui.GetItemRectMin();
                       if type(x) == 'table' then y = (x[2] or x.y); x = (x[1] or x.x); end
@@ -2077,7 +2077,7 @@ local function renderHeaderButtons()
         imgui.Separator();
         -- 'noop' (native, debug-only): nothing to do -- just a Close button.
         if p.mode == 'noop' then
-            if imgui.Button('Close##dlac_setupno', { 90, 26 }) then
+            if imgui.Button('Close##dlac_setupno', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(26) }) then
                 ui._setupPlan = nil;
                 imgui.CloseCurrentPopup();
             end
@@ -2085,7 +2085,7 @@ local function renderHeaderButtons()
             return;
         end
         fmt.textWrapped(COL.DIM, 'Nothing has been touched yet. Commit copies your data and flips the engine flag; Cancel closes.');
-        if imgui.Button('Commit (migrate to native)##dlac_setupgo', { 240, 26 }) then
+        if imgui.Button('Commit (migrate to native)##dlac_setupgo', { require('dlac\\ui\\uiscale').px(240), require('dlac\\ui\\uiscale').px(26) }) then
             ui._setupPlan = nil;
             imgui.CloseCurrentPopup();
             -- The migration Commit (setupui): copy-only storage move + flag write +
@@ -2093,7 +2093,7 @@ local function renderHeaderButtons()
             pcall(function() setup.migrateToNative(); end);
         end
         imgui.SameLine(0, 8);
-        if imgui.Button('Cancel##dlac_setupno', { 90, 26 }) then
+        if imgui.Button('Cancel##dlac_setupno', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(26) }) then
             ui._setupPlan = nil;
             imgui.CloseCurrentPopup();
         end
@@ -2208,7 +2208,11 @@ end
 local function renderSlotGrid(idPrefix, gridHeight, selectedLabel, getItemId, getText, onClick, hoverRec, gridW, opts)
     opts = opts or {};
     local gap = opts.tight and 0 or 4;
-    local BOX = math.floor(tonumber(opts.box) or SLOT_BOX);
+    -- No explicit box = a tab's grid (Sets, Equipped): it follows the UI scale,
+    -- height included, so a slot's text label fits its box at 150%. The floating
+    -- window passes its own box and is left alone.
+    if opts.box == nil then gridHeight = require('dlac\\ui\\uiscale').px(gridHeight); end
+    local BOX = math.floor(tonumber(opts.box) or require('dlac\\ui\\uiscale').px(SLOT_BOX));
     if BOX < 12 then BOX = 12; end                 -- below this the icon vanishes
     local PAD = math.max(1, math.floor(BOX * 0.1 + 0.5));   -- 4 at BOX=40
     local IMG = BOX - PAD * 2;                              -- 32 at BOX=40
@@ -2447,7 +2451,7 @@ end
 -- still needed. Callers pass it by forwarding wornSetTotals/workingSetTotals'
 -- second return value.
 local function renderStatsPanel(title, totals, setBonuses)
-    imgui.BeginChild('##ffxilac_stats', { STATS_W, -1 }, true);
+    imgui.BeginChild('##ffxilac_stats', { require('dlac\\ui\\uiscale').px(STATS_W), -1 }, true);
     imgui.TextColored(COL.HEADER, title);
     imgui.Separator();
     local resolved = resolveTotals(totals);
@@ -2456,7 +2460,7 @@ local function renderStatsPanel(title, totals, setBonuses)
         local col = (v ~= 0) and COL.USABLE or COL.DIM;
         imgui.TextColored(col, (string.gsub(name, '^Pet:', '')));   -- under Pet, the plain name
         local vs = tostring(v);
-        imgui.SameLine(STATS_W - 30 - imgui.CalcTextSize(vs));   -- right-aligned value column
+        imgui.SameLine(require('dlac\\ui\\uiscale').px(STATS_W) - require('dlac\\ui\\uiscale').px(30) - imgui.CalcTextSize(vs));   -- right-aligned value column
         imgui.TextColored(col, vs);
     end
     local function section(name, stats)
@@ -4374,7 +4378,7 @@ local function renderSetsWeightPanel(job, level)
     -- Build-slot grid (replaces the Skip-weapons checkbox): per-set marks for
     -- which slots Auto-build fills; weapons just default unmarked.
     pcall(wui.slotGrid);
-    if imgui.Button('Auto-build##setauto', { -1, 24 }) then
+    if imgui.Button('Auto-build##setauto', { -1, require('dlac\\ui\\uiscale').px(24) }) then
         local nSlots, nRows = autoBuild(job, level);
         -- ALWAYS say what happened: a silent empty result reads as a dead button.
         if (nSlots or 0) > 0 then
@@ -4714,7 +4718,7 @@ local function renderSetBuilder(job, level)
 
     local list = M.working[ui.setSelected] or {};
     imgui.TextColored(COL.HEADER, string.format('%s list (%d):', ui.setSelected, #list));
-    imgui.SameLine(); if imgui.Button('+ Add##setadd', { 60, 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
+    imgui.SameLine(); if imgui.Button('+ Add##setadd', { require('dlac\\ui\\uiscale').px(60), 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
     -- The highlight follows what will actually be WORN, not what was authored
@@ -4813,7 +4817,7 @@ local function renderSetBuilder(job, level)
                 end
             end
             imgui.SameLine(imgui.GetWindowWidth() - 86);   -- buttons at the right edge
-            if imgui.Button('B##ed_' .. di, { 24, 20 }) then
+            if imgui.Button('B##ed_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) }) then
                 ui._editIt = it;
                 ui._editJob = job;   -- whose stances the Stance Gates offer
                 ui._editMin = { it.minLevel or 0 };
@@ -4825,12 +4829,12 @@ local function renderSetBuilder(job, level)
                 imgui.SetTooltip('Behaviour rules for this piece:\nlimit it to a level range, gate it on a mode or a stance, or give\nit a gear rule (e.g. Dual Wield: only while the trait is up).\nNeed the same item in two ranges? Duplicate the row (D)\nand give each row its own range.');
             end
             imgui.SameLine(0, 4);
-            if imgui.Button('D##dup_' .. di, { 24, 20 }) then action = { kind = 'dup', it = it }; end
+            if imgui.Button('D##dup_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) }) then action = { kind = 'dup', it = it }; end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('Duplicate this row: same item, its own Behaviour rules.\nUse it to run one item in several level ranges, e.g.\nRajas Ring min30 max54 on one row, min75 on the other.');
             end
             imgui.SameLine(0, 4);
-            if imgui.Button('x##rm_' .. di, { 24, 20 }) then
+            if imgui.Button('x##rm_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) }) then
                 -- Section x = leave THIS mode only (Henrik: a Harpoon gated
                 -- Base + Polearm lost the whole row to one Polearm x).
                 if sec ~= nil then action = { kind = 'ungate', it = it, gateKey = sec.key };
@@ -5030,7 +5034,7 @@ local function renderSetsTab(job, level)
     end
 
     imgui.SameLine();
-    if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##setstats', { 72, 22 }) then ui.showStats = not ui.showStats; end
+    if imgui.Button((ui.showStats and 'Stats v' or 'Stats >') .. '##setstats', { require('dlac\\ui\\uiscale').px(72), require('dlac\\ui\\uiscale').px(22) }) then ui.showStats = not ui.showStats; end
 
     -- Build-level override (general set management): lifts the item level cap for BOTH
     -- Auto-build and the manual + Add picker, so you can assemble over-level sets.
@@ -5083,11 +5087,11 @@ local function renderSetsTab(job, level)
     -- 'Setup' pattern); guarded on ImGuiCol_Button.
     local _cdirty = _setDirty and ImGuiCol_Button ~= nil;
     if _cdirty then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button('Commit##setcommit', { 62, 22 }) then commitCurrentSet(job); end
+    if imgui.Button('Commit##setcommit', { require('dlac\\ui\\uiscale').px(62), require('dlac\\ui\\uiscale').px(22) }) then commitCurrentSet(job); end
     if _cdirty then imgui.PopStyleColor(1); end
     if imgui.IsItemHovered() then imgui.SetTooltip('Saves your working set into the active profile (sets\\<JOB>.lua) -- live on the next dispatch.'); end
     imgui.SameLine();
-    if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { 84, 22 }) then ui.showWeights = not ui.showWeights; end
+    if imgui.Button((ui.showWeights and 'Weights v' or 'Weights >') .. '##setwtoggle', { require('dlac\\ui\\uiscale').px(84), require('dlac\\ui\\uiscale').px(22) }) then ui.showWeights = not ui.showWeights; end
     if imgui.IsItemHovered() then imgui.SetTooltip('Toggle the Stat Weights editor -- opens in its own resizable, movable window.'); end
     imgui.SameLine();
     -- TWO clicks, on purpose (Henrik 2026-08-01: "it can be highly impacting
@@ -5104,7 +5108,7 @@ local function renderSetsTab(job, level)
     if ui._buildAllArm ~= nil and not abArmed then ui._buildAllArm = nil; end   -- expired
     local abRed = abArmed and (ImGuiCol_Button ~= nil);
     if abRed then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-    if imgui.Button((abArmed and 'Sure?' or 'Auto-Build All') .. '##setbuildall', { 150, 22 }) then
+    if imgui.Button((abArmed and 'Sure?' or 'Auto-Build All') .. '##setbuildall', { require('dlac\\ui\\uiscale').px(150), require('dlac\\ui\\uiscale').px(22) }) then
         if abArmed then
             ui._buildAllArm = nil;
             autoBuildAll(job, level);
@@ -5138,7 +5142,7 @@ local function renderSetsTab(job, level)
     -- the moment it matters. OpenPopup/BeginPopup/Selectable, the field-proven
     -- trio this binding uses for the Teleports cascades.
     imgui.SameLine();
-    if imgui.Button('Equip & Lock##seteqlock', { 0, 22 }) then
+    if imgui.Button('Equip & Lock##seteqlock', { 0, require('dlac\\ui\\uiscale').px(22) }) then
         if M.workingSetName == nil or M.workingSetName == '' then
             setStatus('Pick a set first.', true);
         else
@@ -5185,7 +5189,7 @@ local function renderSetsTab(job, level)
     -- Split: [stats panel] | builder.  Stat weights are now their OWN resizable window
     -- (renderWeightsWindow), toggled by the "Weights" button above, so they get real space.
     local availW = imgui.GetContentRegionAvail();
-    local statsUsed = ui.showStats and (STATS_W + 8) or 0;
+    local statsUsed = ui.showStats and (require('dlac\\ui\\uiscale').px(STATS_W) + 8) or 0;
 
     if ui.showStats then
         -- Priority mode scores with dominance-derived weights -- huge numbers
@@ -5202,7 +5206,7 @@ local function renderSetsTab(job, level)
     end
 
     local builderW = availW - statsUsed;
-    if builderW < 190 then builderW = 190; end
+    if builderW < require('dlac\\ui\\uiscale').px(190) then builderW = require('dlac\\ui\\uiscale').px(190); end
     imgui.BeginChild('##ffxilac_setleft', { builderW, -1 }, false);
     renderSetBuilder(job, level);
     imgui.EndChild();
@@ -5228,7 +5232,7 @@ local function renderSetsTab(job, level)
         imgui.Separator();
         local red = (ImGuiCol_Button ~= nil);
         if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-        if imgui.Button('Replace##copyconfirmgo', { 120, 24 }) then
+        if imgui.Button('Replace##copyconfirmgo', { require('dlac\\ui\\uiscale').px(120), require('dlac\\ui\\uiscale').px(24) }) then
             local src, kind = c.src, c.kind;
             ui._copyConfirm = nil;
             imgui.CloseCurrentPopup();
@@ -5236,7 +5240,7 @@ local function renderSetsTab(job, level)
         end
         if red then imgui.PopStyleColor(1); end
         imgui.SameLine(0, 8);
-        if imgui.Button('Cancel##copyconfirmno', { 90, 24 }) then
+        if imgui.Button('Cancel##copyconfirmno', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(24) }) then
             ui._copyConfirm = nil;
             imgui.CloseCurrentPopup();
         end
@@ -5258,7 +5262,7 @@ local function renderSetsTab(job, level)
         end
         imgui.PopItemWidth();
         imgui.SameLine(0, 6);
-        if imgui.Button('Create##setnewgo', { 0, 22 }) or entered then
+        if imgui.Button('Create##setnewgo', { 0, require('dlac\\ui\\uiscale').px(22) }) or entered then
             local nm = tostring(ui.newSetName[1] or ''):gsub('^%s+', ''):gsub('%s+$', '');
             if nm ~= '' then
                 M.workingSetName = nm; M.working = {}; ui.setSelected = nil; ui.newSetName[1] = '';
@@ -5279,13 +5283,13 @@ local function renderSetsTab(job, level)
         imgui.Separator();
         local red = (ImGuiCol_Button ~= nil);
         if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-        if imgui.Button('Delete##setdelgo', { 100, 24 }) then
+        if imgui.Button('Delete##setdelgo', { require('dlac\\ui\\uiscale').px(100), require('dlac\\ui\\uiscale').px(24) }) then
             deleteCurrentSet(job);
             imgui.CloseCurrentPopup();
         end
         if red then imgui.PopStyleColor(1); end
         imgui.SameLine(0, 8);
-        if imgui.Button('Cancel##setdelno', { 90, 24 }) then imgui.CloseCurrentPopup(); end
+        if imgui.Button('Cancel##setdelno', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(24) }) then imgui.CloseCurrentPopup(); end
         imgui.EndPopup();
     end
 
@@ -5468,7 +5472,7 @@ local function renderSetsTab(job, level)
                 end
             end
             imgui.SameLine(0, 8);
-            if imgui.Button('Cancel##cfnewcancel', { 90, 24 }) then imgui.CloseCurrentPopup(); ui._copyMarks = {}; end
+            if imgui.Button('Cancel##cfnewcancel', { require('dlac\\ui\\uiscale').px(90), require('dlac\\ui\\uiscale').px(24) }) then imgui.CloseCurrentPopup(); ui._copyMarks = {}; end
         else
             if pick ~= nil then
                 imgui.CloseCurrentPopup();
@@ -5503,7 +5507,7 @@ local function renderSetsTab(job, level)
         if ui._delStatic ~= nil then
             local red = (ImGuiCol_Button ~= nil);
             if red then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-            if imgui.Button('DELETE ' .. tostring(ui._delStatic) .. '##dstatgo', { 0, 24 }) then
+            if imgui.Button('DELETE ' .. tostring(ui._delStatic) .. '##dstatgo', { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 -- Purge law: nothing writes under luashitacast\ -- old job
                 -- files are read-only import territory now.
                 setStatus('legacy job files are READ-ONLY since the purge -- nothing was deleted (statics stay importable via "Copy from static").', true);
@@ -5529,7 +5533,7 @@ local function renderSetsTab(job, level)
         imgui.InputText('##setrenname', ui._renameBuf, 32);
         imgui.PopItemWidth();
         imgui.SameLine(0, 6);
-        if imgui.Button('Rename##setrengo', { 0, 22 }) then
+        if imgui.Button('Rename##setrengo', { 0, require('dlac\\ui\\uiscale').px(22) }) then
             if renameCurrentSet(job, ui._renameBuf[1]) then imgui.CloseCurrentPopup(); end
         end
         fmt.textWrapped(COL.DIM, 'Renames the set and every reference to it: the sets file block, trigger rules (live at once) and its weights/build-slot marks. Sets hot-swap like Commit.');
@@ -5735,11 +5739,30 @@ local function drawWindow()
         _setsJob = job;
     end
 
-    imgui.SetNextWindowSize({ 940, 680 }, ImGuiCond_FirstUseEver);
-    imgui.SetNextWindowSizeConstraints({ 480, 340 }, { 1300, 1300 });
+    -- THE UI SCALE (AXI-24): the default size and the floor follow it, and a
+    -- CHANGE of scale resizes the window by the same factor once -- smaller
+    -- text inside a window that kept its old pixel size has not got smaller.
+    -- Function-scoped require (hard rule 1); absent, every number is as before.
+    local scaler = nil;
+    pcall(function() scaler = require('dlac\\ui\\uiscale'); end);
+    local function spx(n) return (scaler ~= nil) and scaler.px(n) or n; end
+    local refit = (scaler ~= nil) and scaler.takeResize() or nil;
+    if refit ~= nil and type(ui._mainSize) == 'table' then
+        imgui.SetNextWindowSize({ math.floor(ui._mainSize[1] * refit + 0.5), math.floor(ui._mainSize[2] * refit + 0.5) }, ImGuiCond_Always or 1);
+    else
+        imgui.SetNextWindowSize({ spx(940), spx(680) }, ImGuiCond_FirstUseEver);
+    end
+    imgui.SetNextWindowSizeConstraints({ spx(480), spx(340) }, { 1300, 1300 });
 
     local isOpen = { M.visible };
     if imgui.Begin('dlac Gear###ffxi_lac_gearui', isOpen, ImGuiWindowFlags_None) then
+        -- Remembered for the refit above (only while the body is open: a
+        -- collapsed window would report just its title bar).
+        pcall(function()
+            local w, h = imgui.GetWindowSize();
+            if type(w) == 'table' then h = w[2] or w.y; w = w[1] or w.x; end
+            if type(w) == 'number' and type(h) == 'number' then ui._mainSize = { w, h }; end
+        end);
         -- Header line: Profiles menu (top-left), job/level + owned count + "Show
         -- all" toggle, then right-aligned buttons.
         if imgui.SmallButton('Profiles##dlac_pm_btn') then
@@ -6120,7 +6143,13 @@ M._renderFrame = function()
         pcall(function() fgMod = require('dlac\\ui\\floatgear'); end);
         if fgMod ~= nil then
             local fgThemed = style ~= nil and style.push();
+            -- It carries its OWN scale slider (Equipped tab), so the UI scale
+            -- steps aside for this one draw -- two scales multiplied would
+            -- make the slider lie about its number (ui\uiscale, AXI-24).
+            local fgScale, fgTok = nil, false;
+            pcall(function() fgScale = require('dlac\\ui\\uiscale'); fgTok = fgScale.suspend(); end);
             pcall(fgMod.render);
+            if fgScale ~= nil then pcall(fgScale.resume, fgTok); end
             if fgThemed then style.pop(); end
         end
     end
@@ -6248,8 +6277,13 @@ end;
 ashita.events.register('d3d_present', 'dlac-gearui-render', function()
     local bracket = style ~= nil and type(style.frameBegin) == 'function';
     if bracket then style.frameBegin(); end
+    -- THE UI SCALE (AXI-24): a resized font around everything dlac draws this
+    -- frame. Function-scoped require -- no new chunk local (hard rule 1).
+    local scaler = nil;
+    pcall(function() scaler = require('dlac\\ui\\uiscale'); scaler.frameBegin(); end);
     local ok, err = pcall(M._renderFrame);
-    -- Closed on every path, an error included: the style stack is shared.
+    -- Closed on every path, an error included: the style AND font stacks are shared.
+    if scaler ~= nil then pcall(scaler.frameEnd); end
     if bracket then style.frameEnd(); end
     if not ok then error(err, 0); end
 end);
@@ -6283,8 +6317,27 @@ ashita.events.register('command', 'dlac-ui', function(e)
     if sub == 'debug' and args[2] ~= nil and args[2] ~= 'on' and args[2] ~= 'off' then return; end
     if sub ~= 'ui' and sub ~= 'sync' and sub ~= 'repair' and sub ~= 'autosync' and sub ~= 'debug'
        and sub ~= 'metrics' and sub ~= 'view_ids' and sub ~= 'autobuildimport'
-       and sub ~= 'gearwarn' and sub ~= 'buildstored' then return; end
+       and sub ~= 'gearwarn' and sub ~= 'buildstored' and sub ~= 'uiscale' then return; end
     e.blocked = true;
+
+    if sub == 'uiscale' then        -- the size of dlac's windows (Menu > Settings; AXI-24)
+        local sc = require('dlac\\ui\\uiscale');
+        if args[2] ~= nil then
+            local v = sc.parse(args[2]);
+            if v == nil then
+                print('[dlac] UI scale: "' .. tostring(args[2]) .. '" is not a size. Try /dl uiscale 80 (60 to 150), or /dl uiscale reset.');
+                return;
+            end
+            sc.set(v);
+            sf.saveUiFlags();          -- persist; command wins over the on-disk value
+        end
+        if not sc.supported() then
+            print('[dlac] UI scale ' .. sc.label(sc.saved()) .. ' is saved, but this Ashita cannot resize the font per addon -- dlac draws at 100% here.');
+        else
+            print('[dlac] UI scale ' .. sc.label(sc.saved()) .. '.  (/dl uiscale 60-150, or /dl uiscale reset)');
+        end
+        return;
+    end
 
     if sub == 'repair' then
         local n = sf.repairGear();

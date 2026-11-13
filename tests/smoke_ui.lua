@@ -3663,6 +3663,18 @@ end)();
     IM.InputText      = function() drew.input = drew.input + 1; return false; end
     IM.IsItemHovered  = function() return false; end
     IM.GetWindowWidth = function() return 900; end
+    -- Settings is tabbed (2026-11-13). `tabPick` = which tab the stub shows:
+    -- nil = every page (the count below covers them all), a label = that one.
+    local tabs, tabPick, tabsSeen = { bar = 0, item = 0 }, nil, {};
+    IM.BeginTabBar  = function() tabs.bar = tabs.bar + 1; return true; end
+    IM.EndTabBar    = function() tabs.bar = tabs.bar - 1; end
+    IM.BeginTabItem = function(label)
+        local name = tostring(label):match('^(.-)###') or tostring(label);
+        tabsSeen[#tabsSeen + 1] = name;
+        if tabPick ~= nil and name ~= tabPick then return false; end
+        tabs.item = tabs.item + 1; return true;
+    end
+    IM.EndTabItem   = function() tabs.item = tabs.item - 1; end
 
     local NAMES = { 'dlac\\ui\\menuui', 'dlac\\ui\\filetex', 'dlac\\ui\\uistyle', 'imgui' };
     local saved = {};
@@ -3714,6 +3726,38 @@ end)();
         -- which headless it always does.
         check('MN12a CEXI Settings body ran to completion (26 checkboxes, no Stable)', drew.checkbox, 26);
         check('MN12b level body drew its typed-number box', drew.input, 1);
+
+        -- Settings in tabs: four pages, every Begin closed, and each page a
+        -- SHORT one -- the point of the split is that no page is the old column.
+        check('MN12f Settings tab stack balanced', tabs.bar + tabs.item, 0);
+        check('MN12g the four Settings tabs, in order', table.concat(tabsSeen, ','), 'Display,Gear,Features,Advanced');
+        local perTab, total = {}, 0;
+        for _, name in ipairs({ 'Display', 'Gear', 'Features', 'Advanced' }) do
+            tabPick = name; drew.checkbox = 0;
+            check('MN12h ' .. name .. ' page renders alone', pcall(mn.renderPopups), true);
+            perTab[name] = drew.checkbox; total = total + drew.checkbox;
+            check('MN12i ' .. name .. ' page leaves the tab stack balanced', tabs.bar + tabs.item, 0);
+        end
+        check('MN12j the pages together hold every setting, once', total, 26);
+        check('MN12k Display: the four window ticks', perTab.Display, 4);
+        check('MN12l Gear: library + Auto-build ticks', perTab.Gear, 7);
+        check('MN12m Features: tabs + menu rows', perTab.Features, 12);
+        check('MN12n Advanced: debug + the two addon switches', perTab.Advanced, 3);
+        -- A page that throws must still close its tab item and bar.
+        tabPick = 'Gear';
+        local realCheckbox = IM.Checkbox;
+        IM.Checkbox = function() error('injected Settings page failure'); end
+        pcall(mn.renderPopups);
+        IM.Checkbox = realCheckbox;
+        check('MN12o a page that throws still closes its tab', tabs.bar + tabs.item, 0);
+        check('MN12p ...and the popup', depth.popup, 0);
+        tabPick = nil;
+        -- A binding without tabs: the same pages, one under the other.
+        local bar = IM.BeginTabBar; IM.BeginTabBar = nil; rawset(IM, 'BeginTabBar', false);
+        drew.checkbox = 0;
+        check('MN12q renders without a tab API', pcall(mn.renderPopups), true);
+        check('MN12r ...with every setting still there', drew.checkbox, 26);
+        rawset(IM, 'BeginTabBar', bar);
 
         repairClick = true;
         check('MN12c gear repair action renders', pcall(mn.renderPopups), true);

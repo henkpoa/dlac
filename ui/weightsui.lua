@@ -263,7 +263,7 @@ local function renderImportPopup(spec, COL)
         imgui.InputText('##wimptext_' .. spec.key, st.text, 16384);
         imgui.PopItemWidth();
     end
-    if imgui.Button('Import##wimpgo_' .. spec.key, { 0, 24 }) then
+    if imgui.Button('Import##wimpgo_' .. spec.key, { 0, require('dlac\\ui\\uiscale').px(24) }) then
         local parsed, errs = spec.parse(st.text[1]);
         if parsed == nil then
             st.plan = { errors = errs or {}, created = {}, overwritten = {}, pending = false };
@@ -279,7 +279,7 @@ local function renderImportPopup(spec, COL)
     end
     if imgui.IsItemHovered() then imgui.SetTooltip('Parse the paste and preview what would be created / overwritten.'); end
     imgui.SameLine(0, 6);
-    if imgui.Button('Clear##wimpclr_' .. spec.key, { 0, 24 }) then
+    if imgui.Button('Clear##wimpclr_' .. spec.key, { 0, require('dlac\\ui\\uiscale').px(24) }) then
         st.text[1] = ''; st.plan = nil;
     end
     local plan = st.plan;
@@ -301,13 +301,13 @@ local function renderImportPopup(spec, COL)
         end
         if plan.pending then
             if ImGuiCol_Button ~= nil then imgui.PushStyleColor(ImGuiCol_Button, { 0.72, 0.18, 0.18, 1.0 }); end
-            if imgui.Button(string.format('Overwrite %d & import###wimpconfirm_%s', #plan.overwritten, spec.key), { 0, 24 }) then
+            if imgui.Button(string.format('Overwrite %d & import###wimpconfirm_%s', #plan.overwritten, spec.key), { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 applyImport(spec, st);
             end
             if ImGuiCol_Button ~= nil then imgui.PopStyleColor(1); end
             if imgui.IsItemHovered() then imgui.SetTooltip('Replaces the named existing profile(s) with the paste.\nNamed profiles have no revert snapshot -- sure?'); end
             imgui.SameLine(0, 6);
-            if imgui.Button('Cancel##wimpcancel_' .. spec.key, { 0, 24 }) then
+            if imgui.Button('Cancel##wimpcancel_' .. spec.key, { 0, require('dlac\\ui\\uiscale').px(24) }) then
                 st.plan = nil;
             end
         elseif plan.summary ~= nil then
@@ -335,7 +335,7 @@ local function renderExportPopup(specKey, text, COL)
         imgui.PopItemWidth();
     end
     if hasClipboard then
-        if imgui.Button('Copy to clipboard##wexpcopy_' .. specKey, { 0, 24 }) then
+        if imgui.Button('Copy to clipboard##wexpcopy_' .. specKey, { 0, require('dlac\\ui\\uiscale').px(24) }) then
             pcall(function() imgui.SetClipboardText(text); end);
         end
     end
@@ -435,7 +435,7 @@ local function renderLocalImportPopup(spec, COL)
         imgui.InputText('##wlimptext_' .. spec.key, st.text, 16384);
         imgui.PopItemWidth();
     end
-    if imgui.Button('Import##wlimpgo_' .. spec.key, { 0, 24 }) then
+    if imgui.Button('Import##wlimpgo_' .. spec.key, { 0, require('dlac\\ui\\uiscale').px(24) }) then
         local parsed, errs = spec.parse(st.text[1]);
         if parsed == nil then
             st.plan = { errors = errs or {} };
@@ -455,7 +455,7 @@ local function renderLocalImportPopup(spec, COL)
         imgui.SetTooltip('Replace this set\'s current tuning with the paste.\nMis-paste? copy from... > revert restores what was there.');
     end
     imgui.SameLine(0, 6);
-    if imgui.Button('Clear##wlimpclr_' .. spec.key, { 0, 24 }) then
+    if imgui.Button('Clear##wlimpclr_' .. spec.key, { 0, require('dlac\\ui\\uiscale').px(24) }) then
         st.text[1] = ''; st.plan = nil;
     end
     local plan = st.plan;
@@ -518,7 +518,7 @@ local function renderSharedPopup(sh, COL)
     imgui.InputText('##wshname_' .. sh.key, wui._sharedName, 48);
     imgui.PopItemWidth();
     imgui.SameLine(0, 6);
-    if imgui.Button('Create##wshcreate_' .. sh.key, { 0, 22 }) then
+    if imgui.Button('Create##wshcreate_' .. sh.key, { 0, require('dlac\\ui\\uiscale').px(22) }) then
         local ok = false;
         pcall(function() ok = sh.create(wui._sharedName[1]); end);
         if ok then
@@ -598,7 +598,7 @@ local function renderPointsTab(boundKey)
                 imgui.InputText('##wsavename', wui._saveName, 48);
                 imgui.PopItemWidth();
                 imgui.SameLine(0, 6);
-                if imgui.Button('Save##wsavego', { 50, 0 }) then
+                if imgui.Button('Save##wsavego', { require('dlac\\ui\\uiscale').px(50), 0 }) then
                     local oks = false;
                     pcall(function() oks = optim.saveNamedWeights(wui._saveName[1]); end);
                     if oks then
@@ -942,7 +942,7 @@ local function renderPointsTab(boundKey)
             D.invalidateCandidates();
         end
         imgui.SameLine(xCol);
-        if imgui.Button('x##wx_' .. stat, { 20, 0 }) then
+        if imgui.Button('x##wx_' .. stat, { require('dlac\\ui\\uiscale').px(20), 0 }) then
             pcall(optim.clearWeight, stat);
             pcall(optim.saveWeights);
             ui._wbuf[stat] = nil;
@@ -1022,7 +1022,7 @@ local function renderPrioTab(boundKey)
         imgui.InputText('##psavename', wui._pSaveName, 48);
         imgui.PopItemWidth();
         imgui.SameLine(0, 6);
-        if imgui.Button('Save##psavego', { 50, 0 }) then
+        if imgui.Button('Save##psavego', { require('dlac\\ui\\uiscale').px(50), 0 }) then
             local oks = false;
             pcall(function() oks = optim.savePrioNamed(wui._pSaveName[1]); end);
             if oks then
@@ -1201,7 +1201,7 @@ local function renderPrioTab(boundKey)
         imgui.SameLine(0, 2);
         if imgui.SmallButton('v##pdn_' .. i) and i < #pl then act = { kind = 'move', i = i, d = 1 }; end
         imgui.SameLine(0, 4);
-        if imgui.Button('x##px_' .. i, { 20, 0 }) then act = { kind = 'remove', i = i }; end
+        if imgui.Button('x##px_' .. i, { require('dlac\\ui\\uiscale').px(20), 0 }) then act = { kind = 'remove', i = i }; end
     end
     if #pl == 0 then
         imgui.TextColored(COL.DIM, '(empty -- add the stat that matters most first)');
@@ -1225,7 +1225,7 @@ local function renderPrioTab(boundKey)
     imgui.SameLine(0, 6); imgui.TextColored(COL.DIM, 'cap'); imgui.SameLine(0, 2);
     imgui.PushItemWidth(46); imgui.InputInt('##paddcap', wui._pAddCap, 0); imgui.PopItemWidth();
     imgui.SameLine(0, 6);
-    if imgui.Button('Add##paddgo', { 40, 0 }) then
+    if imgui.Button('Add##paddgo', { require('dlac\\ui\\uiscale').px(40), 0 }) then
         local name = wui._pAddStat[1];
         if name ~= nil and name ~= '' then
             local ok = false;
