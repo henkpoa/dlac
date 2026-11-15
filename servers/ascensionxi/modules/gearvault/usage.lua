@@ -17,6 +17,10 @@
         shelf pressure presents a marking list) | 'auto' (LRU eviction,
         pinned still always asks) | 'off'.
 
+      * THE VAULT LIST'S FILTERS (ticket AXI-103), kept as the tab last set
+        them: { job, hq, hobby, lvMin, lvMax }. vaultfilters.lua owns their
+        meaning and cleans what it reads; this file only remembers them.
+
     One file per character (<char>\dlac\gearvault_usage.lua), written on the
     safe ladder (hard rule 7 via lib\safewrite.replaceLua). Loading is
     latch-free in ADR 0007's sense: a missing char dir just retries on the
@@ -53,6 +57,7 @@ local st = {
                                          -- the add/remove tug-of-war -- Henrik's
                                          -- 2026-08-27 field round)
     settings = { additions = 'auto', removals = 'ask' },
+    filters  = nil,                      -- the Vault list's filters; nil = none set
     manual = {}, -- job -> instance key -> explicitly requested, pinned copy
 };
 
@@ -87,12 +92,27 @@ local function filePath()
     return d and (d .. 'gearvault_usage.lua') or nil;
 end
 
+-- A filters table in the stored shape, or nil when it is not one. Only the
+-- shape is checked here; vaultfilters.clean decides what each value means.
+local function shapeFilters(f)
+    if type(f) ~= 'table' then return nil; end
+    local lo, hi = tonumber(f.lvMin), tonumber(f.lvMax);
+    if lo == nil or hi == nil or type(f.hobby) ~= 'string' then return nil; end
+    return { job = (f.job == true), hq = (f.hq == true), hobby = f.hobby,
+             lvMin = math.floor(lo), lvMax = math.floor(hi) };
+end
+
 function M._serialize()
     local L = {};
     L[#L + 1] = '-- dlac gear-vault usage (written by dlac; hand edits are fine)';
     L[#L + 1] = 'return {';
     L[#L + 1] = string.format('    settings = { additions = %q, removals = %q },',
         tostring(st.settings.additions), tostring(st.settings.removals));
+    if st.filters ~= nil then
+        local f = st.filters;
+        L[#L + 1] = string.format('    filters = { job = %s, hq = %s, hobby = %q, lvMin = %d, lvMax = %d },',
+            tostring(f.job), tostring(f.hq), f.hobby, f.lvMin, f.lvMax);
+    end
     L[#L + 1] = '    stamps = {';
     local keys = {};
     for k in pairs(st.stamps) do keys[#keys + 1] = k; end
@@ -144,6 +164,7 @@ function M._apply(t)
         if a == 'auto' or a == 'off' then st.settings.additions = a; end
         if r == 'ask' or r == 'auto' or r == 'off' then st.settings.removals = r; end
     end
+    st.filters = shapeFilters(t.filters) or st.filters;
     if type(t.stamps) == 'table' then
         for k, v in pairs(t.stamps) do
             if type(k) == 'string' and type(v) == 'number' then st.stamps[k] = v; end
@@ -323,6 +344,17 @@ function M.setSetting(k, v)
         return true;
     end
     return false;
+end
+
+-- The Vault list's filters as last set (nil = never set).
+function M.filters() return st.filters; end
+
+function M.setFilters(f)
+    local shaped = shapeFilters(f);
+    if shaped == nil then return false; end
+    st.filters = shaped;
+    st.dirty = true;
+    return true;
 end
 
 -- ---------------------------------------------------------------------------

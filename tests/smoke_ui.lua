@@ -8366,6 +8366,7 @@ end)();
     local pressStore = false;
     local pressLayout = false;
     local pressLabel = nil;   -- any SmallButton whose label contains this text is clicked
+    local pressCheck = nil;   -- a Checkbox whose label contains this text is ticked
     local nop = function() end;
     local IM = {
         TextColored   = function(_, s) texts[#texts + 1] = tostring(s); end,
@@ -8406,6 +8407,14 @@ end)();
         PushItemWidth = function() depth.item = depth.item + 1; end,
         PopItemWidth  = function() depth.item = depth.item - 1; end,
         InputText     = function() return false; end,
+        -- the Filters dropdown's two checkboxes (ticket AXI-103)
+        Checkbox      = function(label, buf)
+            if pressCheck ~= nil and tostring(label):find(pressCheck, 1, true) ~= nil then
+                buf[1] = not buf[1];
+                return true;
+            end
+            return false;
+        end,
         BeginChild    = function() depth.child = depth.child + 1; return true; end,
         EndChild      = function() depth.child = depth.child - 1; end,
     };
@@ -9190,6 +9199,96 @@ end)();
     vc.layoutBusy, vc.requestLayoutSet = oldBusy, oldReq;
     IM.OpenPopup, IM.Selectable = oldOpen, oldSelect;
     IM.IsMouseClicked = function() return false; end;
+
+    -- THE VAULT LIST'S FILTERS (ticket AXI-103): the button, the dropdown,
+    -- the hidden-rows line and Show all, through the real tab. The rules
+    -- themselves are tests/gearvault_filters.lua.
+    do
+        usgMod._reset();
+        local oldLookup3 = svc.lookupById;
+        svc.lookupById = function(id)
+            if id == 200 then
+                return { Id = id, Name = 'Item' .. id, Slot = 'Main', Category = 'Sword', Level = 60, Jobs = { 'BLM' } };
+            end
+            return { Id = id, Name = 'Item' .. id, Slot = 'Body', Level = 10, Jobs = { 'WAR' } };
+        end;
+        -- earlier sections left their own button and checkbox stubs behind
+        local oldSmall3, oldCheck3 = IM.SmallButton, IM.Checkbox;
+        IM.SmallButton = function(label)
+            smallHits[#smallHits + 1] = tostring(label);
+            return pressLabel ~= nil and tostring(label):find(pressLabel, 1, true) ~= nil;
+        end;
+        IM.Checkbox = function(label, buf)
+            if pressCheck ~= nil and tostring(label):find(pressCheck, 1, true) ~= nil then
+                buf[1] = not buf[1];
+                return true;
+            end
+            return false;
+        end;
+        vc.noteJob(1);   -- WAR
+        vc.mirror.rows = {
+            { rowId = 1, itemId = 100, qty = 1, identity = string.rep('\0', 24) },
+            { rowId = 2, itemId = 200, qty = 1, identity = string.rep('\0', 24) },
+        };
+        vc.mirror.fresh = true;
+        vc.mirror.stamp = (vc.mirror.stamp or 0) + 100;
+        local function frame()
+            texts, smallHits = {}, {};
+            local ok, err = pcall(vui.render, 1, 75);
+            return ok, table.concat(smallHits, '|'), table.concat(texts, '|'), err;
+        end
+        vui._setFilters({ job = false, hq = false, hobby = 'show', lvMin = 1, lvMax = 75 });
+        local okF, hits, said = frame();
+        check('GVF1 the tab renders with the Filters dropdown open', okF, true);
+        check('GVF1a the button is plain while no filter is on', ('|' .. hits):find('|Filters###gvfilt', 1, true) ~= nil, true);
+        check('GVF1b both vault rows show',
+            hits:find('Withdraw##gvw1', 1, true) ~= nil and hits:find('Withdraw##gvw2', 1, true) ~= nil, true);
+        check('GVF1c nothing is called hidden', said:find('hidden by filters', 1, true), nil);
+        check('GVF1d no Clear button while nothing is on', hits:find('Clear filters', 1, true), nil);
+
+        vui._setFilters({ job = false, hq = false, hobby = 'show', lvMin = 1, lvMax = 20 });
+        okF, hits, said = frame();
+        check('GVF2 a level range renders', okF, true);
+        check('GVF2a the button counts the filter', hits:find('Filters (1)###gvfilt', 1, true) ~= nil, true);
+        check('GVF2b the Lv60 sword is held back, the Lv10 body stays',
+            hits:find('Withdraw##gvw1', 1, true) ~= nil and hits:find('Withdraw##gvw2', 1, true) == nil, true);
+        check('GVF2c the list says how many it hides', said:find('1 hidden by filters', 1, true) ~= nil, true);
+        check('GVF2d the choice is stored for the character', usgMod.filters().lvMax, 20);
+
+        pressLabel = 'Show all##gvfallV';
+        frame();
+        pressLabel = nil;
+        check('GVF3 Show all turns every filter off', usgMod.filters().lvMax, 75);
+        okF, hits, said = frame();
+        check('GVF3a and the sword is back', hits:find('Withdraw##gvw2', 1, true) ~= nil, true);
+
+        pressCheck = 'gvfjob';
+        frame();
+        pressCheck = nil;
+        check('GVF4 ticking the job box sets the filter', vui._filters().job, true);
+        okF, hits, said = frame();
+        check('GVF4a a BLM sword is hidden from a WAR',
+            hits:find('Withdraw##gvw1', 1, true) ~= nil and hits:find('Withdraw##gvw2', 1, true) == nil, true);
+        vc.noteJob(4);   -- BLM: the filter follows the job
+        okF, hits, said = frame();
+        check('GVF4b and the WAR body from a BLM',
+            hits:find('Withdraw##gvw2', 1, true) ~= nil and hits:find('Withdraw##gvw1', 1, true) == nil, true);
+        vc.noteJob(1);
+
+        pressLabel = 'Hide###gvfhob_hide';
+        frame();
+        pressLabel = nil;
+        check('GVF5 the crafting gear buttons set their mode', vui._filters().hobby, 'hide');
+        pressLabel = 'Clear filters##gvfclr';
+        frame();
+        pressLabel = nil;
+        check('GVF6 Clear filters turns them all off',
+            vui._filters().job == false and vui._filters().hobby == 'show', true);
+
+        svc.lookupById = oldLookup3;
+        IM.SmallButton, IM.Checkbox = oldSmall3, oldCheck3;
+        usgMod._reset();
+    end
 
     vc._reset();
     for _, k in ipairs(NAMES) do package.loaded[k] = saved[k]; end

@@ -185,6 +185,9 @@ percent. `HELM = 1` is a flag, not a value.
 - `latentstats.lua`: `[itemId] = { { stat, add, cond = '<LATENT_NAME>', param }, ... }`.
 - `levelscaling.lua`: `[itemId] = { { stat, add, from|below = <level> }, ... }`
   (latent 51 → `from`, latent 50 → `below`).
+- `hqpairs.lua` (AscensionXI): `[itemId] = { betterId, ... }`, the pieces the same
+  recipe line makes at high quality, every higher tier listed and chains across
+  recipes followed. Equipment only. Read by the Gear Vault tab's filters.
 - CEXI additionally ships `crafts/nmdata/nmdrops/fooddb/fishdb/digdata/
   petmods/itembundles` — all optional; a feature whose file is absent
   degrades soft, which is the addon's standing failure mode.
