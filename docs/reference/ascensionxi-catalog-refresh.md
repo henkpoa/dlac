@@ -4,6 +4,63 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, November 15, 2026
+
+DLAC `2026.11.15b` regenerates the complete pack from AscensionXI main
+`8ac9bef8d0` (after #1272). The generator needed no change here: the one new
+mapping came with the server PR. The `tools/dlac-pack` tests pass (63).
+15,494 records (5 added, 14 changed, none removed), 503 pet-stat items
+(3 added), 5 new icons. The 884 latent-stat items, the 27 dig zones, the
+fishing tables and the Stable catalog and portraits are unchanged.
+
+- **Dragoon's Artifact and relic gear (#1268):** Peregrine at 40 (DMG 66,
+  STR+2, DEX+2, VIT+2, Accuracy+3). The five Drachen pieces drop to level 50
+  with new lines built on STR, Accuracy and Attack, and lose their elemental
+  resistances. The five Wyrm pieces keep their levels and get new lines too,
+  with Haste on the Mail, Finger Gauntlets and Brais.
+- **Spirit Link TP Kept (#1268):** 25 each on Wyvern Mail, Drachen Brais
+  (and +1) and Wyrm Armet (and +1).
+- **Dragoon's Onslaught lances (#1268):** Forsaken Lance and Rekindled Lance
+  (Lv10), Rkndl. Lance +1 (Lv20) and +2 (Lv30), ids 20019-20022, each with its
+  icon. The three Rekindled lances give the wyvern Store TP +2 / +3 / +4,
+  which DLAC shows under `Wyvern`.
+- **Courier's Ring (#1236):** id 26582, a level-1 ring for every job with no
+  stats, with its icon.
+
+One new stat had no DLAC name. The server maps it in
+`tools/dlac-pack/modtable.py` (#1268), and `statdefs` and `modaliases`
+register it here:
+
+| Server modifier | Catalog key | Label |
+|---|---|---|
+| `SPIRIT_LINK_TP_KEPT` | `SpiritLinkTPKept` | Spirit Link TP Kept (%, new) |
+
+The label follows the server's wording and is not yet approved by the owner.
+
+Hand-kept tables checked: `stances.lua` (no latent row changed) and the
+Avatar-Rage table (the only pet ability script that changed, Ruinous Omen, is
+Diabolos's Astral Flow and isn't in it). Every other generated file is
+identical apart from line endings.
+
+Client DATs, checked in the same AXI checkout before generating:
+`sync-dats.py verify --require-content` reads 1,531 DATs, 988 HD DATs and
+3 launcher files with 0 problems (manifest hashes, no LFS pointers, Japanese
+twins), and its own suite passes. All 15,494 records take their name from the
+tracked DATs, none from the fallback.
+
+Still not in DLAC:
+
+- `abilities.lua` and `spells.lua` read stock SQL only, so Dragoon's reworked
+  wyvern abilities (#1268) are missing from the Triggers browse list, like the
+  earlier Ranger, Paladin and Summoner kits. Typed names still work.
+- The Courier's Ring isn't in the Teleports menu. The catalog only knows the
+  item.
+
+Verification, offline only: all 45 DLAC CI commands on Lua 5.4 (core 8,098,
+UI smoke 1,814), pack lint (ascensionxi 49, cexi 39).
+
+---
+
 # AscensionXI catalog refresh, November 10, 2026 (BST release fixes)
 
 DLAC `2026.11.10b` refreshes the full pack from AscensionXI

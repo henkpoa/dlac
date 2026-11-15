@@ -35592,6 +35592,19 @@ return {
                     Accuracy = 15,
                 }
             },
+            ForsakenLance = {
+                Name = "Forsaken Lance",
+                Level = 10,
+                Id = 20019,
+                Model = 208,
+                Jobs = {"DRG"},
+                OneHanded = false,
+                Type = "Polearm",
+                Stats = {
+                    DMG = 20,
+                    Delay = 492,
+                }
+            },
             Fuscina = {
                 Name = "Fuscina",
                 Level = 20,
@@ -37068,17 +37081,19 @@ return {
             },
             Peregrine = {
                 Name = "Peregrine",
-                Level = 42,
+                Level = 40,
                 Id = 16887,
                 Model = 210,
                 Jobs = {"DRG"},
                 OneHanded = false,
                 Type = "Polearm",
                 Stats = {
-                    DMG = 61,
+                    DMG = 66,
                     Delay = 492,
-                    DEX = 1,
-                    VIT = 1,
+                    STR = 2,
+                    DEX = 2,
+                    VIT = 2,
+                    Accuracy = 3,
                 }
             },
             Pike = {
@@ -37360,6 +37375,21 @@ return {
                     CriticalHitRate = 3,
                 }
             },
+            RekindledLance = {
+                Name = "Rekindled Lance",
+                Level = 10,
+                Id = 20020,
+                Model = 946,
+                Jobs = {"DRG"},
+                OneHanded = false,
+                Type = "Polearm",
+                Stats = {
+                    DMG = 39,
+                    Delay = 492,
+                    STR = 2,
+                    Accuracy = 2,
+                }
+            },
             RelicLance = {
                 Name = "Relic Lance",
                 Level = 75,
@@ -37526,6 +37556,36 @@ return {
                     MDMG = 155,
                     ADDS_WEAPONSKILL = 124,
                     AFTERMATH = 45,
+                }
+            },
+            RkndlLance_1 = {
+                Name = "Rkndl. Lance +1",
+                Level = 20,
+                Id = 20021,
+                Model = 946,
+                Jobs = {"DRG"},
+                OneHanded = false,
+                Type = "Polearm",
+                Stats = {
+                    DMG = 47,
+                    Delay = 492,
+                    STR = 3,
+                    Accuracy = 3,
+                }
+            },
+            RkndlLance_2 = {
+                Name = "Rkndl. Lance +2",
+                Level = 30,
+                Id = 20022,
+                Model = 946,
+                Jobs = {"DRG"},
+                OneHanded = false,
+                Type = "Polearm",
+                Stats = {
+                    DMG = 62,
+                    Delay = 492,
+                    STR = 4,
+                    Accuracy = 4,
                 }
             },
             Rosschinder = {
@@ -87175,16 +87235,16 @@ return {
         },
         DrachenArmet = {
             Name = "Drachen Armet",
-            Level = 60,
+            Level = 50,
             Id = 12519,
             Model = 90,
             Jobs = {"DRG"},
             Type = "Head",
             Stats = {
-                DEF = 16,
-                HP = 12,
-                MND = 5,
-                ThunderResistance = 10,
+                DEF = 17,
+                HP = 15,
+                STR = 3,
+                Accuracy = 4,
                 WyvernEffectiveBreath = 1,
             }
         },
@@ -105083,6 +105143,7 @@ return {
                 HP = 16,
                 STR = 5,
                 Attack = 2,
+                SpiritLinkTPKept = 25,
                 WyvernBreath = 30,
             }
         },
@@ -105110,10 +105171,11 @@ return {
             Jobs = {"DRG"},
             Type = "Head",
             Stats = {
-                DEF = 25,
+                DEF = 26,
                 HP = 16,
-                STR = 4,
-                WindResistance = 10,
+                STR = 5,
+                Accuracy = 6,
+                SpiritLinkTPKept = 25,
                 WyvernBreath = 30,
             }
         },
@@ -125026,16 +125088,17 @@ return {
         },
         DrachenMail = {
             Name = "Drachen Mail",
-            Level = 58,
+            Level = 50,
             Id = 12649,
             Model = 90,
             Jobs = {"DRG"},
             Type = "Body",
             Stats = {
-                DEF = 38,
-                HP = 15,
+                DEF = 39,
+                HP = 20,
+                STR = 4,
                 VIT = 4,
-                IceResistance = 10,
+                Attack = 8,
             }
         },
         DragonHarness = {
@@ -144260,10 +144323,11 @@ return {
             Jobs = {"DRG"},
             Type = "Body",
             Stats = {
-                DEF = 49,
+                DEF = 50,
                 HP = 24,
-                ParryingSkill = 15,
-                ResistBlind = 2,
+                STR = 5,
+                Attack = 10,
+                Haste = 2,
                 WyvernSubjobTraits = 1,
             }
         },
@@ -144298,6 +144362,7 @@ return {
             Type = "Body",
             Stats = {
                 DEF = 36,
+                SpiritLinkTPKept = 25,
             }
         },
         WzdCoat_1 = {
@@ -150388,16 +150453,17 @@ return {
         },
         DrachenFngGnt = {
             Name = "Drachen Fng. Gnt.",
-            Level = 56,
+            Level = 50,
             Id = 13974,
             Model = 90,
             Jobs = {"DRG"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
-                HP = 11,
+                DEF = 16,
+                HP = 12,
+                STR = 3,
                 DEX = 3,
-                ParryingSkill = 10,
+                Accuracy = 5,
             }
         },
         DragonFGnt_1 = {
@@ -166633,10 +166699,11 @@ return {
             Jobs = {"DRG"},
             Type = "Hands",
             Stats = {
-                DEF = 19,
+                DEF = 20,
                 HP = 16,
-                AGI = 3,
-                Accuracy = 5,
+                STR = 4,
+                DEX = 4,
+                Haste = 1,
             }
         },
         WzdGloves_1 = {
@@ -168232,6 +168299,15 @@ return {
                 DEF = 1,
                 STR = 2,
                 FireResistance = 5,
+            }
+        },
+        CouriersRing = {
+            Name = "Courier's Ring",
+            Level = 1,
+            Id = 26582,
+            Jobs = {"All"},
+            Type = "Ring",
+            Stats = {
             }
         },
         CraftkeepersRing = {
@@ -190571,17 +190647,19 @@ return {
         },
         DrachenBrais = {
             Name = "Drachen Brais",
-            Level = 52,
+            Level = 50,
             Id = 14227,
             Model = 90,
             Jobs = {"DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 27,
+                DEF = 28,
                 HP = 15,
+                STR = 2,
+                Attack = 4,
                 AncientCircleDuration = 90,
                 AncientCirclePotency = 2,
-                EarthResistance = 10,
+                SpiritLinkTPKept = 25,
             }
         },
         DragonCuisses = {
@@ -190701,6 +190779,7 @@ return {
                 Accuracy = 9,
                 AncientCircleDuration = 90,
                 AncientCirclePotency = 2,
+                SpiritLinkTPKept = 25,
             }
         },
         DrnSubligar_1 = {
@@ -206715,9 +206794,12 @@ return {
             Jobs = {"DRG"},
             Type = "Legs",
             Stats = {
-                DEF = 32,
+                DEF = 33,
                 HP = 13,
+                STR = 4,
                 DEX = 5,
+                Attack = 8,
+                Haste = 2,
                 HighJumpEnmity = 10,
             }
         },
@@ -212579,16 +212661,17 @@ return {
         },
         DrachenGreaves = {
             Name = "Drachen Greaves",
-            Level = 54,
+            Level = 50,
             Id = 14102,
             Model = 90,
             Jobs = {"DRG"},
             Type = "Feet",
             Stats = {
-                DEF = 10,
+                DEF = 11,
                 HP = 12,
-                AGI = 3,
-                EvasionSkill = 5,
+                STR = 2,
+                DEX = 3,
+                Accuracy = 3,
                 JumpAttack = 10,
             }
         },
@@ -229110,10 +229193,12 @@ return {
             Jobs = {"DRG"},
             Type = "Feet",
             Stats = {
-                DEF = 16,
-                HP = 10,
+                DEF = 17,
+                HP = 12,
+                STR = 3,
                 VIT = 4,
-                IceResistance = 10,
+                Accuracy = 5,
+                Attack = 5,
             }
         },
         WzdSabots_1 = {
