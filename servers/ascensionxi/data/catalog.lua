@@ -78358,7 +78358,7 @@ return {
         },
         PetFdEpsilon = {
             Name = "Pet Fd. Epsilon",
-            Level = 1,
+            Level = 60,
             Id = 17020,
             Jobs = {"All"},
             Type = "Ammo",
@@ -78371,7 +78371,7 @@ return {
         },
         PetFdGamma = {
             Name = "Pet Fd. Gamma",
-            Level = 1,
+            Level = 36,
             Id = 17018,
             Jobs = {"All"},
             Type = "Ammo",
@@ -78384,7 +78384,7 @@ return {
         },
         PetFoodAlpha = {
             Name = "Pet Food Alpha",
-            Level = 1,
+            Level = 12,
             Id = 17016,
             Jobs = {"All"},
             Type = "Ammo",
@@ -78397,7 +78397,7 @@ return {
         },
         PetFoodBeta = {
             Name = "Pet Food Beta",
-            Level = 1,
+            Level = 24,
             Id = 17017,
             Jobs = {"All"},
             Type = "Ammo",
@@ -78410,7 +78410,7 @@ return {
         },
         PetFoodDelta = {
             Name = "Pet Food Delta",
-            Level = 1,
+            Level = 48,
             Id = 17019,
             Jobs = {"All"},
             Type = "Ammo",
@@ -78449,7 +78449,7 @@ return {
         },
         PetFoodZeta = {
             Name = "Pet Food Zeta",
-            Level = 1,
+            Level = 72,
             Id = 17021,
             Jobs = {"All"},
             Type = "Ammo",
