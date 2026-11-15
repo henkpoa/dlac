@@ -12184,3 +12184,25 @@ please check and add all new gear and validate the DAT files."
 - Details and the "still not in DLAC" list:
   `docs/reference/ascensionxi-catalog-refresh.md`.
 - Not checked in game.
+
+## 2026-11-15: Courier's Ring in the Teleports menu (`2026.11.15c`)
+
+Henrik: "For AXI, can you add Courier's Ring to the teleport menu?"
+
+- `feature/useitem`: `ITEMS.courier` (Ring2, fallback wait 12 s = Warp Ring's
+  8 s equip delay plus margin) and a top-strip menu row right after Warp,
+  label `Courier`, command `/dl courier`, owned-only.
+- Placement is my call: it is the same trip home as Warp Ring plus the way
+  back, and AXI hands it to everyone who finished The Duchy's Roll. The
+  alternative was the Other Teleports cascade.
+- One ring, two legs (home, then back to the saved spot). Which leg is next is
+  server state the client never sees, so the chat lines name both.
+- It lives in the shared list, like the Anchor Ring: matched by its client
+  name, no id pin. The name exists only in AscensionXI's DAT, and id 26582 may
+  be another item elsewhere (test UC4). CatsEyeXI sees no change.
+- The server sets the ring's reuse stamp after each leg (about 1 min after the
+  trip out, 2 h after the trip back), so the row's countdown is the server's.
+  Clicking while it counts equips the ring and holds Ring2 until it is ready,
+  as every other row does. Cancel with the row or `/dl courier off`.
+- Tests: run_tests UC1-UC4 (14 checks), 8112 total.
+- Not checked in game.

@@ -54,7 +54,7 @@ Still not in DLAC:
   wyvern abilities (#1268) are missing from the Triggers browse list, like the
   earlier Ranger, Paladin and Summoner kits. Typed names still work.
 - The Courier's Ring isn't in the Teleports menu. The catalog only knows the
-  item.
+  item. (Added in `2026.11.15c`.)
 
 Verification, offline only: all 45 DLAC CI commands on Lua 5.4 (core 8,098,
 UI smoke 1,814), pack lint (ascensionxi 49, cexi 39).
