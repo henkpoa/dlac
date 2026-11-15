@@ -128,6 +128,12 @@ sf.saveUiFlags = function()
         if type(ui._gfPos) == 'table' then
             gfx, gfy = tonumber(ui._gfPos[1]) or 0, tonumber(ui._gfPos[2]) or 0;
         end
+        -- The equipment viewer's PIN MENU (2026-11-15): an OFFSET from the click
+        -- that opened it, so it can be negative. 0,0 = never dragged / reset.
+        local pmx, pmy = 0, 0;
+        if type(ui._gfMenuOff) == 'table' then
+            pmx, pmy = tonumber(ui._gfMenuOff[1]) or 0, tonumber(ui._gfMenuOff[2]) or 0;
+        end
         -- The idle-hobby badge (ui/idlefloat.lua) remembers only WHERE it sat --
         -- its visibility is driven by which hobby is armed, not a stored flag.
         local ifx, ify = 0, 0;
@@ -152,13 +158,13 @@ sf.saveUiFlags = function()
         -- an Ashita that cannot honour it still keeps for the day it can.
         local uisc = 1.0;
         pcall(function() uisc = require('dlac\\ui\\uiscale').saved(); end);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q, uiscale = %.2f }\n',
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, pmx = %d, pmy = %d, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q, uiscale = %.2f }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
             tostring(ui._tpFloat == true), tpx, tpy, tmx, tmy,
             tostring(ui._gearFloat == true), gfx, gfy,
-            tonumber(ui._gfScale) or 1.0, tonumber(ui._gfTransparency) or 0, ifx, ify,
+            tonumber(ui._gfScale) or 1.0, tonumber(ui._gfTransparency) or 0, pmx, pmy, ifx, ify,
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
             tostring(sf.flags.gearwarn ~= false),
             tostring(sf.flags.buildstored ~= false),
@@ -228,6 +234,11 @@ sf.loadUiFlags = function()
             -- a negative here cannot collapse the window past rescuing.
             if type(t.gfscale) == 'number' then ui._gfScale = t.gfscale; end
             if type(t.gftransparency) == 'number' then ui._gfTransparency = t.gftransparency; end
+            -- The pin menu's remembered offset from the click: absent or 0,0
+            -- leaves the default at-click placement.
+            if type(t.pmx) == 'number' and type(t.pmy) == 'number' and (t.pmx ~= 0 or t.pmy ~= 0) then
+                ui._gfMenuOff = { t.pmx, t.pmy };
+            end
             -- The idle-hobby badge's remembered position (visibility is not stored).
             if type(t.ifx) == 'number' and type(t.ify) == 'number' and (t.ifx ~= 0 or t.ify ~= 0) then
                 ui._idlePos = { t.ifx, t.ify };

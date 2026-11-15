@@ -252,6 +252,14 @@ local _popupUp = false;
 -- the list; it reads last frame's hover") and is invisible at 60fps.
 local _hoverRec  = nil;
 local _hoverNext = nil;
+-- The pin menu's remembered spot (2026-11-15, Henrik: "like the teleport menu,
+-- but relative to where you click"). What is kept is an OFFSET -- ui._gfMenuOff,
+-- uiflags pmx/pmy -- from the click that opened the menu, not a screen position:
+-- this window gets dragged around, and a menu pinned to one corner of the screen
+-- would stay behind when it moved. `_menuAnchor` is that click, `_menuLast` the
+-- popup's position last frame (a move is a CHANGE, seen while the button is
+-- down), `_menuH` its last height (for keeping it on screen).
+local _menuAnchor, _menuLast, _menuOpenedAt, _menuH = nil, nil, 0, nil;
 
 -- --------------------------------------------------------------------------
 -- Trigger choices for the scope submenu.
@@ -884,6 +892,21 @@ local function candidatesFor(slot, job, level)
     return out;
 end
 
+-- Footer of the pin menu -- the Teleports menu's Reset position, same words.
+-- (The rest of the remembered-spot code is down by the window, where it is used.)
+local function renderMenuFooter()
+    imgui.Separator();
+    if imgui.SmallButton('Reset position##pinmenupos') then
+        ui._gfMenuOff = nil;
+        _menuLast = nil;
+        ui._flagsDirty = true;
+        pcall(function() imgui.CloseCurrentPopup(); end);
+    end
+    if imgui.IsItemHovered() then
+        imgui.SetTooltip('Forget the remembered menu spot -- it opens beside your click again.\nDrag this menu anywhere and it remembers where it sat, relative to\nthe box you clicked (kept across logons).');
+    end
+end
+
 -- `choices`, `pool`, `maxW` and `fpool` are computed by M.render (the width
 -- measurement needs them BEFORE BeginPopup, and building them twice a frame would
 -- be waste), but all four are optional: the fallbacks keep this function drivable
@@ -1028,7 +1051,8 @@ local function renderPinMenu(job, level, choices, pool, maxW, fpool)
     -- The footer is the one thing still unsubmitted: its separator, the "+N more"
     -- line, and the window's own bottom padding. Three lines covers all three and
     -- keeps that line fully visible instead of half-clipped under a scrollbar.
-    local rowCap = M._rowBudget(maxPopupH(), chromeH, 3 * lineH, rowH);
+    -- (+2 lines on 2026-11-15 for the Reset position footer under it.)
+    local rowCap = M._rowBudget(maxPopupH(), chromeH, 5 * lineH, rowH);
     if rowCap > CAP then rowCap = CAP; end
     -- NO BeginChild around this list, deliberately. A submenu is drawn OUTSIDE the
     -- rect of the window it is declared in; inside a child, moving the mouse from
@@ -1124,6 +1148,51 @@ local function renderPinMenu(job, level, choices, pool, maxW, fpool)
             pcall(function() imgui.CloseCurrentPopup(); end);
         end
     end
+    renderMenuFooter();
+end
+
+-- --------------------------------------------------------------------------
+-- The pin menu's remembered spot.
+-- --------------------------------------------------------------------------
+
+-- Both imgui shapes for a point: two numbers, or one {x, y} table.
+local function pointOf(fn)
+    local x, y = nil, nil;
+    pcall(function()
+        local a, b = fn();
+        if type(a) == 'table' then b = (a[2] or a.y); a = (a[1] or a.x); end
+        -- ImGui reports "no mouse" as -FLT_MAX; that is not a place.
+        if type(a) == 'number' and type(b) == 'number' and a > -100000 and b > -100000 then
+            x, y = a, b;
+        end
+    end);
+    return x, y;
+end
+
+-- WHERE the menu opens: the click plus the remembered offset, pulled back onto
+-- the screen. nil = nothing remembered, and ImGui places the popup at the click
+-- as it always has. The clamp matters because the offset is relative: an offset
+-- dragged out while this window sat on the left edge would, with the window on
+-- the right edge, put the menu off the display. Pure, so it can be tested.
+function M._menuTarget(anchor, off, w, h, sw, sh)
+    if type(anchor) ~= 'table' or type(off) ~= 'table' then return nil; end
+    local x = (tonumber(anchor[1]) or 0) + (tonumber(off[1]) or 0);
+    local y = (tonumber(anchor[2]) or 0) + (tonumber(off[2]) or 0);
+    if type(sw) == 'number' and type(w) == 'number' and x + w > sw then x = sw - w; end
+    if type(sh) == 'number' and type(h) == 'number' and y + h > sh then y = sh - h; end
+    if x < 0 then x = 0; end
+    if y < 0 then y = 0; end
+    return math.floor(x), math.floor(y);
+end
+
+-- DID YOU MOVE IT? Only a position change with the left button DOWN counts, and
+-- not in the first quarter second. ImGui itself repositions a popup on its
+-- second frame (once it knows the size) and whenever it would leave the screen;
+-- neither of those is you, and remembering them would turn the default
+-- placement into an offset nobody chose.
+function M._menuMoved(last, px, py, lmbDown, age)
+    return type(last) == 'table' and lmbDown == true and (tonumber(age) or 0) > 0.25
+       and (last[1] ~= px or last[2] ~= py);
 end
 
 -- --------------------------------------------------------------------------
@@ -1323,6 +1392,13 @@ function M.render()
             _menuSlot, _drillItem = _openFor, nil;
             _search[1] = '';
             _openFor = nil;
+            -- The click this open is anchored to. The cursor when it can be
+            -- read; this window's corner when it cannot (GetMousePos has no
+            -- other caller in dlac, so it is asked, never assumed).
+            local ax, ay = pointOf(function() return imgui.GetMousePos(); end);
+            if ax == nil then ax, ay = pointOf(function() return imgui.GetWindowPos(); end); end
+            _menuAnchor = (ax ~= nil) and { ax, ay } or nil;
+            _menuLast, _menuOpenedAt = nil, os.clock();
             imgui.OpenPopup(POPUP);
         end
         -- Constrain the POPUP instead of wrapping its list in a child window: a
@@ -1363,6 +1439,19 @@ function M.render()
         -- would. Otherwise the constraint would leak onto the next window opened
         -- anywhere in the frame -- including another addon's.
         imgui.SetNextWindowSizeConstraints({ maxW, 0 }, { maxW, maxPopupH() });
+        -- A menu you DRAGGED reopens at the same offset from the click.
+        -- Appearing-cond (the Teleports menu's choice), so it places the open
+        -- and then leaves a live drag alone. Consumed by BeginPopup's early-out
+        -- on a shut menu exactly as the constraint above is.
+        if type(ui._gfMenuOff) == 'table' and _menuAnchor ~= nil then
+            local sw, sh = nil, nil;
+            pcall(function()
+                local ds = imgui.GetIO().DisplaySize;
+                if type(ds) == 'table' then sw, sh = tonumber(ds.x or ds[1]), tonumber(ds.y or ds[2]); end
+            end);
+            local tx, ty = M._menuTarget(_menuAnchor, ui._gfMenuOff, maxW, _menuH, sw, sh);
+            if tx ~= nil then imgui.SetNextWindowPos({ tx, ty }, ImGuiCond_Appearing or 8); end
+        end
         _popupUp = false;
         -- The hover swap. `_hoverNext` is what the list reported LAST frame and
         -- becomes what the block draws THIS frame; a menu that did not draw
@@ -1371,6 +1460,23 @@ function M.render()
         _hoverRec, _hoverNext = _hoverNext, nil;
         if imgui.BeginPopup(POPUP) then
             _popupUp = true;
+            -- Watch for a drag of the menu itself (M._menuMoved has the rule).
+            -- The save rides the window's own settle debounce below.
+            local px, py = pointOf(function() return imgui.GetWindowPos(); end);
+            if px ~= nil and _menuAnchor ~= nil then
+                px, py = math.floor(px), math.floor(py);
+                local down = false;
+                pcall(function() down = (imgui.IsMouseDown(ImGuiMouseButton_Left or 0) == true); end);
+                if M._menuMoved(_menuLast, px, py, down, os.clock() - _menuOpenedAt) then
+                    ui._gfMenuOff = { px - math.floor(_menuAnchor[1]), py - math.floor(_menuAnchor[2]) };
+                    ui._gfMovedAt = os.clock() + 1;
+                end
+                _menuLast = { px, py };
+            end
+            pcall(function()
+                local _, h = imgui.GetWindowSize();
+                if type(h) == 'number' and h > 0 then _menuH = h; end
+            end);
             renderPinMenu(job, level, choices, pool, maxW, fpool);
             imgui.EndPopup();
         end

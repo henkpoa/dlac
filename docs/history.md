@@ -12138,3 +12138,24 @@ labels ("Sub", "Rng", "Amm"), and the Triggers section list cut "Blueprints" and
   window passes its own box size and is unchanged.
 - At 100% every number is the one it was.
 - Not checked in game after the change.
+
+## 2026-11-15: Equipment viewer menu remembers its spot; DLAC UI button (`2026.11.15a`)
+
+Henrik: the Teleports menu remembers where you dragged it; the equipment
+viewer's menu should too, relative to where you click, with a Reset position at
+the bottom. And a shortcut to the dlac window at the top of the Teleports menu.
+
+- `ui/floatgear`: dragging the pin menu stores an OFFSET from the click that
+  opened it (`ui._gfMenuOff`, uiflags `pmx` / `pmy`). The next open lands at
+  the new click plus that offset, pulled back onto the screen if it would
+  leave it. A footer row has `Reset position`.
+- A move counts only while the left button is down and after the first quarter
+  second, so ImGui's own placement of a new popup is never stored.
+- The click is read with `imgui.GetMousePos` (first caller in dlac). If the
+  binding does not answer, the viewer's own corner is the anchor.
+- `ui/gearui`: `DLAC UI` button at the right end of the Teleports header. It
+  toggles the main window like `/dl` and closes the menu.
+- Both live in the general client, so AXI and CEXI get them alike.
+- Tests: smoke_ui FGP41-57, run_tests UIF11d-f / UIF18e / UIF19a / SET62a.
+  1814 and 8098 checks, Windows and WSL lua5.4.
+- Not checked in game.

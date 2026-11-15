@@ -1763,6 +1763,33 @@ local function renderTeleportsPopup()
     -- this header until 2026-08-10 -- Henrik: gone; the footer's Reset position
     -- button took its place, and every row explains itself on hover.)
     imgui.TextColored(COL.HEADER, 'Teleports');
+    -- DLAC UI (Henrik, 2026-11-15): the main window, from the header's right
+    -- end -- the floating button is on screen when the window is not, so this
+    -- is the shortcut to it. Same toggle as /dl.
+    --
+    -- Right-aligned off the LIVE width, which in an AlwaysAutoResize popup can
+    -- feed back on itself (profilesmenu's crawl). It cannot here: the button
+    -- ends 12px short of the edge and the window pads only 8, so the width this
+    -- row asks for is always under the width it measured.
+    do
+        local bw, x = 70, 110;      -- 110: clear of the 'Teleports' header text
+        pcall(function()
+            local tw = imgui.CalcTextSize('DLAC UI');
+            if type(tw) == 'number' and tw > 0 then bw = tw + 16; end
+        end);
+        pcall(function()
+            local ww = imgui.GetWindowWidth();
+            if type(ww) == 'number' and ww - bw - 12 > x then x = ww - bw - 12; end
+        end);
+        imgui.SameLine(x);
+        if imgui.SmallButton('DLAC UI##tpdlacui') then
+            M.visible = not M.visible;
+            imgui.CloseCurrentPopup();
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Open or close the dlac window (the same as typing /dl).');
+        end
+    end
     imgui.Separator();
     local rows = {};
     pcall(function() rows = useit.menu() or {}; end);
