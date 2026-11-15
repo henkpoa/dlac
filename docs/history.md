@@ -12251,3 +12251,26 @@ Usable on jobs. HQ only if both HQ and NQ is available ... Crafting / HELM gear"
   next recatalogue's.
 - Tests: `tests/gearvault_filters.lua`, 72 checks, in CI.
 - Not checked in game.
+
+## 2026-11-15: Pet food level (`2026.11.15e`)
+
+Ticket AXI-98 (Teon: "DLAC labels all Pet Food as level 0", next to the game's
+own card saying Lv.12).
+
+- AscensionXI asks for no level on Pet Food Alpha to Zeta: the era module
+  `era/sql/abyssea/job_adjustments.sql` sets `item_equipment.level = 0` on the
+  six ("Pet Food Biscuits: Remove level requirements"). Eta and Theta keep 84
+  and 96. The pack copied the 0, and the game has no level 0.
+- The six rows now read `Level = 1`, so every DLAC view says `Lv.1`, the way any
+  other piece with no requirement does. Only those six lines of `catalog.lua`
+  changed; the generator gets the same rule (level 0 is written as 1) in the
+  AscensionXI repo, so the next recatalogue keeps it.
+- The game's own card still says Lv.12: that text is in the client DAT, which
+  the era SQL does not touch. DLAC shows what the server enforces.
+- The Reward food ladder (`feature/petfood.lua`) gated on its own retail table
+  (Alpha 12 to Zeta 72), so on AscensionXI a Lv.10 Beastmaster carrying Alpha
+  was told the food was above their level. It now asks the pack's catalog for
+  each tier's level and keeps the table for a tier the pack does not stock.
+  CatsEyeXI's catalog has the retail levels, so nothing changes there.
+- Tests: run_tests PF13-PF18 (7 checks), 8119 total.
+- Not checked in game.

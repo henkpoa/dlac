@@ -22,6 +22,11 @@
     band never silently collapses. Ids/levels are the canonical FFXI pet foods
     (Alpha 12 -> Theta 96, every 12 levels). Ammo slot, "All" jobs.
 
+    The table's level is the FALLBACK. Where the server pack's catalog has the
+    tier, ITS level is the gate (ticket AXI-98): a server may ask for a different
+    level than retail does -- AscensionXI asks for none on Alpha..Zeta -- and
+    the catalog is where a pack says so (item facts come from the catalog).
+
     Pure core: `pick(reads)` takes injected level + per-id stock reads and no
     AshitaCore, so the acceptance tests (AC4) drive every band headlessly. The
     live reads (`liveReads`) wrap ownedcache + the player level under pcall.
@@ -52,9 +57,12 @@ M.TIERS = {
 --                                                  so a pre-login preview never
 --                                                  hides a tier the bags hold),
 --   stockOf   = function(id) -> count in bags,   -- 0 / nil = not carried,
+--   levelOf   = function(id) -> the level THIS server asks for the tier, or
+--               nil = unknown (the tier table's level stands). Optional.
 -- }
 -- returns:
---   on success -> { ok = true, id, name, key, level }  (the chosen rung)
+--   on success -> { ok = true, id, name, key, level }  (the chosen rung; level
+--                 is the one that was gated on)
 --   on failure -> { ok = false, reason = 'none-carried' | 'level' }
 --     'none-carried' -- no tier is BOTH wearable and in the bags (the loud
 --                       refusal case); 'level' -- carried food but every carried
@@ -64,6 +72,7 @@ function M.pick(reads)
     local level = tonumber(reads.level);
     if level == nil then level = 99; end            -- unknown level never hides a carried tier
     local stockOf = (type(reads.stockOf) == 'function') and reads.stockOf or function() return 0; end
+    local levelOf = (type(reads.levelOf) == 'function') and reads.levelOf or function() return nil; end
 
     local carriedAny = false;                        -- carrying food at all (any tier, any level)
     for i = #M.TIERS, 1, -1 do                        -- HIGHEST tier first
@@ -71,8 +80,9 @@ function M.pick(reads)
         local n = tonumber(stockOf(t.id)) or 0;
         if n > 0 then
             carriedAny = true;
-            if t.level <= level then
-                return { ok = true, id = t.id, name = t.name, key = t.key, level = t.level };
+            local need = tonumber(levelOf(t.id)) or t.level;
+            if need <= level then
+                return { ok = true, id = t.id, name = t.name, key = t.key, level = need };
             end
         end
     end
@@ -109,6 +119,18 @@ M._stockOf = function(id)
     return n;
 end
 
+-- The level the server pack's catalog asks for a tier, or nil when the pack does
+-- not stock it or no catalog is loaded -- the tier
+-- table's level then stands.
+M._catalogLevel = function(id)
+    local lv = nil;
+    pcall(function()
+        local rec = require('dlac\\gear\\catalogindex').rawById(id);
+        if type(rec) == 'table' then lv = tonumber(rec.Level); end
+    end);
+    return lv;
+end
+
 -- The level the ENGINE will gear at, or nil (unknown) -- the `/dl set level main`
 -- override first, then the SYNC-aware main level, exactly as dispatch's
 -- playerLevel, utils.determineLevels and the Ammo panel's gearLevel resolve it.
@@ -132,7 +154,7 @@ M._playerLevel = function()
 end
 
 function M.liveReads()
-    return { level = M._playerLevel(), stockOf = M._stockOf };
+    return { level = M._playerLevel(), stockOf = M._stockOf, levelOf = M._catalogLevel };
 end
 
 -- The one-liner the button uses. A caller override (`reads`) keeps it drivable.

@@ -22751,6 +22751,25 @@ end)();
     check('PF5 unknown level treats the carried tier as wearable', p5.ok and p5.name, 'Pet Food Theta');
     check('PF6 the ladder carries all eight tiers', #pf.TIERS, 8);
 
+    -- --- the level a tier asks for is the SERVER PACK's where the catalog has
+    -- the tier (ticket AXI-98). AscensionXI asks for no level on Alpha..Zeta, so
+    -- a Lv.10 Beastmaster carrying Zeta may wear it; the table is the fallback.
+    local axi = { [17016] = 1, [17021] = 1, [17023] = 96 };
+    local p13 = pf.pick({ level = 10, stockOf = of({ [17016] = 3, [17021] = 2 }), levelOf = function(id) return axi[id]; end });
+    check('PF13 the catalog level gates, not the table: Zeta at Lv.10', p13.ok and p13.name, 'Pet Food Zeta');
+    check('PF13b ...and the pick reports the level it gated on', p13.level, 1);
+    local p14 = pf.pick({ level = 10, stockOf = of({ [17023] = 1 }), levelOf = function(id) return axi[id]; end });
+    check('PF14 a tier the catalog still levels stays gated', p14.ok == false and p14.reason, 'level');
+    local p15 = pf.pick({ level = 40, stockOf = of(stock), levelOf = function() return nil; end });
+    check('PF15 a tier the catalog does not stock falls back to the table', p15.ok and p15.name, 'Pet Food Alpha');
+    -- the live read asks catalogindex by id; no catalog -> nil, never 0
+    local realCI = package.loaded['dlac\\gear\\catalogindex'];
+    package.loaded['dlac\\gear\\catalogindex'] = { rawById = function(id) if id == 17016 then return { Level = 1 }; end return nil; end };
+    check('PF16 the live level read is the catalog record level', pf._catalogLevel(17016), 1);
+    check('PF17 ...and nil for a tier the pack does not stock', pf._catalogLevel(17018), nil);
+    check('PF18 liveReads carries it', pf.liveReads().levelOf, pf._catalogLevel);
+    package.loaded['dlac\\gear\\catalogindex'] = realCI;
+
     -- --- the LEVEL the ladder gates on is the one the ENGINE gears at (issue
     -- #140, from the #138 merge review). House law, paid for by AutoAmmo v134:
     -- every picker reads the /dl set level main override and then the SYNC-aware
