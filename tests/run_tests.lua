@@ -20347,6 +20347,9 @@ end)();
         tostring(gsrc or ''):find("TextColored(COL.DIM, 'click: equip + use", 1, true), nil);
     check('SET62 the Reset position button took its place',
         tostring(gsrc or ''):find("SmallButton('Reset position##tpmenupos')", 1, true) ~= nil, true);
+    -- 2026-11-15: the header's shortcut to the main window.
+    check('SET62a the Teleports header carries the DLAC UI button',
+        tostring(gsrc or ''):find("SmallButton('DLAC UI##tpdlacui')", 1, true) ~= nil, true);
 end)();
 
 -- ---------------------------------------------------------------------------
@@ -20360,7 +20363,8 @@ end)();
 
     local wrote = {};
     local ui = { showAll = { false }, _openMode = 'job', _tgMon = true, _gfScale = 1.25,
-                 _tpMenuPos = { 415, 208 } };   -- the Teleports MENU's dragged spot (2026-08-10)
+                 _tpMenuPos = { 415, 208 },     -- the Teleports MENU's dragged spot (2026-08-10)
+                 _gfMenuOff = { -220, 35 } };   -- the pin menu's offset from the click (2026-11-15)
     sf.configure({
         dataDir = function() return 'X:\\char\\dlac\\'; end,
         charBase = function() return 'X:\\char\\'; end,
@@ -20394,11 +20398,17 @@ end)();
     -- round-trips; a reset (nil) writes the 0,0 none-marker the loader skips.
     check('UIF11a tmx round-trips', t.tmx, 415);
     check('UIF11b tmy round-trips', t.tmy, 208);
+    -- The pin menu's offset is RELATIVE, so it must survive being negative.
+    check('UIF11d pmx round-trips (negative)', t.pmx, -220);
+    check('UIF11e pmy round-trips', t.pmy, 35);
     ui._tpMenuPos = nil;                       -- the Reset position button
+    ui._gfMenuOff = nil;                       -- ...and the pin menu's
     sf.saveUiFlags();
     local tr = (loadstring or load)(wrote.text)();
     check('UIF11c reset writes the 0,0 none-marker', tr.tmx == 0 and tr.tmy == 0, true);
+    check('UIF11f the pin menu reset writes it too', tr.pmx == 0 and tr.pmy == 0, true);
     ui._tpMenuPos = { 415, 208 };              -- restore for the sections below
+    ui._gfMenuOff = { -220, 35 };
 
     -- A hand-edited openui must not be able to inject Lua: %q quotes and escapes it.
     ui._openMode = 'ne"ver\nrm -rf';
@@ -20419,7 +20429,7 @@ end)();
     _G.loadfile = function() return function()
         return { debug = false, autosync = true, viewids = false,
                  openui = 'login', showall = true, gfscale = 2.0,
-                 tmx = 415, tmy = 208,
+                 tmx = 415, tmy = 208, pmx = -220, pmy = 35,
                  autobuildimport = false, gearwarn = false, buildstored = false };
     end; end
     sf2.configure({
@@ -20440,6 +20450,8 @@ end)();
     check('UIF18c buildstored loads', sf2.flags.buildstored, false);
     check('UIF18d teleport-menu spot loads',
         type(ui2._tpMenuPos) == 'table' and ui2._tpMenuPos[1] == 415 and ui2._tpMenuPos[2] == 208, true);
+    check('UIF18e pin-menu offset loads',
+        type(ui2._gfMenuOff) == 'table' and ui2._gfMenuOff[1] == -220 and ui2._gfMenuOff[2] == 35, true);
 
     -- Absent keys keep their defaults -- an old uiflags.lua written before this
     -- slice must not start opening windows or flipping Show all.
@@ -20456,6 +20468,7 @@ end)();
     sf3.loadUiFlags();
     _G.loadfile = realLoadfile;
     check('UIF19 absent openui stays nil',  ui3._openMode, nil);
+    check('UIF19a absent pin-menu offset stays nil', ui3._gfMenuOff, nil);
     check('UIF20 ...which normalizes to never',
         dofile('ui/menuui.lua')._normalizeOpenMode(ui3._openMode), 'never');
     check('UIF21 absent showall stays off', ui3.showAll[1], false);

@@ -1448,6 +1448,81 @@ end)();
         sawClear, true);
     check('FGP40 ...with the popup\'s own cap untouched by all of it', popupCap(), 250);
 
+    -- THE MENU'S REMEMBERED SPOT (2026-11-15): an offset from the click.
+    openMenu = nil;
+    do
+        local x, y = fg._menuTarget({ 500, 300 }, { -190, -180 }, 250, 400, 1920, 1080);
+        check('FGP41 the menu opens at click + offset', x == 310 and y == 120, true);
+        check('FGP42 nothing remembered -> nil (ImGui places it at the click)',
+            fg._menuTarget({ 500, 300 }, nil, 250, 400, 1920, 1080), nil);
+        x, y = fg._menuTarget({ 1900, 1000 }, { 50, 50 }, 250, 400, 1920, 1080);
+        check('FGP43 an offset that would leave the screen is pulled back', x == 1670 and y == 680, true);
+        x, y = fg._menuTarget({ 20, 20 }, { -300, -300 }, 250, 400, 1920, 1080);
+        check('FGP44 ...on the top/left edge as well', x == 0 and y == 0, true);
+        check('FGP45 a move needs the button down', fg._menuMoved({ 1, 1 }, 5, 5, false, 9), false);
+        check('FGP46 ...and is not ImGui\'s own second-frame reposition',
+            fg._menuMoved({ 1, 1 }, 5, 5, true, 0.1), false);
+        check('FGP47 ...and needs an actual change', fg._menuMoved({ 5, 5 }, 5, 5, true, 9), false);
+        check('FGP48 a real drag counts', fg._menuMoved({ 1, 1 }, 5, 5, true, 9), true);
+
+        -- Driven: open at a click, drag the popup, reopen.
+        local realClock, now = os.clock, 100;
+        os.clock = function() return now; end
+        -- An explicit opener: the sections above leave the grid stub in
+        -- whatever state their last check needed.
+        local function opener(_, _, _, _, _, _, _, _, opts)
+            if opts ~= nil and opts.onRightClick ~= nil then opts.onRightClick('Head'); end
+        end
+        Sx.renderSlotGrid = opener;
+        local mouseDown = false;
+        IM.GetMousePos = function() return 500, 300; end
+        IM.IsMouseDown = function() return mouseDown; end
+        Sx.ui._gfMenuOff, Sx.ui._gfPos, Sx.ui._flagsDirty = nil, nil, nil;
+        winX, winY = 510, 310;
+        local okA = frame();                          -- the opening frame
+        Sx.renderSlotGrid = nop;                      -- ...then the menu just stays up
+        now = 101;
+        local okB = frame();
+        check('FGP49 the menu stays where ImGui put it until you move it', Sx.ui._gfMenuOff, nil);
+        winX, winY = 310, 120;                        -- ImGui moved it, button UP
+        frame();
+        check('FGP50 a reposition that was not a drag is not remembered', Sx.ui._gfMenuOff, nil);
+        mouseDown = true;
+        winX, winY = 300, 100;
+        local okC = frame();
+        check('FGP51 the drive rendered', okA and okB and okC, true);
+        local off = Sx.ui._gfMenuOff;
+        check('FGP52 a drag is remembered as an offset from the CLICK',
+            type(off) == 'table' and off[1] == -200 and off[2] == -200, true);
+        mouseDown = false;
+        now = 103;
+        frame();
+        check('FGP53 ...and saved once the drag settles', Sx.ui._flagsDirty, true);
+
+        -- Reopen from a different click: the same offset, new place.
+        IM.GetMousePos = function() return 900, 700; end
+        Sx.renderSlotGrid = opener;
+        nextPos = nil;
+        frame();
+        check('FGP54 the next open lands at the new click + the same offset',
+            type(nextPos) == 'table' and nextPos[1] == 700 and nextPos[2] == 500, true);
+
+        -- The footer's Reset position.
+        Sx.ui._flagsDirty = nil;
+        IM.SmallButton = function(l) return l == 'Reset position##pinmenupos'; end
+        frame();
+        check('FGP55 Reset position forgets the offset', Sx.ui._gfMenuOff, nil);
+        check('FGP56 ...and saves that', Sx.ui._flagsDirty, true);
+        IM.SmallButton = function() return false; end
+        nextPos = nil;
+        frame();
+        check('FGP57 after a reset nothing is asked of ImGui', nextPos, nil);
+
+        os.clock = realClock;
+        IM.IsMouseDown = function() return false; end
+        Sx.ui._gfMenuOff, Sx.ui._gfPos, Sx.ui._gfMovedAt, Sx.ui._flagsDirty = nil, nil, nil, nil;
+    end
+
     openMenu = nil;
     winX, winY = 10, 20;
     pw.pins = {};
