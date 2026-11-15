@@ -12159,3 +12159,28 @@ the bottom. And a shortcut to the dlac window at the top of the Teleports menu.
 - Tests: smoke_ui FGP41-57, run_tests UIF11d-f / UIF18e / UIF19a / SET62a.
   1814 and 8098 checks, Windows and WSL lua5.4.
 - Not checked in game.
+
+## 2026-11-15: AscensionXI November 15 refresh, Dragoon's gear (`2026.11.15b`)
+
+Henrik: "initialize the weekly recatalogue for DLAC before a prod deploy,
+please check and add all new gear and validate the DAT files."
+
+- Pack regenerated from AXI main `8ac9bef8d0` (after #1272) with AXI's
+  `gen_pack.py`, no generator change. 15,494 records: 5 added, 14 changed,
+  none removed. 503 pet-stat items (3 added), 5 icons. Latents, digging,
+  fishing and the Stable catalog unchanged.
+- #1268: Peregrine at 40, the five Drachen pieces at 50, new lines on the five
+  Wyrm pieces; Forsaken Lance, Rekindled Lance, Rkndl. Lance +1 and +2
+  (20019-20022), the Rekindled ones with `Wyvern = { StoreTP }` pet rows.
+  #1236: Courier's Ring (26582), no stats.
+- One new stat: `SPIRIT_LINK_TP_KEPT` -> `SpiritLinkTPKept`, "Spirit Link TP
+  Kept" (%), Pet section, in `statdefs` and `modaliases`. The server's
+  `modtable.py` already mapped it. Label not yet approved by Henrik.
+- DATs validated in the AXI checkout first: `sync-dats.py verify
+  --require-content` 1,531 + 988 HD + 3 launcher files, 0 problems. Every
+  catalog name came from a tracked DAT.
+- The record diff was read by Id (`catdiff.lua` in scratch), not by line: the
+  generator writes LF and the tree holds CRLF.
+- Details and the "still not in DLAC" list:
+  `docs/reference/ascensionxi-catalog-refresh.md`.
+- Not checked in game.

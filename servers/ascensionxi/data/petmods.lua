@@ -468,6 +468,15 @@ return {
     [20009] = {
         Avatar = { Accuracy = 4, Attack = 4 },
     },
+    [20020] = {
+        Wyvern = { StoreTP = 2 },
+    },
+    [20021] = {
+        Wyvern = { StoreTP = 3 },
+    },
+    [20022] = {
+        Wyvern = { StoreTP = 4 },
+    },
     [20516] = {
         Automaton = { Refresh = 4, Regen = 4 },
     },

@@ -347,6 +347,7 @@ return {
     SPIKES_DMG = 'SpikesDamage',
     SPIKES_DMG_BONUS = 'SpikesDamageBonus',
     SPIRIT_CAST_REDUCTION = 'SpiritCastReduction',
+    SPIRIT_LINK_TP_KEPT = 'SpiritLinkTPKept',
     STAFF = 'StaffSkill',
     STALWART_SOUL = 'StalwartSoul',
     STATUSRES = 'ResistStatus',

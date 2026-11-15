@@ -642,6 +642,7 @@ M.list = {
     { key = 'WyvernBreathMACC', label = 'Wyvern Breath M.Acc', section = 'Pet' },
     { key = 'WyvernSubjobTraits', label = 'Wyvern Subjob', section = 'Pet' },
     { key = 'WyvernLevel', label = 'Wyvern Lv.+', section = 'Pet' },
+    { key = 'SpiritLinkTPKept', label = 'Spirit Link TP Kept', section = 'Pet', percent = true },   -- AXI: the wyvern keeps this % of its TP when Spirit Link spends it
     { key = 'JugLevelRange', label = 'Jug Lv.Range', section = 'Pet' },
     { key = 'FamiliarBonus', label = 'Familiar+', section = 'Pet' },
     { key = 'TandemStrikePower', label = 'Tandem Strike+', section = 'Pet' },
