@@ -16740,6 +16740,87 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- UC. useitem Courier's Ring (Henrik, 2026-11-15) -- AscensionXI's round-trip
+--     ring rides the top strip beside Warp, owned-only, run by /dl courier.
+--     The name is matched as the client spells it and no id is pinned: a
+--     different item on id 26582 (another server) must not become the row.
+-- ---------------------------------------------------------------------------
+(function()
+    local function load(names, bag0)
+        local savedReg = ashita.events.register;
+        local cmdHandler = nil;
+        ashita.events.register = function(evt, name, fn)
+            if evt == 'command' then cmdHandler = fn; end
+        end;
+        local said, queued = {}, {};
+        package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = s; end };
+        local inv = {
+            GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+            GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+        };
+        AshitaCore = {
+            GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+            GetResourceManager = function(self) return {
+                GetItemById = function(self2, id)
+                    if names[id] == nil then return nil; end
+                    return { Name = { names[id] }, MaxCharges = 0 };
+                end,
+            }; end,
+            GetChatManager = function(self) return {
+                QueueCommand = function(self2, mode, cmd) queued[#queued + 1] = cmd; end,
+            }; end,
+        };
+        local useitem = dofile('feature/useitem.lua');
+        ashita.events.register = savedReg;
+        return useitem, cmdHandler, said, queued;
+    end
+    local function topRows(useitem)
+        local names, row = {}, nil;
+        for _, r in ipairs(useitem.menu()) do
+            if r.grp == nil then names[#names + 1] = r.name; end
+            if r.name == "Courier's Ring" then row = r; end
+        end
+        return table.concat(names, '|'), row;
+    end
+
+    -- Owned, next to a Warp Ring: the row follows Warp on the top strip.
+    local useitem, cmd, said, queued = load(
+        { [28540] = 'Warp Ring', [26582] = "Courier's Ring" },
+        { { Id = 26582, Count = 1, Extra = '' }, { Id = 28540, Count = 1, Extra = '' } });
+    local top, row = topRows(useitem);
+    check('UC1 an owned Courier\'s Ring follows Warp on the top strip', top, "Warp Ring|Courier's Ring");
+    check('UC1b ...labelled Courier', row and row.label, 'Courier');
+    check('UC1c ...run by /dl courier', row and row.cmd, '/dl courier');
+    check('UC1d ...ready to equip from the inventory', row and row.avail, true);
+    check('UC1e ...and hidden from the set-building picker', useitem.menuNames()["courier's ring"], true);
+
+    local ok = cmd ~= nil and pcall(cmd, { command = '/dl courier' });
+    check('UC2 /dl courier runs', ok, true);
+    local pend = useitem.pending();
+    check('UC2b ...and stages the ring', pend and pend.name, "Courier's Ring");
+    check('UC2c ...cancelled by /dl courier off', pend and pend.cancel, '/dl courier off');
+    local equip = nil;
+    for _, q in ipairs(queued) do if q:sub(1, 6) == '/equip' then equip = q; end end
+    check('UC2d ...into Ring2 by its client name', equip, '/equip ring2 "Courier\'s Ring"');
+    check('UC2e ...naming both legs', (said[#said] or ''):find('back to the spot you left', 1, true) ~= nil, true);
+    pcall(cmd, { command = '/dl courier off' });
+    check('UC2f /dl courier off releases', useitem.pending(), nil);
+
+    -- Not owned: no row at all.
+    useitem = load({ [28540] = 'Warp Ring' }, { { Id = 28540, Count = 1, Extra = '' } });
+    top, row = topRows(useitem);
+    check('UC3 without the ring the strip is unchanged', top, 'Warp Ring');
+    check('UC3b ...and there is no dim row', row, nil);
+
+    -- Another server's item on id 26582: the id alone is not the ring.
+    useitem = load({ [26582] = 'Some Other Ring' }, { { Id = 26582, Count = 1, Extra = '' } });
+    top, row = topRows(useitem);
+    check('UC4 a different item on id 26582 is not the Courier\'s Ring', row, nil);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- UT. useitem utility teleports (Henrik, 2026-07-23): the 'util' family
 --     (Maat's Cap, Ducal Guard's Ring, stables gear, the Purgonorgo suits...)
 --     is owned-only in the menu, Kazham Earring joins the ear cascade as a
