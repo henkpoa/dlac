@@ -34,7 +34,7 @@ return {
     files = {
         'catalog', 'spells', 'abilities', 'zones',
         'gearsets', 'latentstats', 'levelscaling', 'digdata', 'itemscripts', 'fishdb',
-        'petmods',
+        'petmods', 'hqpairs',
     },
 
     counts = {
@@ -49,5 +49,6 @@ return {
         itemscripts  = 62,
         fishdb       = 126,
         petmods      = 503,
+        hqpairs      = 1626,
     },
 };

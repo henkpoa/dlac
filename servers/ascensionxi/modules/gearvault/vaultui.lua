@@ -43,6 +43,8 @@ local counts = require('dlac\\servers\\ascensionxi\\modules\\gearvault\\layoutco
 local recon  = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\reconcile');
 local usg    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\usage');
 local svm    = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\sharedvault');
+local vf     = try('dlac\\servers\\ascensionxi\\modules\\gearvault\\vaultfilters');
+local pk     = try('dlac\\ui\\panelkit');
 
 -- Tell the layout engine its inputs changed (a setting, the Bench): it runs
 -- a moment later instead of on its quiet beat.
@@ -708,6 +710,94 @@ end
 
 local _search = { '' };
 
+-- ---------------------------------------------------------------------------
+-- THE VAULT LIST'S FILTERS (ticket AXI-103; rules in vaultfilters.lua). They
+-- hold rows back in the Vault and Shared Vault lists only: this job's layout
+-- and the Inventory list always show everything. Remembered per character in
+-- the usage file; read back whenever that file's table changes (a first
+-- load, another character).
+-- ---------------------------------------------------------------------------
+local function levelCap()
+    local n = nil;
+    pcall(function() n = require('dlac\\gear\\serverpack').maxLevel(); end);
+    return tonumber(n) or 75;
+end
+
+local _filters, _filtersRaw, _filtersGen = nil, nil, 0;
+local function filters()
+    local raw = (usg ~= nil and type(usg.filters) == 'function') and usg.filters() or nil;
+    if _filters == nil or (usg ~= nil and raw ~= _filtersRaw) then
+        _filtersRaw = raw;
+        _filters = vf.clean(raw, levelCap());
+        _filtersGen = _filtersGen + 1;
+    end
+    return _filters;
+end
+
+local function setFilters(f)
+    f = vf.clean(f, levelCap());
+    if usg ~= nil and type(usg.setFilters) == 'function' and usg.setFilters(f) then
+        filters();
+    else
+        _filters = f;
+        _filtersGen = _filtersGen + 1;
+    end
+end
+
+local function setFilter(key, value)
+    local f = {};
+    for k, v in pairs(filters()) do f[k] = v; end
+    f[key] = value;
+    setFilters(f);
+end
+
+-- What the high-quality filter reads: the copies your vault holds, by item
+-- id, and the pack's NQ -> HQ table. Rebuilt when the vault is read again.
+local _held, _heldStamp = {}, false;
+local function heldCounts()
+    if _heldStamp == vc.mirror.stamp then return _held; end
+    _heldStamp = vc.mirror.stamp;
+    _held = {};
+    for _, r in ipairs(vc.mirror.rows or {}) do
+        _held[r.itemId] = (_held[r.itemId] or 0) + math.max(1, r.qty or 1);
+    end
+    return _held;
+end
+
+local function hqPairs()
+    local t = nil;
+    pcall(function() t = require('dlac\\data\\hqpairs'); end);
+    return (type(t) == 'table') and t or nil;
+end
+
+-- One list's view with the name search AND the filters applied, kept until
+-- the list, the search, the filters, the job or the vault changes (so an
+-- open tab does not rebuild it every frame). out.hidden = rows the filters
+-- hold back.
+local _fMemo = {};
+local function filteredView(idp, view, needle)
+    if vf == nil then return filterView(view, needle); end
+    local f = filters();
+    local job = jobAbbr(vc.currentJob());
+    local m = _fMemo[idp];
+    if m ~= nil and m.view == view and m.needle == needle and m.gen == _filtersGen
+        and m.job == job and m.stamp == vc.mirror.stamp then
+        return m.out;
+    end
+    local out;
+    if vf.activeCount(f, levelCap()) == 0 then
+        out = filterView(view, needle);
+    else
+        out = vf.apply(view, needle, f, {
+            job = job, held = heldCounts(), better = hqPairs(), recOf = recOf,
+            augmented = function(e) return isAugmented(e.identity); end,
+        });
+    end
+    _fMemo[idp] = { view = view, needle = needle, gen = _filtersGen, job = job,
+                    stamp = vc.mirror.stamp, out = out };
+    return out;
+end
+
 -- Layout ask throttle: the tab re-asks a stale layout at most this often.
 local _layoutAskAt = 0;
 local LAYOUT_ASK_GAP = 3.0;
@@ -1359,6 +1449,89 @@ function M.render(job, level)
     imgui.PopItemWidth();
     if imgui.IsItemHovered() then imgui.SetTooltip('Filter BOTH panes by name.'); end
 
+    -- FILTERS: a dropdown beside the search (ticket AXI-103). The button
+    -- counts the filters that are on and turns gold, so a short list never
+    -- reads as missing gear.
+    if vf ~= nil and type(imgui.BeginPopup) == 'function' and type(imgui.OpenPopup) == 'function'
+        and type(imgui.Checkbox) == 'function' then
+        local f = filters();
+        local cap = levelCap();
+        local nOn = vf.activeCount(f, cap);
+        imgui.SameLine(0, 8);
+        if nOn > 0 then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+        if imgui.SmallButton(((nOn > 0) and string.format('Filters (%d)', nOn) or 'Filters') .. '###gvfilt') then
+            imgui.OpenPopup('##gvfiltpop');
+        end
+        if nOn > 0 then imgui.PopStyleColor(1); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Choose what the Vault and Shared Vault lists show.\nNothing is moved or removed: a filter only hides rows, and the list\nsays how many it hides.');
+        end
+        if imgui.BeginPopup('##gvfiltpop') then
+            imgui.TextColored(cDIM, 'Show in the Vault and Shared Vault lists:');
+
+            local jobName = jobAbbr(vc.currentJob());
+            local jb = { f.job };
+            if imgui.Checkbox('Only gear my job can wear##gvfjob', jb) then setFilter('job', jb[1] == true); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Hide gear your current main job cannot wear at any level.\nFollows your job when you change it.');
+            end
+            if jobName ~= nil then
+                imgui.SameLine(0, 6);
+                imgui.TextColored(cDIM, esc('(' .. jobName .. ')'));
+            end
+
+            local hqKnown = (hqPairs() ~= nil);
+            local hb = { f.hq };
+            if imgui.Checkbox('Hide NQ gear when I own the HQ##gvfhq', hb) then setFilter('hq', hb[1] == true); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip(hqKnown
+                    and 'Hide a crafted piece once your vault holds its high-quality version,\nfor example Haubergeon when you own Haubergeon +1.\n\nRings, earrings and one-handed weapons can be worn two at a time, so those\nhide only when you own TWO of the HQ. Augmented copies are never hidden.'
+                    or 'This server pack has no list of high-quality pairs, so this filter hides nothing.');
+            end
+
+            imgui.TextColored(cDIM, 'Crafting and gathering gear:');
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Gear for synthesis, fishing, harvesting, logging, mining, excavation and\nchocobo digging: guild aprons and rings, the Field and HELM sets and the like.');
+            end
+            local HOBBY_WORDS = { show = 'Show', hide = 'Hide', only = 'Only' };
+            for _, v in ipairs(vf.HOBBY) do
+                imgui.SameLine(0, 4);
+                local on = (f.hobby == v);
+                if on then imgui.PushStyleColor(ImGuiCol_Button, { 0.55, 0.45, 0.15, 1.0 }); end
+                if imgui.SmallButton(HOBBY_WORDS[v] .. '###gvfhob_' .. v) then setFilter('hobby', v); end
+                if on then imgui.PopStyleColor(1); end
+            end
+
+            if pk ~= nil and type(pk.slider) == 'function' then
+                imgui.TextColored(cDIM, 'Level from');
+                imgui.SameLine(0, 6);
+                local lo = pk.slider(imgui, 'gvflo', f.lvMin, 1, cap, '%.0f', 'Hide gear below this level.', 120);
+                if lo ~= nil then
+                    lo = math.max(1, math.min(cap, math.floor(lo + 0.5)));
+                    if lo ~= f.lvMin then
+                        setFilters({ job = f.job, hq = f.hq, hobby = f.hobby, lvMin = lo, lvMax = math.max(lo, f.lvMax) });
+                    end
+                end
+                imgui.SameLine(0, 6);
+                imgui.TextColored(cDIM, 'to');
+                imgui.SameLine(0, 6);
+                f = filters();
+                local hi = pk.slider(imgui, 'gvfhi', f.lvMax, 1, cap, '%.0f', 'Hide gear above this level.', 120);
+                if hi ~= nil then
+                    hi = math.max(1, math.min(cap, math.floor(hi + 0.5)));
+                    if hi ~= f.lvMax then
+                        setFilters({ job = f.job, hq = f.hq, hobby = f.hobby, lvMin = math.min(hi, f.lvMin), lvMax = hi });
+                    end
+                end
+            end
+
+            if vf.activeCount(filters(), cap) > 0 then
+                if imgui.SmallButton('Clear filters##gvfclr') then setFilters(vf.defaults(cap)); end
+            end
+            imgui.EndPopup();
+        end
+    end
+
     -- Vault options live behind the COG at the row's right edge (Henrik,
     -- 2026-08-30: "move Vault options to a cog wheel icon right of the
     -- search bar -- edge right if possible"). The settings.png the header
@@ -1865,8 +2038,22 @@ function M.render(job, level)
         _sub.want = 3;
     end
 
+    -- "12 hidden by filters [Show all]" above a filtered list: what a filter
+    -- holds back is always named and one click away.
+    local function hiddenLine(v, idp)
+        local n = v.hidden or 0;
+        if n <= 0 then return; end
+        imgui.TextColored(cGOLD, string.format('%d hidden by filters', n));
+        imgui.SameLine(0, 8);
+        if imgui.SmallButton('Show all##gvfall' .. idp) then setFilters(vf.defaults(levelCap())); end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Turn every filter off. The Filters button beside the search sets them again.');
+        end
+    end
+
     local function renderVaultTab()
-        local vv = filterView(vaultView(), needle);
+        local vv = filteredView('V', vaultView(), needle);
+        hiddenLine(vv, 'V');
         if vv.total > 0 then
             renderTree(vv, 'V', searching, forceClose, level, COL, function(e)
                 return {
@@ -1940,7 +2127,7 @@ function M.render(job, level)
                     end,
                 };
             end);
-        else
+        elseif (vv.hidden or 0) == 0 then
             imgui.TextColored(cDIM, (vc.mirror.stamp == nil) and 'The vault has not synced yet -- try Sync.'
                 or (searching and 'Nothing in the vault matches.' or 'The vault is empty.'));
         end
@@ -2100,7 +2287,8 @@ function M.render(job, level)
             if members ~= '' then imgui.SameLine(0, 12); end
             imgui.TextColored(cDIM, 'updating...');
         end
-        local sv = filterView(shelfView(), needle);
+        local sv = filteredView('S', shelfView(), needle);
+        hiddenLine(sv, 'S');
         if sv.total > 0 then
             renderTree(sv, 'S', searching, forceClose, level, COL, function(e)
                 return {
@@ -2143,7 +2331,7 @@ function M.render(job, level)
                     end,
                 };
             end);
-        else
+        elseif (sv.hidden or 0) == 0 then
             imgui.TextColored(cDIM, ((vc.shelf or {}).stamp == nil) and 'Reading the Shared Vault...'
                 or (searching and 'Nothing in the Shared Vault matches.' or 'Nothing is shared yet.'));
         end
@@ -2303,6 +2491,9 @@ end
 -- test seams
 M._search = _search;
 M._filterView = filterView;
+M._filteredView = filteredView;
+M._setFilters = setFilters;
+M._filters = filters;
 function M._lastResult() return _lastMsg; end
 
 return M;
