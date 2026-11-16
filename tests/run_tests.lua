@@ -16740,8 +16740,9 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
--- UC. useitem Courier's Ring (Henrik, 2026-11-15) -- AscensionXI's round-trip
---     ring rides the top strip beside Warp, owned-only, run by /dl courier.
+-- UC. useitem Lifter's Ring (Henrik, 2026-11-15, renamed from the Courier's Ring
+--     2026-11-16) -- AscensionXI's round-trip
+--     ring rides the top strip beside Warp, owned-only, run by /dl lift.
 --     The name is matched as the client spells it and no id is pinned: a
 --     different item on id 26582 (another server) must not become the row.
 -- ---------------------------------------------------------------------------
@@ -16778,33 +16779,51 @@ end)();
         local names, row = {}, nil;
         for _, r in ipairs(useitem.menu()) do
             if r.grp == nil then names[#names + 1] = r.name; end
-            if r.name == "Courier's Ring" then row = r; end
+            if r.name == "Lifter's Ring" then row = r; end
         end
         return table.concat(names, '|'), row;
     end
 
     -- Owned, next to a Warp Ring: the row follows Warp on the top strip.
     local useitem, cmd, said, queued = load(
-        { [28540] = 'Warp Ring', [26582] = "Courier's Ring" },
+        { [28540] = 'Warp Ring', [26582] = "Lifter's Ring" },
         { { Id = 26582, Count = 1, Extra = '' }, { Id = 28540, Count = 1, Extra = '' } });
     local top, row = topRows(useitem);
-    check('UC1 an owned Courier\'s Ring follows Warp on the top strip', top, "Warp Ring|Courier's Ring");
-    check('UC1b ...labelled Courier', row and row.label, 'Courier');
-    check('UC1c ...run by /dl courier', row and row.cmd, '/dl courier');
+    check('UC1 an owned Lifter\'s Ring follows Warp on the top strip', top, "Warp Ring|Lifter's Ring");
+    check('UC1b ...labelled Lifter', row and row.label, 'Lifter');
+    check('UC1c ...run by /dl lift', row and row.cmd, '/dl lift');
     check('UC1d ...ready to equip from the inventory', row and row.avail, true);
-    check('UC1e ...and hidden from the set-building picker', useitem.menuNames()["courier's ring"], true);
+    check('UC1e ...and hidden from the set-building picker', useitem.menuNames()["lifter's ring"], true);
 
-    local ok = cmd ~= nil and pcall(cmd, { command = '/dl courier' });
-    check('UC2 /dl courier runs', ok, true);
+    local ok = cmd ~= nil and pcall(cmd, { command = '/dl lift' });
+    check('UC2 /dl lift runs', ok, true);
     local pend = useitem.pending();
-    check('UC2b ...and stages the ring', pend and pend.name, "Courier's Ring");
-    check('UC2c ...cancelled by /dl courier off', pend and pend.cancel, '/dl courier off');
+    check('UC2b ...and stages the ring', pend and pend.name, "Lifter's Ring");
+    check('UC2c ...cancelled by /dl lift off', pend and pend.cancel, '/dl lift off');
     local equip = nil;
     for _, q in ipairs(queued) do if q:sub(1, 6) == '/equip' then equip = q; end end
-    check('UC2d ...into Ring2 by its client name', equip, '/equip ring2 "Courier\'s Ring"');
+    check('UC2d ...into Ring2 by its client name', equip, '/equip ring2 "Lifter\'s Ring"');
     check('UC2e ...naming both legs', (said[#said] or ''):find('back to the spot you left', 1, true) ~= nil, true);
-    pcall(cmd, { command = '/dl courier off' });
-    check('UC2f /dl courier off releases', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl lift off' });
+    check('UC2f /dl lift off releases', useitem.pending(), nil);
+
+    -- Lift-off: with nothing pending, /dl lift off uses the ring too.
+    for i = #queued, 1, -1 do queued[i] = nil; end
+    pcall(cmd, { command = '/dl lift off' });
+    pend = useitem.pending();
+    check('UC6 /dl lift off with nothing pending stages the ring', pend and pend.name, "Lifter's Ring");
+    equip = nil;
+    for _, q in ipairs(queued) do if q:sub(1, 6) == '/equip' then equip = q; end end
+    check('UC6b ...and equips it', equip, '/equip ring2 "Lifter\'s Ring"');
+    pcall(cmd, { command = '/dl lift off' });
+    check('UC6c ...and a second /dl lift off cancels it', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl w' });
+    pcall(cmd, { command = '/dl lift off' });
+    check('UC6d ...and it cancels a pending Warp Ring, not stacks on it', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl lift stop' });
+    check('UC6e /dl lift stop never uses the ring', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl w off' });
+    check('UC6f /dl w off with nothing pending still uses nothing', useitem.pending(), nil);
 
     -- Not owned: no row at all.
     useitem = load({ [28540] = 'Warp Ring' }, { { Id = 28540, Count = 1, Extra = '' } });
@@ -16815,7 +16834,15 @@ end)();
     -- Another server's item on id 26582: the id alone is not the ring.
     useitem = load({ [26582] = 'Some Other Ring' }, { { Id = 26582, Count = 1, Extra = '' } });
     top, row = topRows(useitem);
-    check('UC4 a different item on id 26582 is not the Courier\'s Ring', row, nil);
+    check('UC4 a different item on id 26582 is not the Lifter\'s Ring', row, nil);
+
+    -- A client still on the old DAT spells it Courier's Ring: no row, so the
+    -- DAT rename and this version ship together.
+    useitem, cmd = load({ [26582] = "Courier's Ring" }, { { Id = 26582, Count = 1, Extra = '' } });
+    top, row = topRows(useitem);
+    check('UC5 the old name is no longer the row', top, '');
+    pcall(cmd, { command = '/dl courier' });
+    check('UC5b ...and /dl courier is no longer a command', useitem.pending(), nil);
 
     AshitaCore = nil;
 end)();
