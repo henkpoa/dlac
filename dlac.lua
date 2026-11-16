@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.16a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.16b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -555,7 +555,10 @@ addon.version = '2026.11.16a';  -- date of the last shipped change (Ashita print
                                 --  11.16a = AscensionXI's Courier's Ring is the
                                 --  Lifter's Ring, after Lift who asked for it:
                                 --  the row reads Lifter and the command is
-                                --  /dl lift, and /dl lift off uses it too)
+                                --  /dl lift, and /dl lift off uses it too;
+                                --  11.16b = AscensionXI catalog refresh: Star
+                                --  Band, Light Crossbow for THF, Leaping Boots
+                                --  for MNK)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
