@@ -33,6 +33,9 @@
                            countdown machinery; the GUI menu lists only the ones
                            you own.
         /dl p|w|lift|c|shirt|t|xp off   cancel the pending use and release the slot.
+        /dl lift off       with nothing pending this is lift-off: it uses the
+                           Lifter's Ring like /dl lift. With a use pending it
+                           cancels, like every other off.
 
     Readiness is read from the GAME, not guessed: an enchanted item's Extra data
     carries its last-use timestamp (offset 5) and -- for Flags == 5 equipment --
@@ -667,7 +670,8 @@ ashita.events.register('command', 'dlac-useitem', function(e)
     local sub = args[1];
     if ITEMS[sub] == nil and SCROLLS[sub] == nil and sub ~= 't' and sub ~= 'xp' then return; end
     e.blocked = true;
-    if args[2] == 'off' or args[2] == 'cancel' or args[2] == 'stop' then cancel(); return; end
+    local liftOff = sub == 'lift' and args[2] == 'off' and state == nil;
+    if not liftOff and (args[2] == 'off' or args[2] == 'cancel' or args[2] == 'stop') then cancel(); return; end
 
     local sc = SCROLLS[sub];
     if sc ~= nil then

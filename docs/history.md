@@ -12281,6 +12281,11 @@ command to /dl lift. Context, lift is the player who came up with the idea."
   the ring by its client name, so `feature/useitem` follows: `ITEMS.lift`,
   name `Lifter's Ring`, the top-strip row labelled `Lifter`, command
   `/dl lift` (`/dl lift off` cancels).
+- Henrik, same day: "Can you also add so /dl lift off also works as a
+  command? :D" With nothing pending, `/dl lift off` uses the ring like
+  `/dl lift`. With any use pending it cancels as before, so the hint on the
+  countdown stays true. `/dl lift stop` and `cancel` only cancel. No other
+  item's `off` changed (tests UC6-UC6f).
 - `/dl courier` is gone, with no alias. The old name no longer matches a row
   either (test UC5), so this version and the renamed DAT ship together: the
   AXI PR pins this commit in the same merge as the DAT.
@@ -12292,6 +12297,6 @@ command to /dl lift. Context, lift is the player who came up with the idea."
 - The server also shortens the wait before the trip back from 60 to 15
   seconds. Nothing in DLAC holds that number: the row's countdown is the
   server's stamp.
-- Tests: run_tests UC1-UC5 (16 checks), 8114 total. smoke_ui 1831, pack lint
+- Tests: run_tests UC1-UC6 (22 checks), 8120 total. smoke_ui 1831, pack lint
   50, ascensionxi_catalog pass.
 - Not checked in game.

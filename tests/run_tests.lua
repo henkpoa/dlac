@@ -16807,6 +16807,24 @@ end)();
     pcall(cmd, { command = '/dl lift off' });
     check('UC2f /dl lift off releases', useitem.pending(), nil);
 
+    -- Lift-off: with nothing pending, /dl lift off uses the ring too.
+    for i = #queued, 1, -1 do queued[i] = nil; end
+    pcall(cmd, { command = '/dl lift off' });
+    pend = useitem.pending();
+    check('UC6 /dl lift off with nothing pending stages the ring', pend and pend.name, "Lifter's Ring");
+    equip = nil;
+    for _, q in ipairs(queued) do if q:sub(1, 6) == '/equip' then equip = q; end end
+    check('UC6b ...and equips it', equip, '/equip ring2 "Lifter\'s Ring"');
+    pcall(cmd, { command = '/dl lift off' });
+    check('UC6c ...and a second /dl lift off cancels it', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl w' });
+    pcall(cmd, { command = '/dl lift off' });
+    check('UC6d ...and it cancels a pending Warp Ring, not stacks on it', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl lift stop' });
+    check('UC6e /dl lift stop never uses the ring', useitem.pending(), nil);
+    pcall(cmd, { command = '/dl w off' });
+    check('UC6f /dl w off with nothing pending still uses nothing', useitem.pending(), nil);
+
     -- Not owned: no row at all.
     useitem = load({ [28540] = 'Warp Ring' }, { { Id = 28540, Count = 1, Extra = '' } });
     top, row = topRows(useitem);
