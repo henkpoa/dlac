@@ -12300,3 +12300,18 @@ command to /dl lift. Context, lift is the player who came up with the idea."
 - Tests: run_tests UC1-UC6 (22 checks), 8120 total. smoke_ui 1831, pack lint
   50, ascensionxi_catalog pass.
 - Not checked in game.
+
+## 2026-11-16: AscensionXI catalog refresh (`2026.11.16b`)
+
+Henrik: "can you run the dlac recatalogue for AXI, Courier's ring should've
+been updated to Lifter's Ring. Nexus is doing its thing on its own."
+
+- Full pack from AscensionXI main `7a38364f18`, no generator change, 79
+  generator tests. 15,495 records: Star Band (26583) added with its icon,
+  Light Crossbow and +1 gain THF, Leaping Boots and +1 gain MNK.
+- The Lifter's Ring record was already right from `2026.11.16a`; the run
+  writes the same record.
+- DATs verified in the same checkout (1,531 + 988 HD + 3 launcher, 0
+  problems).
+- Tests: run_tests 8120, smoke_ui 1831, pack lint 50 and 39, all 46 CI
+  commands. Not checked in game.

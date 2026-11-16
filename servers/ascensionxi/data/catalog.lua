@@ -69439,7 +69439,7 @@ return {
                 Level = 1,
                 Id = 17216,
                 Model = 56,
-                Jobs = {"WAR", "DRK", "RNG"},
+                Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
                 Pair = "26:0",
                 Stats = {
@@ -69452,7 +69452,7 @@ return {
                 Level = 1,
                 Id = 17228,
                 Model = 56,
-                Jobs = {"WAR", "DRK", "RNG"},
+                Jobs = {"WAR", "THF", "DRK", "RNG"},
                 Type = "Marksmanship",
                 Pair = "26:0",
                 Stats = {
@@ -172980,6 +172980,15 @@ return {
                 EarthResistance = 5,
             }
         },
+        StarBand = {
+            Name = "Star Band",
+            Level = 1,
+            Id = 26583,
+            Jobs = {"All"},
+            Type = "Ring",
+            Stats = {
+            }
+        },
         StarRing = {
             Name = "Star Ring",
             Level = 72,
@@ -218972,7 +218981,7 @@ return {
             Level = 7,
             Id = 13014,
             Model = 6,
-            Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
+            Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Feet",
             Stats = {
                 DEF = 3,
@@ -218985,7 +218994,7 @@ return {
             Level = 7,
             Id = 26566,
             Model = 502,
-            Jobs = {"WAR", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
+            Jobs = {"WAR", "MNK", "RDM", "THF", "PLD", "DRK", "BST", "BRD", "RNG", "SAM", "NIN", "DRG", "BLU", "COR", "DNC", "RUN"},
             Type = "Feet",
             Stats = {
                 DEF = 3,

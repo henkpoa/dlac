@@ -4,6 +4,31 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, November 16, 2026
+
+DLAC `2026.11.16b` regenerates the complete pack from AscensionXI main
+`7a38364f18` (after #1303). The generator needed no change. The
+`tools/dlac-pack` tests pass (79). 15,495 records (1 added, 4 changed, none
+removed), 1 new icon. Every other generated file is identical apart from line
+endings.
+
+- **Star Band (#1284, #1297):** id 26583, a level-1 ring for every job with
+  no stats, with its icon.
+- **Light Crossbow and Light Crossbow +1 (#1302):** Thief can equip them.
+- **Leaping Boots and Leaping Boots +1 (#1292):** Monk can wear them.
+- **Lifter's Ring (#1299):** id 26582 already carried the new name since
+  `2026.11.16a`. This run writes the same record.
+
+Client DATs, checked in the same AXI checkout before generating:
+`sync-dats.py verify --require-content` reads 1,531 DATs, 988 HD DATs and
+3 launcher files with 0 problems, and its own suite passes. All 15,495
+records take their name from the tracked DATs, none from the fallback.
+
+Verification, offline only: all 46 DLAC CI commands (core 8,120, UI smoke
+1,831), pack lint (ascensionxi 50, cexi 39).
+
+---
+
 # One record renamed, November 16, 2026
 
 DLAC `2026.11.16a`. AscensionXI renamed item 26582 from Courier's Ring to
