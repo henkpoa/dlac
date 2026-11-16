@@ -12310,7 +12310,7 @@ been updated to Lifter's Ring. Nexus is doing its thing on its own."
   generator tests. 15,495 records: Star Band (26583) added with its icon,
   Light Crossbow and +1 gain THF, Leaping Boots and +1 gain MNK.
 - The Lifter's Ring record was already right from `2026.11.16a`; the run
-  writes it byte for byte.
+  writes the same record.
 - DATs verified in the same checkout (1,531 + 988 HD + 3 launcher, 0
   problems).
 - Tests: run_tests 8120, smoke_ui 1831, pack lint 50 and 39, all 46 CI
