@@ -4,7 +4,7 @@
     Timed enchantment commands -- equip, wait out the equip delay, /item:
         /dl p              lock Ring2, equip the Provenance Ring, use it (panic escape).
         /dl w              same with the Warp Ring (shorter delay).
-        /dl courier        same with AscensionXI's Courier's Ring: home on the
+        /dl lift           same with AscensionXI's Lifter's Ring: home on the
                            first use, back to the spot you left on the second.
         /dl iw             use an Instant Warp scroll from Inventory -- a USABLE
                            item, not an enchantment: no equip, no lock, no wait.
@@ -32,7 +32,7 @@
                            anchor, venture). Same
                            countdown machinery; the GUI menu lists only the ones
                            you own.
-        /dl p|w|courier|c|shirt|t|xp off   cancel the pending use and release the slot.
+        /dl p|w|lift|c|shirt|t|xp off   cancel the pending use and release the slot.
 
     Readiness is read from the GAME, not guessed: an enchanted item's Extra data
     carries its last-use timestamp (offset 5) and -- for Flags == 5 equipment --
@@ -66,14 +66,16 @@ local M = {};
 local ITEMS = {
     p = { name = 'Provenance Ring',  slot = 'ring2', wait = 20 },  -- 15s equip delay + margin
     w = { name = 'Warp Ring',        slot = 'ring2', wait = 12 },  --  8s equip delay + margin
-    -- AscensionXI's Courier's Ring (item 26582, in that server's client DAT
-    -- only, so only an AscensionXI character can own it). One ring, two
+    -- AscensionXI's Lifter's Ring, named after Lift, the player who asked
+    -- for it (item 26582, the Courier's Ring until 2026-11-16, in that
+    -- server's client DAT only, so only an AscensionXI character can own
+    -- it). One ring, two
     -- legs: the first use warps you to your Home Point and saves the spot
     -- you stood on, the second takes you back. Which leg is next is the
     -- server's state, so the verb names both. Warp Ring's timing (8s equip
     -- delay). No id pin: the name is matched as the client spells it, and
     -- another server may give 26582 to something else.
-    courier = { name = "Courier's Ring", slot = 'ring2', wait = 12,
+    lift = { name = "Lifter's Ring", slot = 'ring2', wait = 12,
           verb = 'warping home, or back to the spot you left' },
     c = { name = 'Chocobo Whistle',  slot = 'neck',  wait = 15,    -- delay unknown; clock rules
           verb = 'calling your chocobo' },
@@ -509,10 +511,10 @@ local MENU = {
     -- option should be the first thing you see when you have one.
     { name = SCROLLS.iw.name,     label = 'Instant Warp', cmd = '/dl iw',    ownedOnly = true },
     { name = 'Warp Ring',         label = 'Warp',         cmd = '/dl w',     ownedOnly = true },
-    -- Courier's Ring sits with Warp: it is the same trip home, plus the way
+    -- Lifter's Ring sits with Warp: it is the same trip home, plus the way
     -- back (2026-11-15). Owned-only like the rest of the strip, so a server
     -- without the item never shows the row.
-    { name = "Courier's Ring",    label = 'Courier',      cmd = '/dl courier', ownedOnly = true },
+    { name = "Lifter's Ring",     label = 'Lifter',       cmd = '/dl lift',  ownedOnly = true },
     { name = 'Provenance Ring',   label = 'Provenance',   cmd = '/dl p',     ownedOnly = true },
     { name = 'Chocobo Whistle',   label = 'Chocobo',      cmd = '/dl c',     ownedOnly = true },
     -- Nexus Cape and Shadow Lord Shirt moved OFF the top strip into the "Other

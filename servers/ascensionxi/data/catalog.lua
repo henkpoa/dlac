@@ -168301,15 +168301,6 @@ return {
                 FireResistance = 5,
             }
         },
-        CouriersRing = {
-            Name = "Courier's Ring",
-            Level = 1,
-            Id = 26582,
-            Jobs = {"All"},
-            Type = "Ring",
-            Stats = {
-            }
-        },
         CraftkeepersRing = {
             Name = "Craftkeeper's Ring",
             Level = 1,
@@ -170531,6 +170522,15 @@ return {
                 MND = 9,
                 MagicAccuracy = 3,
                 WaterResistance = 16,
+            }
+        },
+        LiftersRing = {
+            Name = "Lifter's Ring",
+            Level = 1,
+            Id = 26582,
+            Jobs = {"All"},
+            Type = "Ring",
+            Stats = {
             }
         },
         LigeiaRing = {

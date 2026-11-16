@@ -4,6 +4,16 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# One record renamed, November 16, 2026
+
+DLAC `2026.11.16a`. AscensionXI renamed item 26582 from Courier's Ring to
+**Lifter's Ring** (AXI #1299). The catalog record is now `LiftersRing`, with
+the new name, in its sorted place. It comes from a generator run on that AXI
+branch. Nothing else from that run was taken: Star Band (26583) and its icon
+wait for the next full refresh.
+
+---
+
 # AscensionXI catalog refresh, November 15, 2026
 
 DLAC `2026.11.15b` regenerates the complete pack from AscensionXI main

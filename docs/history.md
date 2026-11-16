@@ -12271,3 +12271,27 @@ own card saying Lv.12).
   the same levels.
 - Tests: no new ones here; 8112 pass. The generator's test pins the eight levels.
 - Checked in game only as above (the equip refusal), not the DLAC views.
+
+## 2026-11-16: the Courier's Ring is the Lifter's Ring (`2026.11.16a`)
+
+Henrik: "Can you rename courier's ring to Lifter's ring ... update the ring
+command to /dl lift. Context, lift is the player who came up with the idea."
+
+- AscensionXI renames item 26582 in its client DAT (AXI #1299). DLAC matches
+  the ring by its client name, so `feature/useitem` follows: `ITEMS.lift`,
+  name `Lifter's Ring`, the top-strip row labelled `Lifter`, command
+  `/dl lift` (`/dl lift off` cancels).
+- `/dl courier` is gone, with no alias. The old name no longer matches a row
+  either (test UC5), so this version and the renamed DAT ship together: the
+  AXI PR pins this commit in the same merge as the DAT.
+- Catalog: only the ring's record changed, `CouriersRing` to `LiftersRing`
+  with the new name, moved to where the generator sorts it. It was taken from
+  a generator run on the AXI branch and compared with that run's record. The
+  rest of that run (Star Band 26583 and its icon) is still the next
+  recatalogue's.
+- The server also shortens the wait before the trip back from 60 to 15
+  seconds. Nothing in DLAC holds that number: the row's countdown is the
+  server's stamp.
+- Tests: run_tests UC1-UC5 (16 checks), 8114 total. smoke_ui 1831, pack lint
+  50, ascensionxi_catalog pass.
+- Not checked in game.
