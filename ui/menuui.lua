@@ -782,20 +782,32 @@ local function setController()
         function(v) pad.setEnabled(v); end);
 
     local cap = pad.capture();
+    -- Three columns: label, button, binding. The binding goes LAST because it
+    -- is the one whose length nobody controls ("hold button 8, press button
+    -- 1"); in the middle it ran under the button (field, 2026-11-17). The
+    -- label column is measured, so a larger font cannot clip it either.
+    local labelW = px(110);
+    for _, which in ipairs({ 'combo', 'ok', 'back', 'prev', 'next' }) do
+        pcall(function()
+            local tw = imgui.CalcTextSize(pad.BIND_LABEL[which]);
+            if type(tw) == 'number' and tw + px(14) > labelW then labelW = tw + px(14); end
+        end);
+    end
+    local valueX = labelW + px(64);
     local function bindRow(which, current, listening)
         imgui.TextColored(COL.USABLE, pad.BIND_LABEL[which]);
-        imgui.SameLine(px(120));
+        imgui.SameLine(labelW);
         if cap ~= nil and cap.which == which then
-            imgui.TextColored(COL.SCORE, listening);
-            imgui.SameLine(0, 8);
             if imgui.SmallButton('Cancel##dlacpad_' .. which) then pad.cancelCapture(); end
+            imgui.SameLine(valueX);
+            imgui.TextColored(COL.SCORE, listening);
         else
-            imgui.TextColored(COL.DIM, esc(current));
-            imgui.SameLine(px(330));
             if imgui.SmallButton('Bind##dlacpad_' .. which) then pad.beginCapture(which); end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip('Click, then press it on the controller.');
             end
+            imgui.SameLine(valueX);
+            imgui.TextColored(COL.DIM, esc(current));
         end
     end
     bindRow('combo', pad.comboName(),

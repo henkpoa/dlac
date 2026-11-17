@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.17d';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.17e';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -571,7 +571,9 @@ addon.version = '2026.11.17d';  -- date of the last shipped change (Ashita print
                                 --  piece's x, not up on Commit;
                                 --  11.17d = controller: picking a slot puts
                                 --  the cursor on + Add, and adding a piece
-                                --  keeps the cursor where it was in the list)
+                                --  keeps the cursor where it was in the list;
+                                --  11.17e = Settings > Controller: the binding
+                                --  no longer runs under its Bind button)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
