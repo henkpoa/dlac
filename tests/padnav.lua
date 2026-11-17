@@ -229,4 +229,16 @@ check('PN75 next', uihost.pendingTab(), 'C');
 uihost.cycleTab(-1);
 check('PN76 previous', uihost.pendingTab(), 'A');
 
+-- 16. Moving the cursor by hand: the widget that receives it ignores a press
+--     for two frames, then answers again.
+fresh();
+check('PN77 nothing moved: a press counts', pad.pressAllowed(), true);
+pad.tick(host);
+pad.focusHere();
+check('PN78 the frame the cursor moved: ignored', pad.pressAllowed(), false);
+pad.tick(host); pad.tick(host);
+check('PN79 two frames on: still ignored', pad.pressAllowed(), false);
+pad.tick(host);
+check('PN80 the third frame: a press counts again', pad.pressAllowed(), true);
+
 print(('padnav: %d checks passed'):format(n));

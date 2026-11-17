@@ -59,11 +59,14 @@ picker opens. Add a prefix or suffix to `padnav.FLATTEN_PREFIX` /
 
 **Keeping the cursor when an item disappears.** ImGui's cursor sits on a
 widget id; remove the row under it and the cursor falls back to the top of the
-window. The slot list's `x` therefore hands the cursor to the `x` that takes its
-place (`ui._padRowFocus`, `SetKeyboardFocusHere` just before the button), and
-that button ignores a press for two frames in case a binding ever treats "focus
-this" as "press this". Any other list where rows are removed with the pad needs
-the same.
+window. `padnav.focusHere()`, called just before a widget, moves the cursor
+there (`SetKeyboardFocusHere`), and the widget gates its own click on
+`padnav.pressAllowed()`, which is false for two frames afterwards in case a
+binding ever treats "focus this" as "press this". Used so far, all on the Sets
+tab: a removed row's `x` hands the cursor to the `x` that takes its place; a
+piece added in the `+ Add` picker hands it to the row that takes its place;
+picking a slot puts it on `+ Add`. Any other list whose rows come and go under
+the pad needs the same.
 
 ## The older Ashita
 

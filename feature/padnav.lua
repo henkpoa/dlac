@@ -381,6 +381,7 @@ end
 -- ---------------------------------------------------------------------------
 -- host = { ui = <gearui's ui table>, visible = fn, setVisible = fn, popup = fn }
 function M.tick(host)
+    st.frame = (st.frame or 0) + 1;
     if type(host) ~= 'table' or type(host.ui) ~= 'table' then return; end
     local ui = host.ui;
     if st.dirty then st.dirty = false; ui._flagsDirty = true; end
@@ -482,6 +483,22 @@ end
 -- one comparison, on an install where this module never loaded).
 pcall(function() require('dlac\\lib\\imguicompat').navFlatten = M.flatten; end);
 
+-- MOVING THE CURSOR BY HAND. ImGui's cursor sits on a widget id: remove the
+-- row under it and the cursor falls back to the top of the window. A caller
+-- that knows where it should go calls focusHere() just before that widget,
+-- and gates the widget's own click on pressAllowed(). The gate is two frames
+-- wide and exists for one reason: if a binding ever treated "focus this" as
+-- "press this", a list that hands its cursor to the next row would empty (or
+-- fill) itself in one press.
+function M.focusHere()
+    st.guardUntil = (st.frame or 0) + 2;
+    local im = M.io.imgui();
+    if im ~= nil and im.SetKeyboardFocusHere ~= nil then pcall(im.SetKeyboardFocusHere, 0); end
+end
+function M.pressAllowed()
+    return (st.frame or 0) > (st.guardUntil or -1);
+end
+
 -- A list that should be under the cursor the moment its popup opens calls
 -- this right after its first row.
 function M.defaultFocusHere()
@@ -524,6 +541,7 @@ function M._reset()
     st.phys, st.game, st.pending, st.fed, st.capture = {}, {}, nil, {}, nil;
     st.dirty, st.idleAt, st.openQuick, st.takeHost, st.closeOnRelease = false, nil, false, nil, nil;
     st.flattenAll, st.dpad, st.ownCfg, st.ownBk = false, {}, nil, nil;
+    st.frame, st.guardUntil = nil, nil;
 end
 
 -- ---------------------------------------------------------------------------
