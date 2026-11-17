@@ -295,6 +295,10 @@ local function captureStep(tok, down)
             elseif tok ~= c.first then
                 st.combo = { hold = c.first, press = tok };
                 st.capture, st.dirty = nil, true;
+                -- Binding the combination IS asking for the feature: a combo
+                -- that does nothing because a tick was missed reads as broken
+                -- (field, 2026-11-17).
+                st.enabled = true;
             end
         elseif tok == c.first then
             c.first = nil;                       -- let go before the second press

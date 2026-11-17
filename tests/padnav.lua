@@ -143,6 +143,12 @@ navActive = false; clock = 5.5; pad.tick(host);
 check('PN45 focus coming back restarts the grace', pad.active(), true);
 
 -- 9. Capture: hold one, press another; a lone press binds a single button.
+-- Capture works with the switch off, and binding the combo switches it on.
+fresh();
+pad.beginCapture('combo');
+press('d55'); press('d48');
+check('PN45a the combo is captured with the switch off', pad.export(), 'on=1;combo=d55+d48');
+check('PN45b ...which turned the switch on', pad.enabled(), true);
 fresh(); pad.applySaved('on=1');
 pad.beginCapture('combo');
 check('PN46 capture blocks the pad', press('d58'), true);
