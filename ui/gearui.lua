@@ -1740,6 +1740,9 @@ local function renderTeleportsPopup()
         ui._flagsDirty = true;
     end
     if not imgui.BeginPopup('##dlac_teleports') then return; end
+    -- The controller's close combo (feature\padnav): a popup can only be
+    -- closed from inside itself, so the request arrives as a flag.
+    if ui._tpClose ~= nil then imgui.CloseCurrentPopup(); end
     -- Only a MOVE pins the menu. The baseline is wherever this open APPEARED
     -- (the click spot, or the pin), so "position differs from baseline" can
     -- never turn the default placement into an accidental pin. Fresh opens are
@@ -4120,6 +4123,9 @@ local function renderAddRow(rec, ordinal, level, nameW)
     imgui.BeginChild('##addrow_' .. tostring(rec.Id or ordinal) .. '_' .. ordinal, { -1, 22 }, false);
     icons.renderIcon(rec.Id, 18, rec);   -- virtuals (dlac:*) get the element wheel
     local clicked = imgui.Selectable('##addsel_' .. ordinal, false);
+    -- On a controller the list is what you came for: the first piece is under
+    -- the cursor the moment the picker opens (a no-op with the pad at rest).
+    if ordinal == 1 then pcall(function() require('dlac\\feature\\padnav').defaultFocusHere(); end); end
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;
     imgui.SameLine(nameCol);
@@ -5782,6 +5788,9 @@ local function drawWindow()
     imgui.SetNextWindowSizeConstraints({ spx(480), spx(340) }, { 1300, 1300 });
 
     local isOpen = { M.visible };
+    -- The controller took the pad with this window up: give it the focus, or
+    -- the d-pad has nothing to walk (feature\padnav).
+    if ui._padFocus then ui._padFocus = nil; pcall(imgui.SetNextWindowFocus); end
     if imgui.Begin('dlac Gear###ffxi_lac_gearui', isOpen, ImGuiWindowFlags_None) then
         -- Remembered for the refit above (only while the body is open: a
         -- collapsed window would report just its title bar).
@@ -6029,6 +6038,16 @@ function M.trayTeleportsDraw()
     pcall(renderTeleportsPopup);
 end
 
+-- What controller navigation (feature\padnav) needs of this chunk: the quick
+-- menu's body, and the main window's visibility. An M. field, not a chunk
+-- local (hard rule 1).
+M._padHost = {
+    ui = ui,
+    popup = renderTeleportsPopup,
+    visible = function() return M.visible == true; end,
+    setVisible = function(v) M.visible = (v == true); end,
+};
+
 -- The frame's body. An M. field, not a chunk local (hard rule 1: this chunk
 -- sits at the 200-local cap); the hook below wraps it in uistyle's FRAME
 -- BRACKET, so the dozen windows it draws push the theme once, not a dozen
@@ -6059,6 +6078,9 @@ M._renderFrame = function()
     -- from last session would glue gear on at login. This must run whether or not
     -- the floating window is open -- it is the only thing that clears it.
     pcall(function() require('dlac\\feature\\pinwatch').loadPinState(); end);
+    -- Controller navigation's beat. Above the hide gate on purpose: with the
+    -- interface hidden nothing is focused, and this is what hands the pad back.
+    pcall(function() require('dlac\\feature\\padnav').tick(M._padHost); end);
     -- SCROLL LOCK -- the game's own hide-the-interface key (Henrik's field report
     -- 2026-07-28: "the addon windows don't disappear"). The game's HUD blinks out
     -- for a clean screenshot; ours has to go with it, or every picture the player
@@ -6113,6 +6135,14 @@ M._renderFrame = function()
             pcall(trMod.render, M._deps);
             if trThemed then style.pop(); end
         end
+    end
+    -- The controller's quick-menu host (feature\padnav): the window the quick
+    -- menu opens under when neither the main window nor the floating button
+    -- is on screen. Draws nothing unless controller navigation is switched on.
+    if has.imgui then
+        local pnThemed = style ~= nil and style.push();
+        pcall(function() require('dlac\\feature\\padnav').drawHost(M._padHost); end);
+        if pnThemed then style.pop(); end
     end
     -- Floating Trigger Monitor: INDEPENDENT of the main box, like the lockstyle
     -- and floating-equipment windows (Henrik: it must survive closing dlac's

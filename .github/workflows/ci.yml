@@ -135,6 +135,9 @@ jobs:
       - name: UI scale (both Ashita font paths, uiflags, Stable tab layout)
         run: lua5.4 tests/uiscale.lua
 
+      - name: Controller navigation (input door, capture, release rules, uiflags)
+        run: lua5.4 tests/padnav.lua
+
       - name: AscensionXI lockstyle regression
         run: lua5.4 tests/lockstyle_vault.lua
 

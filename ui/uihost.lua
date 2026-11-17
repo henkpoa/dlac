@@ -211,6 +211,23 @@ host.selectTab = function(label)
     return true;
 end
 
+-- The tab that was open on the last pass, and a step to its neighbour (the
+-- controller's previous / next tab buttons, feature\padnav). Wraps at both
+-- ends; a no-op until a pass has seen an open tab.
+local _openLabel = nil;
+host.openTab = function() return _openLabel; end
+host.cycleTab = function(dir)
+    local list = orderedTabs();
+    if #list == 0 or _openLabel == nil then return false; end
+    for i, t in ipairs(list) do
+        if t.label == _openLabel then
+            local j = ((i - 1 + ((dir == -1) and -1 or 1)) % #list) + 1;
+            return host.selectTab(list[j].label);
+        end
+    end
+    return false;
+end
+
 -- What the host is currently trying to select, or nil. Tests read it; so can a
 -- future /dl check line.
 host.pendingTab = function() return (_sel ~= nil) and _sel.label or nil; end
@@ -290,6 +307,7 @@ host.renderTabs = function(guard, job, level)
             open = (imgui.BeginTabItem(t.label) and true or false);
         end
         if open then
+            _openLabel = t.label;
             guard(t.label, t.render, job, level);
             imgui.EndTabItem();
         end

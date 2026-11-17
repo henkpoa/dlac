@@ -196,6 +196,13 @@ function M._childFlags(border)
     return 0;
 end
 
+-- PURE: flags with one single-bit flag set (no `bit` library: the headless
+-- suite runs on Lua 5.4, which has none).
+function M._withFlag(flags, flag)
+    if (flags % (flag * 2)) >= flag then return flags; end
+    return flags + flag;
+end
+
 -- PURE: old ImageButton args -> { id, tex, size, uv0, uv1, bg, tint, pad }.
 -- The old binding keyed the widget ID on the texture; deriving the str_id from
 -- it keeps the identity semantics call sites were written against.
@@ -240,8 +247,14 @@ function M.install()
     local rawBeginChild = imgui.BeginChild;
     if rawBeginChild ~= nil then
         imgui.BeginChild = function(id, size, border, wflags)
+            -- Controller navigation (feature\padnav) names the panels the
+            -- pad should walk straight through; nil = nobody asked.
+            local cf = M._childFlags(border);
+            if M.navFlatten ~= nil and M.navFlatten(id) == true then
+                cf = M._withFlag(cf, ImGuiChildFlags_NavFlattened or 256);
+            end
             local okc, r = pcall(rawBeginChild, id, size or { 0, 0 },
-                                 M._childFlags(border), wflags or 0);
+                                 cf, wflags or 0);
             if okc then return r; end
             return rawBeginChild(id, size or { 0, 0 });
         end;
