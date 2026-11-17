@@ -4770,6 +4770,7 @@ local function renderSetBuilder(job, level)
     local action = nil;   -- { kind, it }  (by identity, so it maps back to the data list)
     imgui.BeginChild('##ffxilac_slotlist', { -1, -1 }, false);
     if #list == 0 then
+        ui._padRowFocus = nil;      -- no row left for the controller's cursor
         imgui.TextColored(COL.DIM, 'Empty -- click + Add (usable owned items) or Auto-build.');
     else
         -- One BLOCK per item (alternating bg per block, never inside one): line 1 =
@@ -4867,11 +4868,23 @@ local function renderSetBuilder(job, level)
                 imgui.SetTooltip('Duplicate this row: same item, its own Behaviour rules.\nUse it to run one item in several level ranges, e.g.\nRajas Ring min30 max54 on one row, min75 on the other.');
             end
             imgui.SameLine(0, 4);
-            if imgui.Button('x##rm_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) }) then
+            -- Controller: a removed row's x hands the cursor to the x that
+            -- takes its place, so several pieces go with repeated presses
+            -- (Henrik, 2026-11-17 -- it used to jump up to Commit). The row
+            -- that receives the cursor ignores a press for two frames: if a
+            -- binding ever treated "focus this" as "press this", one x would
+            -- empty the whole list.
+            if ui._padRowFocus == di then
+                ui._padRowFocus = nil;
+                ui._padRowGuard = require('dlac\\lib\\cmdqueue').frame() + 2;
+                if imgui.SetKeyboardFocusHere ~= nil then pcall(imgui.SetKeyboardFocusHere, 0); end
+            end
+            if imgui.Button('x##rm_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) })
+               and require('dlac\\lib\\cmdqueue').frame() > (ui._padRowGuard or -1) then
                 -- Section x = leave THIS mode only (Henrik: a Harpoon gated
                 -- Base + Polearm lost the whole row to one Polearm x).
                 if sec ~= nil then action = { kind = 'ungate', it = it, gateKey = sec.key };
-                else action = { kind = 'remove', it = it }; end
+                else action = { kind = 'remove', it = it, pos = di }; end
             end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip((sec ~= nil)
@@ -4947,6 +4960,10 @@ local function renderSetBuilder(job, level)
         -- OpenPopup/BeginPopup resolve ids per window, so the button only sets a flag.
         if openEdit then imgui.OpenPopup('##dlac_entryedit'); end
         renderEntryEditPopup();
+        -- The removed row was the last one: the cursor goes to the new last.
+        if ui._padRowFocus ~= nil and ui._padRowFocus > rowN then
+            ui._padRowFocus = (rowN >= 1) and rowN or nil;
+        end
     end
     imgui.EndChild();
 
@@ -4956,6 +4973,10 @@ local function renderSetBuilder(job, level)
         if di ~= nil then
             if action.kind == 'remove' then
                 table.remove(list, di);
+                -- Only with the controller in hand; a mouse keeps its place.
+                pcall(function()
+                    if require('dlac\\feature\\padnav').active() then ui._padRowFocus = action.pos; end
+                end);
             elseif action.kind == 'ungate' then
                 -- The row stays; it just leaves the clicked section. No gate
                 -- left -> unconditional, so it reappears in the root list --

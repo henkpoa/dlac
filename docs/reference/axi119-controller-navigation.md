@@ -57,6 +57,14 @@ Sets tab: the left panel, the slot grid, the slot's list and its rows; the
 picker opens. Add a prefix or suffix to `padnav.FLATTEN_PREFIX` /
 `FLATTEN_SUFFIX` to tune another panel.
 
+**Keeping the cursor when an item disappears.** ImGui's cursor sits on a
+widget id; remove the row under it and the cursor falls back to the top of the
+window. The slot list's `x` therefore hands the cursor to the `x` that takes its
+place (`ui._padRowFocus`, `SetKeyboardFocusHere` just before the button), and
+that button ignores a press for two frames in case a binding ever treats "focus
+this" as "press this". Any other list where rows are removed with the pad needs
+the same.
+
 ## The older Ashita
 
 CatsEyeXI's Ashita ships ImGui 1.80, which has no `AddKeyEvent`; its navigation
