@@ -107,6 +107,17 @@ end
 
 local M = {};
 M.visible        = false;    -- window visibility flag, toggled by /dl ui
+
+-- Controller navigation (feature\padnav), or a stand-in that does nothing: a
+-- draw path may call M._pad() between a Begin and its End, so it can never
+-- throw. An M. field, not a chunk local (hard rule 1).
+M._padStub = { active = function() return false; end, pressAllowed = function() return true; end,
+               focusHere = function() end, defaultFocusHere = function() end };
+M._pad = function()
+    local ok, p = pcall(require, 'dlac\\feature\\padnav');
+    if ok and type(p) == 'table' and type(p.pressAllowed) == 'function' then return p; end
+    return M._padStub;
+end
 M.working        = {};       -- Sets tab: slotLabel -> ordered list of { rec, minLevel, maxLevel }
 M.workingSetName = nil;      -- selected dynamic set name
 
@@ -1740,6 +1751,9 @@ local function renderTeleportsPopup()
         ui._flagsDirty = true;
     end
     if not imgui.BeginPopup('##dlac_teleports') then return; end
+    -- The controller's close combo (feature\padnav): a popup can only be
+    -- closed from inside itself, so the request arrives as a flag.
+    if ui._tpClose ~= nil then imgui.CloseCurrentPopup(); end
     -- Only a MOVE pins the menu. The baseline is wherever this open APPEARED
     -- (the click spot, or the pin), so "position differs from baseline" can
     -- never turn the default placement into an accidental pin. Fresh opens are
@@ -4119,7 +4133,18 @@ local function renderAddRow(rec, ordinal, level, nameW)
     imgui.PushStyleColor(ImGuiCol_ChildBg, bg);
     imgui.BeginChild('##addrow_' .. tostring(rec.Id or ordinal) .. '_' .. ordinal, { -1, 22 }, false);
     icons.renderIcon(rec.Id, 18, rec);   -- virtuals (dlac:*) get the element wheel
-    local clicked = imgui.Selectable('##addsel_' .. ordinal, false);
+    -- Controller: the piece just added leaves the list, so the cursor goes to
+    -- the row that takes its place and the next piece is one press away
+    -- (Henrik, 2026-11-17 -- it used to jump to the top).
+    if ui._padAddRow == ordinal then
+        ui._padAddRow = nil;
+        M._pad().focusHere();
+    end
+    local clicked = imgui.Selectable('##addsel_' .. ordinal, false) and M._pad().pressAllowed();
+    if clicked and M._pad().active() then ui._padAddRow = ordinal; end
+    -- On a controller the list is what you came for: the first piece is under
+    -- the cursor the moment the picker opens (a no-op with the pad at rest).
+    if ordinal == 1 then M._pad().defaultFocusHere(); end
     if imgui.IsItemHovered() then renderItemTooltip(rec); end
     local nameCol = 26;
     imgui.SameLine(nameCol);
@@ -4367,6 +4392,11 @@ local function renderAddPopup(job, level)
                     end);
                 end
             end
+        end
+        -- The added piece was the last row: the cursor goes to the new last
+        -- (drawn still counts the row that leaves next frame).
+        if ui._padAddRow ~= nil and ui._padAddRow >= drawn then
+            ui._padAddRow = (drawn > 1) and (drawn - 1) or nil;
         end
         if capped then
             imgui.TextColored(COL.DIM, string.format(
@@ -4693,7 +4723,12 @@ local function renderSetBuilder(job, level)
             local nm = (pick and pick.rec and pick.rec.Name) or '(empty)';
             return string.format('%s (%d)', fmt.truncate(nm, 12), (list and #list) or 0);
         end,
-        function(labelKey) ui.setSelected = labelKey; end,
+        function(labelKey)
+            ui.setSelected = labelKey;
+            -- Controller: picking a slot is nearly always followed by + Add,
+            -- so the cursor goes there (Henrik, 2026-11-17).
+            if M._pad().active() then ui._padAddFocus = true; end
+        end,
         function(sl)
             local pick = wornByLevel(M.working[sl.label], level, sl.label);
             return pick and pick.rec or nil;
@@ -4745,7 +4780,9 @@ local function renderSetBuilder(job, level)
 
     local list = M.working[ui.setSelected] or {};
     imgui.TextColored(COL.HEADER, string.format('%s list (%d):', ui.setSelected, #list));
-    imgui.SameLine(); if imgui.Button('+ Add##setadd', { require('dlac\\ui\\uiscale').px(60), 0 }) then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
+    imgui.SameLine();
+    if ui._padAddFocus then ui._padAddFocus = nil; M._pad().focusHere(); end   -- a slot was just picked with the controller
+    if imgui.Button('+ Add##setadd', { require('dlac\\ui\\uiscale').px(60), 0 }) and M._pad().pressAllowed() then ui._openAddPopup = true; ui.addSearch = { '' }; ui.addTypeFilter = {}; ui._addGate = nil; end   -- weapon-type filter resets to "All" each open (F2a/F2b); no mode gate (that's the sections' Add more)
     imgui.SameLine(0, 8); renderSortCombo('setlist');
 
     -- The highlight follows what will actually be WORN, not what was authored
@@ -4764,6 +4801,7 @@ local function renderSetBuilder(job, level)
     local action = nil;   -- { kind, it }  (by identity, so it maps back to the data list)
     imgui.BeginChild('##ffxilac_slotlist', { -1, -1 }, false);
     if #list == 0 then
+        ui._padRowFocus = nil;      -- no row left for the controller's cursor
         imgui.TextColored(COL.DIM, 'Empty -- click + Add (usable owned items) or Auto-build.');
     else
         -- One BLOCK per item (alternating bg per block, never inside one): line 1 =
@@ -4861,11 +4899,20 @@ local function renderSetBuilder(job, level)
                 imgui.SetTooltip('Duplicate this row: same item, its own Behaviour rules.\nUse it to run one item in several level ranges, e.g.\nRajas Ring min30 max54 on one row, min75 on the other.');
             end
             imgui.SameLine(0, 4);
-            if imgui.Button('x##rm_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) }) then
+            -- Controller: a removed row's x hands the cursor to the x that
+            -- takes its place, so several pieces go with repeated presses
+            -- (Henrik, 2026-11-17 -- it used to jump up to Commit). padnav's
+            -- focusHere / pressAllowed pair: see its header for the gate.
+            if ui._padRowFocus == di then
+                ui._padRowFocus = nil;
+                M._pad().focusHere();
+            end
+            if imgui.Button('x##rm_' .. di, { require('dlac\\ui\\uiscale').px(24), require('dlac\\ui\\uiscale').px(20) })
+               and M._pad().pressAllowed() then
                 -- Section x = leave THIS mode only (Henrik: a Harpoon gated
                 -- Base + Polearm lost the whole row to one Polearm x).
                 if sec ~= nil then action = { kind = 'ungate', it = it, gateKey = sec.key };
-                else action = { kind = 'remove', it = it }; end
+                else action = { kind = 'remove', it = it, pos = di }; end
             end
             if imgui.IsItemHovered() then
                 imgui.SetTooltip((sec ~= nil)
@@ -4941,6 +4988,10 @@ local function renderSetBuilder(job, level)
         -- OpenPopup/BeginPopup resolve ids per window, so the button only sets a flag.
         if openEdit then imgui.OpenPopup('##dlac_entryedit'); end
         renderEntryEditPopup();
+        -- The removed row was the last one: the cursor goes to the new last.
+        if ui._padRowFocus ~= nil and ui._padRowFocus > rowN then
+            ui._padRowFocus = (rowN >= 1) and rowN or nil;
+        end
     end
     imgui.EndChild();
 
@@ -4950,6 +5001,8 @@ local function renderSetBuilder(job, level)
         if di ~= nil then
             if action.kind == 'remove' then
                 table.remove(list, di);
+                -- Only with the controller in hand; a mouse keeps its place.
+                if M._pad().active() then ui._padRowFocus = action.pos; end
             elseif action.kind == 'ungate' then
                 -- The row stays; it just leaves the clicked section. No gate
                 -- left -> unconditional, so it reappears in the root list --
@@ -5239,7 +5292,7 @@ local function renderSetsTab(job, level)
     imgui.EndChild();
 
     -- Open + render the add-item popup at window level (vault pattern).
-    if ui._openAddPopup then imgui.OpenPopup('##ffxilac_addpick'); ui._openAddPopup = false; end
+    if ui._openAddPopup then imgui.OpenPopup('##ffxilac_addpick'); ui._openAddPopup = false; ui._padAddRow = nil; end
     renderAddPopup(job, level);
 
     -- "Copy from static" overwrite confirmation (issue #15). BeginPopup, not Modal:
@@ -5782,6 +5835,9 @@ local function drawWindow()
     imgui.SetNextWindowSizeConstraints({ spx(480), spx(340) }, { 1300, 1300 });
 
     local isOpen = { M.visible };
+    -- The controller took the pad with this window up: give it the focus, or
+    -- the d-pad has nothing to walk (feature\padnav).
+    if ui._padFocus then ui._padFocus = nil; pcall(imgui.SetNextWindowFocus); end
     if imgui.Begin('dlac Gear###ffxi_lac_gearui', isOpen, ImGuiWindowFlags_None) then
         -- Remembered for the refit above (only while the body is open: a
         -- collapsed window would report just its title bar).
@@ -6029,6 +6085,16 @@ function M.trayTeleportsDraw()
     pcall(renderTeleportsPopup);
 end
 
+-- What controller navigation (feature\padnav) needs of this chunk: the quick
+-- menu's body, and the main window's visibility. An M. field, not a chunk
+-- local (hard rule 1).
+M._padHost = {
+    ui = ui,
+    popup = renderTeleportsPopup,
+    visible = function() return M.visible == true; end,
+    setVisible = function(v) M.visible = (v == true); end,
+};
+
 -- The frame's body. An M. field, not a chunk local (hard rule 1: this chunk
 -- sits at the 200-local cap); the hook below wraps it in uistyle's FRAME
 -- BRACKET, so the dozen windows it draws push the theme once, not a dozen
@@ -6059,6 +6125,9 @@ M._renderFrame = function()
     -- from last session would glue gear on at login. This must run whether or not
     -- the floating window is open -- it is the only thing that clears it.
     pcall(function() require('dlac\\feature\\pinwatch').loadPinState(); end);
+    -- Controller navigation's beat. Above the hide gate on purpose: with the
+    -- interface hidden nothing is focused, and this is what hands the pad back.
+    pcall(function() require('dlac\\feature\\padnav').tick(M._padHost); end);
     -- SCROLL LOCK -- the game's own hide-the-interface key (Henrik's field report
     -- 2026-07-28: "the addon windows don't disappear"). The game's HUD blinks out
     -- for a clean screenshot; ours has to go with it, or every picture the player
@@ -6113,6 +6182,14 @@ M._renderFrame = function()
             pcall(trMod.render, M._deps);
             if trThemed then style.pop(); end
         end
+    end
+    -- The controller's quick-menu host (feature\padnav): the window the quick
+    -- menu opens under when neither the main window nor the floating button
+    -- is on screen. Draws nothing unless controller navigation is switched on.
+    if has.imgui then
+        local pnThemed = style ~= nil and style.push();
+        pcall(function() require('dlac\\feature\\padnav').drawHost(M._padHost); end);
+        if pnThemed then style.pop(); end
     end
     -- Floating Trigger Monitor: INDEPENDENT of the main box, like the lockstyle
     -- and floating-equipment windows (Henrik: it must survive closing dlac's

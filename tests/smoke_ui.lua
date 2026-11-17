@@ -3805,9 +3805,9 @@ end)();
         -- Settings in tabs: four pages, every Begin closed, and each page a
         -- SHORT one -- the point of the split is that no page is the old column.
         check('MN12f Settings tab stack balanced', tabs.bar + tabs.item, 0);
-        check('MN12g the four Settings tabs, in order', table.concat(tabsSeen, ','), 'Display,Gear,Features,Advanced');
+        check('MN12g the five Settings tabs, in order', table.concat(tabsSeen, ','), 'Display,Gear,Controller,Features,Advanced');
         local perTab, total = {}, 0;
-        for _, name in ipairs({ 'Display', 'Gear', 'Features', 'Advanced' }) do
+        for _, name in ipairs({ 'Display', 'Gear', 'Controller', 'Features', 'Advanced' }) do
             tabPick = name; drew.checkbox = 0;
             check('MN12h ' .. name .. ' page renders alone', pcall(mn.renderPopups), true);
             perTab[name] = drew.checkbox; total = total + drew.checkbox;
@@ -3817,6 +3817,9 @@ end)();
         check('MN12k Display: the four window ticks', perTab.Display, 4);
         check('MN12l Gear: library + Auto-build ticks', perTab.Gear, 7);
         check('MN12m Features: tabs + menu rows', perTab.Features, 12);
+        -- Headless the binding is the old one, so the Controller page says
+        -- "not available" and offers no switch (feature\padnav.supported).
+        check('MN12q Controller: no switch on a binding that cannot do it', perTab.Controller, 0);
         check('MN12n Advanced: debug + the two addon switches', perTab.Advanced, 3);
         -- A page that throws must still close its tab item and bar.
         tabPick = 'Gear';

@@ -158,7 +158,11 @@ sf.saveUiFlags = function()
         -- an Ashita that cannot honour it still keeps for the day it can.
         local uisc = 1.0;
         pcall(function() uisc = require('dlac\\ui\\uiscale').saved(); end);
-        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, pmx = %d, pmy = %d, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q, uiscale = %.2f }\n',
+        -- Controller navigation (feature\padnav, AXI-119): on/off and the
+        -- captured buttons, as one token string the module reads back.
+        local pad = '';
+        pcall(function() pad = require('dlac\\feature\\padnav').export(); end);
+        D.writeFileText(p, string.format('return { debug = %s, autosync = %s, viewids = %s, buildmax = %s, tgmon = %s, arbmon = %s, tpfloat = %s, tpx = %d, tpy = %d, tmx = %d, tmy = %d, gearfloat = %s, gfx = %d, gfy = %d, gfscale = %.2f, gftransparency = %.2f, pmx = %d, pmy = %d, ifx = %d, ify = %d, openui = %q, showall = %s, autobuildimport = %s, gearwarn = %s, buildstored = %s, featson = %q, featsoff = %q, uiscale = %.2f, padnav = %q }\n',
             tostring(sf.flags.debug), tostring(sf.flags.autosync), tostring(sf.flags.viewids), tostring(bm),
             tostring(ui._tgMon == true),
             tostring(ui._arbMon == true),
@@ -168,7 +172,7 @@ sf.saveUiFlags = function()
             openui, tostring(showall), tostring(sf.flags.autobuildimport ~= false),
             tostring(sf.flags.gearwarn ~= false),
             tostring(sf.flags.buildstored ~= false),
-            tostring(fOn), tostring(fOff), tonumber(uisc) or 1.0));
+            tostring(fOn), tostring(fOff), tonumber(uisc) or 1.0, tostring(pad)));
     end);
 end
 
@@ -255,6 +259,11 @@ sf.loadUiFlags = function()
             -- 100%, the size those installs had. Quiet -- a load moves nothing.
             if type(t.uiscale) == 'number' then
                 pcall(function() require('dlac\\ui\\uiscale').set(t.uiscale, true); end);
+            end
+            -- Controller navigation: absent key (every uiflags.lua before
+            -- 2026-11-17) = off and nothing bound.
+            if type(t.padnav) == 'string' then
+                pcall(function() require('dlac\\feature\\padnav').applySaved(t.padnav); end);
             end
             -- The character's feature flips (Menu > Settings > Features).
             -- Absent keys (every pre-2026-08-26 uiflags.lua) = no flips: the

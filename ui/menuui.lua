@@ -758,11 +758,73 @@ local function setAdvanced()
     end);
 end
 
+-- CONTROLLER (feature\padnav, AXI-119): a two-button combo hands the pad to
+-- dlac's windows and back. Every button is CAPTURED from a real press -- the
+-- ids differ per pad, so there is no list to pick from.
+local function setController()
+    local COL = D.COL;
+    local okp, pad = pcall(require, 'dlac\\feature\\padnav');
+    if not okp or type(pad) ~= 'table' then
+        imgui.TextColored(COL.DIM, 'Not available.');
+        return;
+    end
+    if not pad.supported() then
+        imgui.TextColored(COL.DIM, 'Controller navigation is not available on this Ashita yet.');
+        return;
+    end
+    settingCheck('padnav', 'Controller navigation',
+        'Work dlac\'s windows from a controller. Hold one button and press another\n'
+        .. '(the combination you bind below): the controller stops reaching the game\n'
+        .. 'and moves a highlight through dlac instead. The same combination, or\n'
+        .. 'closing the menu, gives the controller back.\n'
+        .. 'With no dlac window open, the combination opens the Teleports menu.',
+        function() return pad.enabled(); end,
+        function(v) pad.setEnabled(v); end);
+
+    local cap = pad.capture();
+    -- Three columns: label, button, binding. The binding goes LAST because it
+    -- is the one whose length nobody controls ("hold button 8, press button
+    -- 1"); in the middle it ran under the button (field, 2026-11-17). The
+    -- label column is measured, so a larger font cannot clip it either.
+    local labelW = px(110);
+    for _, which in ipairs({ 'combo', 'ok', 'back', 'prev', 'next' }) do
+        pcall(function()
+            local tw = imgui.CalcTextSize(pad.BIND_LABEL[which]);
+            if type(tw) == 'number' and tw + px(14) > labelW then labelW = tw + px(14); end
+        end);
+    end
+    local valueX = labelW + px(64);
+    local function bindRow(which, current, listening)
+        imgui.TextColored(COL.USABLE, pad.BIND_LABEL[which]);
+        imgui.SameLine(labelW);
+        if cap ~= nil and cap.which == which then
+            if imgui.SmallButton('Cancel##dlacpad_' .. which) then pad.cancelCapture(); end
+            imgui.SameLine(valueX);
+            imgui.TextColored(COL.SCORE, listening);
+        else
+            if imgui.SmallButton('Bind##dlacpad_' .. which) then pad.beginCapture(which); end
+            if imgui.IsItemHovered() then
+                imgui.SetTooltip('Click, then press it on the controller.');
+            end
+            imgui.SameLine(valueX);
+            imgui.TextColored(COL.DIM, esc(current));
+        end
+    end
+    bindRow('combo', pad.comboName(),
+        (cap ~= nil and cap.first ~= nil) and 'now press the second button...'
+                                           or 'hold the first button...');
+    for _, which in ipairs(pad.BINDS) do
+        bindRow(which, pad.tokenName(pad.bindOf(which)), 'press a button...');
+    end
+    imgui.TextColored(COL.DIM, 'The d-pad moves. Typing still needs a keyboard.');
+end
+
 -- The tab roster. `key` is the ImGui id, so renaming a label never loses the
 -- selected tab. Exported for the headless suite.
 local SETTINGS_TABS = {
     { key = 'display',  label = 'Display',  draw = setDisplay },
     { key = 'gear',     label = 'Gear',     draw = setGear },
+    { key = 'controller', label = 'Controller', draw = setController },
     { key = 'features', label = 'Features', draw = setFeatures },
     { key = 'advanced', label = 'Advanced', draw = setAdvanced },
 };
