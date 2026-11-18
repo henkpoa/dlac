@@ -12315,3 +12315,18 @@ been updated to Lifter's Ring. Nexus is doing its thing on its own."
   problems).
 - Tests: run_tests 8120, smoke_ui 1831, pack lint 50 and 39, all 46 CI
   commands. Not checked in game.
+
+## 2026-11-18: Star Band in the Teleports menu (`2026.11.18a`)
+
+Henrik: "Please add Star Band to the teleport menu for AXI".
+
+- AscensionXI's Star Band (26583, AXI #1284) is an EXP band with a switch:
+  one use turns its +30% on, the next turns it off. So it goes in the menu's
+  Exp rings section with the other bands, after the Anchor Ring: row `Star`,
+  command `/dl xp star`, shown only when owned.
+- The client cannot see whether the band is on, so the countdown line names
+  both directions ("switching its +30% exp bonus on or off"). The row's
+  timer is the item's own reuse stamp (10 s on the server).
+- It lives in the shared list like the Anchor Ring: matched by its client
+  name, no id pin, and no other server has an item of that name.
+- Tests: run_tests US1-US3 (11 checks). Not checked in game.

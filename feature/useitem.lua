@@ -29,7 +29,7 @@
         /dl xp <ring>      lock Ring2, equip the matching EXPERIENCE ring, use it
                            (empress, emperor, resolution, chariot, expertise,
                            anniversary, kupofried, allied, caliber, echad,
-                           anchor, venture). Same
+                           anchor, star, venture). Same
                            countdown machinery; the GUI menu lists only the ones
                            you own.
         /dl p|w|lift|c|shirt|t|xp off   cancel the pending use and release the slot.
@@ -228,6 +228,14 @@ local EXPRINGS = {
     -- server decides. Its 5s equip delay fits inside XP_WAIT.
     { name = 'Anchor Ring',      dest = 'Anchor',      aliases = { 'anchor' },
       verb = 'using it (it arms, disarms or pays out your banked EXP)' },
+    -- AscensionXI's Star Band (item 26583, in that server's client DAT only,
+    -- so only an AscensionXI character can own it). A switch, not a charge:
+    -- one use turns its +30% on, the next turns it off, and which comes next
+    -- is the server's state, so the verb names both. Matched by its client
+    -- name with no id pin, like the Anchor Ring. Its 5s equip delay fits
+    -- inside XP_WAIT.
+    { name = 'Star Band',        dest = 'Star',        bonus = '+30%',  aliases = { 'star' },
+      verb = 'switching its +30% exp bonus on or off' },
     { name = 'Venture Ring',     dest = 'Venture',     bonus = '+100% VP', aliases = { 'venture' } },   -- Venture POINT bonus, not exp (field-confirmed 07-21)
 };
 

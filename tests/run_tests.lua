@@ -16740,6 +16740,69 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- US. useitem Star Band (Henrik, 2026-11-18) -- AscensionXI's switchable
+--     +30% band rides the Exp rings section, owned-only, run by /dl xp star.
+--     A use toggles it, so the line names both directions.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local function load(names, bag0)
+        local cmdHandler = nil;
+        ashita.events.register = function(evt, name, fn)
+            if evt == 'command' then cmdHandler = fn; end
+        end;
+        local said, queued = {}, {};
+        package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = s; end };
+        local inv = {
+            GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+            GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+        };
+        AshitaCore = {
+            GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+            GetResourceManager = function(self) return {
+                GetItemById = function(self2, id) return { Name = { names[id] }, MaxCharges = 0 }; end,
+            }; end,
+            GetChatManager = function(self) return {
+                QueueCommand = function(self2, mode, cmd) queued[#queued + 1] = cmd; end,
+            }; end,
+        };
+        local useitem = dofile('feature/useitem.lua');
+        ashita.events.register = savedReg;
+        return useitem, cmdHandler, said, queued;
+    end
+    local function starRow(useitem)
+        for _, r in ipairs(useitem.menu()) do
+            if r.name == 'Star Band' then return r; end
+        end
+        return nil;
+    end
+
+    local useitem, cmd, said, queued = load({ [26583] = 'Star Band' }, { { Id = 26583, Count = 1, Extra = '' } });
+    local row = starRow(useitem);
+    check('US1 an owned Star Band is a menu row', row ~= nil, true);
+    check('US1b ...in the Exp rings section', row and row.grp, 'xp');
+    check('US1c ...labelled Star', row and row.label, 'Star');
+    check('US1d ...run by /dl xp star', row and row.cmd, '/dl xp star');
+    check('US1e ...and hidden from the set-building picker', useitem.menuNames()['star band'], true);
+
+    local ok = cmd ~= nil and pcall(cmd, { command = '/dl xp star' });
+    check('US2 /dl xp star runs', ok, true);
+    local pend = useitem.pending();
+    check('US2b ...and stages the Star Band', pend and pend.name, 'Star Band');
+    check('US2c ...saying a use switches it on or off', (said[#said] or ''):find('on or off', 1, true) ~= nil, true);
+    local equip = nil;
+    for _, c in ipairs(queued) do if c:find('/equip', 1, true) == 1 then equip = c; end end
+    check('US2d ...into Ring2', equip, '/equip ring2 "Star Band"');
+    check('US2e ...cancelled by /dl xp off', pend and pend.cancel, '/dl xp off');
+
+    -- Not owned (every other server): no row at all.
+    useitem = load({ [26583] = 'Star Band' }, {});
+    check('US3 without the band there is no row', starRow(useitem), nil);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- UC. useitem Lifter's Ring (Henrik, 2026-11-15, renamed from the Courier's Ring
 --     2026-11-16) -- AscensionXI's round-trip
 --     ring rides the top strip beside Warp, owned-only, run by /dl lift.
