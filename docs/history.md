@@ -12330,3 +12330,23 @@ Henrik: "Please add Star Band to the teleport menu for AXI".
 - It lives in the shared list like the Anchor Ring: matched by its client
   name, no id pin, and no other server has an item of that name.
 - Tests: run_tests US1-US3 (11 checks). Not checked in game.
+
+## 2026-11-19: PetAction rules match a Ready move by name (`2026.11.19a`)
+
+AXI-139, Teon: on `2026.11.17e` a tiger's Razor Fang equipped nothing and
+showed no PetAction match in the trigger monitor.
+
+- The monster-ability resource hands a move's name back NUL-terminated
+  (`"Razor Fang\0"`), and the engine kept the NUL. A rule naming the move
+  compares the whole string, so it never matched. `feature/equipengine.lua`
+  now strips trailing NULs, the way every other resource-name read already
+  does. Teon's local copy of the same change swapped gear in game.
+- Blood Pacts and pet spells read their names off a different path and are
+  not touched.
+- Still open, from Teon's offline replay of all 152 Ready moves: four whose
+  resource name is not the name players know. Random Needles is
+  `??? Needles`, Dhalmel Berserk is `Berserk`, Frog Kick is `Frogkick`,
+  Defensive Shell is `.`. A rule for those must use the resource's name
+  for now.
+- Tests: run_tests NEB7-NEB10, the pet's own 0x028 through to the name
+  matcher. This build is not checked in game.

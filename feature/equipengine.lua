@@ -1014,7 +1014,10 @@ function M.handleIncoming(e)
                 if p.message == 43 then
                     pa.Type = 'MobSkill';
                     local nm = AshitaCore:GetResourceManager():GetString('monsters.abilities', p.actionId - 256);
-                    pa.Name = (type(nm) == 'string') and nm or nil;
+                    -- the resource hands the name back NUL-terminated
+                    -- ("Razor Fang\0"): strip it, or no rule matching the
+                    -- move by its name ever fires (AXI-139)
+                    pa.Name = (type(nm) == 'string') and (nm:gsub('%z+$', '')) or nil;
                 else
                     pa.Type = 'Ability';
                     pa.Resource = AshitaCore:GetResourceManager():GetAbilityById(p.actionId + 512);
