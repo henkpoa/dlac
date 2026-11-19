@@ -12350,3 +12350,20 @@ showed no PetAction match in the trigger monitor.
   for now.
 - Tests: run_tests NEB7-NEB10, the pet's own 0x028 through to the name
   matcher. This build is not checked in game.
+
+## 2026-11-19: Sprinter's Shoes in the Teleports menu (`2026.11.19b`)
+
+AXI-138, WarpedChaos: "Add Sprinter shoes to the dlac quickcast bar".
+
+- `feature/useitem.lua`: a top-strip row after the Chocobo Whistle, label
+  `Sprinter`, command `/dl sprint`, shown only when owned. It locks Feet,
+  equips the shoes, waits out the equip delay on the game clock, uses them
+  and hands Feet back. `/dl sprint off` cancels.
+- Timing from AscensionXI `item_usable` 15754: 15 s equip delay (fallback
+  wait 20, the Provenance Ring's), 15 charges, 5 min between uses. The row
+  shows the charges and the reuse countdown like every other row.
+- Shared list, no id pin: the shoes are a stock item, so CEXI gets the row
+  too.
+- The Star Band half of the ticket is `2026.11.18a`, waiting on its
+  launcher pin (AXI #1329).
+- Tests: run_tests USS1-USS4 (13 checks). Not checked in game.

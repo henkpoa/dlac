@@ -12,6 +12,8 @@
                            Campaign nation (the server refuses it without an
                            allegiance; that message is the server's to give).
         /dl c              lock Neck, equip the Chocobo Whistle, call the chocobo.
+        /dl sprint         lock Feet, equip the Sprinter's Shoes, use them
+                           (Quickening: you run faster for a while).
         /dl shirt          lock Body, equip the Shadow Lord Shirt, teleport to
                            Castle Zvahl Keep (server-gated on having visited).
         /dl nexus          lock Back, equip the Nexus Cape, teleport to your
@@ -32,7 +34,7 @@
                            anchor, star, venture). Same
                            countdown machinery; the GUI menu lists only the ones
                            you own.
-        /dl p|w|lift|c|shirt|t|xp off   cancel the pending use and release the slot.
+        /dl p|w|lift|c|sprint|shirt|t|xp off   cancel the pending use and release the slot.
         /dl lift off       with nothing pending this is lift-off: it uses the
                            Lifter's Ring like /dl lift. With a use pending it
                            cancels, like every other off.
@@ -82,6 +84,12 @@ local ITEMS = {
           verb = 'warping home, or back to the spot you left' },
     c = { name = 'Chocobo Whistle',  slot = 'neck',  wait = 15,    -- delay unknown; clock rules
           verb = 'calling your chocobo' },
+    -- Sprinter's Shoes (AXI-138, WarpedChaos 2026-11-17): Quickening, a run
+    -- speed boost. Feet, 15s equip delay like the Provenance Ring, 15
+    -- charges, 5 min between uses (AscensionXI item_usable 15754, checked
+    -- 2026-11-19). No id pin, the Lifter's Ring shape.
+    sprint = { name = "Sprinter's Shoes", slot = 'feet', wait = 20,
+          verb = 'casting Quickening on you' },
     shirt = { name = 'Shadow Lord Shirt', slot = 'body', wait = 34,   -- 30s equip delay + margin
           verb = 'teleporting to Castle Zvahl Keep' },
     nexus = { name = 'Nexus Cape',   slot = 'back',  wait = 34,   -- 30s equip delay (item_usable) + margin
@@ -239,7 +247,7 @@ local EXPRINGS = {
     { name = 'Venture Ring',     dest = 'Venture',     bonus = '+100% VP', aliases = { 'venture' } },   -- Venture POINT bonus, not exp (field-confirmed 07-21)
 };
 
-local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05, back = 0x0F, head = 0x04 };   -- native equip-slot indexes
+local SLOT_ID = { ring2 = 0x0E, ear2 = 0x0C, neck = 0x09, body = 0x05, back = 0x0F, head = 0x04, feet = 0x08 };   -- native equip-slot indexes
 
 -- Usable travel scrolls: /item straight from Inventory -- no equip, no slot
 -- lock, no delay. /item works from Inventory ONLY, which the menu's avail flag
@@ -528,6 +536,9 @@ local MENU = {
     { name = "Lifter's Ring",     label = 'Lifter',       cmd = '/dl lift',  ownedOnly = true },
     { name = 'Provenance Ring',   label = 'Provenance',   cmd = '/dl p',     ownedOnly = true },
     { name = 'Chocobo Whistle',   label = 'Chocobo',      cmd = '/dl c',     ownedOnly = true },
+    -- Sprinter's Shoes sit beside the Chocobo Whistle: the other way to
+    -- travel faster on the spot (AXI-138).
+    { name = "Sprinter's Shoes",  label = 'Sprinter',     cmd = '/dl sprint', ownedOnly = true },
     -- Nexus Cape and Shadow Lord Shirt moved OFF the top strip into the "Other
     -- Teleports" cascade (Henrik, 2026-07-26). The top strip is the instant/panic
     -- row -- warp out, call the chocobo -- and these two are ordinary 30s enchant

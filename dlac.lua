@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.19a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.19b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -578,7 +578,10 @@ addon.version = '2026.11.19a';  -- date of the last shipped change (Ashita print
                                 --  Teleports menu's Exp rings: /dl xp star;
                                 --  11.19a = a pet's monster move loses the
                                 --  resource's trailing NUL, so a PetAction
-                                --  rule naming the move matches: AXI-139)
+                                --  rule naming the move matches: AXI-139;
+                                --  11.19b = Sprinter's Shoes in the Teleports
+                                --  menu, beside the Chocobo Whistle:
+                                --  /dl sprint, AXI-138)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at

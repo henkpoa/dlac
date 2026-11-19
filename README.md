@@ -307,7 +307,7 @@ you update: your sets, rules and settings live there.
 | `/dl prio` | Show the Claim Priority order |
 | `/dl sync` | Look for new gear in your bags right now |
 | `/dl ls` | Open Lockstyle |
-| `/dl w`, `/dl iw`, `/dl ir`, `/dl c` | Use your Warp Ring, Instant Warp, Instant Retrace or Chocobo Whistle. Add `off` to cancel |
+| `/dl w`, `/dl iw`, `/dl ir`, `/dl c`, `/dl sprint` | Use your Warp Ring, Instant Warp, Instant Retrace, Chocobo Whistle or Sprinter's Shoes. Add `off` to cancel |
 | `/dl lift` | AscensionXI: use your Lifter's Ring. The first use warps you home, the second takes you back. `/dl lift off` works too: it uses the ring, or cancels a use that is waiting |
 | `/dl t <where>` | Use a teleport item for that place. With no place, it lists what you own |
 | `/dl xp <ring>` | Use an EXP ring or band |

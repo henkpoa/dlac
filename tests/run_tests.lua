@@ -16803,6 +16803,78 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- USS. useitem Sprinter's Shoes (AXI-138, 2026-11-19) -- the Quickening shoes
+--     ride the top strip after the Chocobo Whistle, owned-only, run by
+--     /dl sprint, and they are the first Feet piece the module drives.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local function load(names, bag0)
+        local cmdHandler = nil;
+        ashita.events.register = function(evt, name, fn)
+            if evt == 'command' then cmdHandler = fn; end
+        end;
+        local said, queued = {}, {};
+        package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = s; end };
+        local inv = {
+            GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+            GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+        };
+        AshitaCore = {
+            GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+            GetResourceManager = function(self) return {
+                GetItemById = function(self2, id) return { Name = { names[id] }, MaxCharges = 15 }; end,
+            }; end,
+            GetChatManager = function(self) return {
+                QueueCommand = function(self2, mode, cmd) queued[#queued + 1] = cmd; end,
+            }; end,
+        };
+        local useitem = dofile('feature/useitem.lua');
+        ashita.events.register = savedReg;
+        return useitem, cmdHandler, said, queued;
+    end
+    local function topRows(useitem)
+        local names, row = {}, nil;
+        for _, r in ipairs(useitem.menu()) do
+            if r.grp == nil then names[#names + 1] = r.name; end
+            if r.name == "Sprinter's Shoes" then row = r; end
+        end
+        return table.concat(names, '|'), row;
+    end
+
+    local NAMES = { [15754] = "Sprinter's Shoes", [10400] = 'Chocobo Whistle' };
+    local useitem, cmd, said, queued = load(NAMES, {
+        { Id = 15754, Count = 1, Extra = string.char(0, 9) },
+        { Id = 10400, Count = 1, Extra = '' },
+    });
+    local strip, row = topRows(useitem);
+    check('USS1 owned Sprinter\'s Shoes follow the Chocobo Whistle on the top strip', strip, "Chocobo Whistle|Sprinter's Shoes");
+    check('USS1b ...labelled Sprinter', row and row.label, 'Sprinter');
+    check('USS1c ...run by /dl sprint', row and row.cmd, '/dl sprint');
+    check('USS1d ...showing the charges left', tostring(row and row.charges) .. '/' .. tostring(row and row.maxch), '9/15');
+    check('USS1e ...and hidden from the set-building picker', useitem.menuNames()["sprinter's shoes"], true);
+
+    local ok = cmd ~= nil and pcall(cmd, { command = '/dl sprint' });
+    check('USS2 /dl sprint runs', ok, true);
+    local pend = useitem.pending();
+    check('USS2b ...and stages the shoes', pend and pend.name, "Sprinter's Shoes");
+    check('USS2c ...cancelled by /dl sprint off', pend and pend.cancel, '/dl sprint off');
+    check('USS2d ...locking Feet, then equipping there',
+        table.concat(queued, ' ; '), '/dl lock feet on ; /lac disable feet ; /equip feet "Sprinter\'s Shoes"');
+    check('USS2e ...and saying what the use does', (said[#said] or ''):find('Quickening', 1, true) ~= nil, true);
+    pcall(cmd, { command = '/dl sprint off' });
+    check('USS3 /dl sprint off cancels', useitem.pending(), nil);
+    check('USS3b ...and hands Feet back', queued[#queued - 1] .. ' ; ' .. queued[#queued], '/dl lock feet off ; /lac enable feet');
+
+    -- Not owned: no row at all.
+    useitem = load(NAMES, {});
+    local _, none = topRows(useitem);
+    check('USS4 without the shoes there is no row', none, nil);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- UC. useitem Lifter's Ring (Henrik, 2026-11-15, renamed from the Courier's Ring
 --     2026-11-16) -- AscensionXI's round-trip
 --     ring rides the top strip beside Warp, owned-only, run by /dl lift.
