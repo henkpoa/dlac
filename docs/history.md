@@ -12367,3 +12367,24 @@ AXI-138, WarpedChaos: "Add Sprinter shoes to the dlac quickcast bar".
 - The Star Band half of the ticket is `2026.11.18a`, waiting on its
   launcher pin (AXI #1329).
 - Tests: run_tests USS1-USS4 (13 checks). Not checked in game.
+
+## 2026-11-20: Defensive Shell reaches PetAction rules by name (`2026.11.20a`)
+
+Henrik, on the four moves left over from AXI-139: "Call them "??? Needles",
+"Berserk", "Frogick Kick" and "Defensive Shell"".
+
+- Three of the four keep the name the client gives them, so a rule names
+  them `??? Needles`, `Berserk` and `Frogkick`. No code for those. "Frogick
+  Kick" is read as the client's `Frogkick`; that reading is mine and is
+  flagged on the PR.
+- Defensive Shell is a custom AscensionXI move (mob skill 4205) and the
+  client table holds `.` for it. The pack now names it:
+  `servers/ascensionxi/modules/stable/movenames.lua`, offered as the pack
+  service `petMoveNames`, which `feature/equipengine.lua` asks after it has
+  read the client's name. Other servers have no such service and keep the
+  client's name.
+- The Stable cards still print Random Needles, Dhalmel Berserk and Frog
+  Kick: that catalog is generated in the AscensionXI repo and is not
+  changed here.
+- Tests: run_tests NEB11-NEB14. Skill id 4205 is from the server's
+  beastmaster catalog, not from a captured packet. Not checked in game.

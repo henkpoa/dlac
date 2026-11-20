@@ -19485,6 +19485,31 @@ end)();
         tostring(fired and fired.name) .. '/' .. tostring(fired and fired.ctx and fired.ctx.Name), 'PetAction/Razor Fang');
     check('NEB10 ...and a rule naming the move matches it',
         dispatchM._matchers.name('Razor Fang', { action = { Name = pa7 and pa7.Name } }), true);
+
+    -- The four moves whose client name is not the name on the Stable card
+    -- (Henrik, 2026-11-20): three keep the client's name, and AscensionXI's
+    -- pack names the fourth, whose client name is ".".
+    local sp = require('dlac\\gear\\serverpack');
+    local savedSvc = sp.service('petMoveNames');
+    local function readies(skill, clientName)
+        AshitaCore.GetResourceManager = function() return {
+            GetString = function() return clientName .. '\0'; end,
+        }; end
+        eng.state.petAction = nil;
+        eng.handleIncoming({ id = 0x028, data = packStr(40, {
+            { 0x05 * 8, 32, 2002 }, { 10 * 8 + 2, 4, 7 }, { 213, 17, skill }, { 28 * 8 + 6, 10, 43 },
+        }) });
+        return eng.state.petAction and eng.state.petAction.Name;
+    end
+    sp.provide('petMoveNames', nil);
+    check('NEB11 with no pack, Defensive Shell is the client\'s "."', readies(4205, '.'), '.');
+    sp.provide('petMoveNames', dofile('servers/ascensionxi/modules/stable/movenames.lua'));
+    check('NEB12 AscensionXI names it Defensive Shell', readies(4205, '.'), 'Defensive Shell');
+    check('NEB13 ...and leaves the other three as the client spells them',
+        table.concat({ readies(3867, '??? Needles'), readies(286, 'Berserk'), readies(3868, 'Frogkick') }, '|'),
+        '??? Needles|Berserk|Frogkick');
+    check('NEB14 ...and every other move', readies(3849, 'Razor Fang'), 'Razor Fang');
+    sp.provide('petMoveNames', savedSvc);
     AshitaCore, eng.onEvent, eng.state.petAction = savedAshita, savedOnEvent, savedPa;
     prof.nativeMode, _G.gFunc = savedNative2, savedGFunc2;
 end)();

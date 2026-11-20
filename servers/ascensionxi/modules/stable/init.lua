@@ -10,6 +10,10 @@ local wire = require('dlac\\servers\\ascensionxi\\modules\\stable\\wire');
 local recast = require('dlac\\feature\\recast');
 gauge._clock = function() return transport._clock(); end;
 gauge._read = function() return recast.liveRemainingSeconds({ timerId = 102 }); end;
+-- PetAction rules read a companion move's name through this (AXI-139).
+pcall(function()
+    require('dlac\\gear\\serverpack').provide('petMoveNames', require('dlac\\servers\\ascensionxi\\modules\\stable\\movenames'));
+end);
 local catalog = require('dlac\\servers\\ascensionxi\\modules\\stable\\catalog');
 local state, pending, habitats;
 local notice = 'Open the Stable to load your companions.';
