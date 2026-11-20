@@ -1014,7 +1014,17 @@ function M.handleIncoming(e)
                 if p.message == 43 then
                     pa.Type = 'MobSkill';
                     local nm = AshitaCore:GetResourceManager():GetString('monsters.abilities', p.actionId - 256);
-                    pa.Name = (type(nm) == 'string') and nm or nil;
+                    -- the resource hands the name back NUL-terminated
+                    -- ("Razor Fang\0"): strip it, or no rule matching the
+                    -- move by its name ever fires (AXI-139)
+                    pa.Name = (type(nm) == 'string') and (nm:gsub('%z+$', '')) or nil;
+                    -- a server pack may know a move the client table has no
+                    -- real name for (AscensionXI's Defensive Shell is ".")
+                    pcall(function()
+                        local svc = require('dlac\\gear\\serverpack').service('petMoveNames');
+                        local better = svc and svc.nameOf and svc.nameOf(p.actionId, pa.Name) or nil;
+                        if type(better) == 'string' and better ~= '' then pa.Name = better; end
+                    end);
                 else
                     pa.Type = 'Ability';
                     pa.Resource = AshitaCore:GetResourceManager():GetAbilityById(p.actionId + 512);

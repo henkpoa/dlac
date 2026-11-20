@@ -12330,3 +12330,61 @@ Henrik: "Please add Star Band to the teleport menu for AXI".
 - It lives in the shared list like the Anchor Ring: matched by its client
   name, no id pin, and no other server has an item of that name.
 - Tests: run_tests US1-US3 (11 checks). Not checked in game.
+
+## 2026-11-19: PetAction rules match a Ready move by name (`2026.11.19a`)
+
+AXI-139, Teon: on `2026.11.17e` a tiger's Razor Fang equipped nothing and
+showed no PetAction match in the trigger monitor.
+
+- The monster-ability resource hands a move's name back NUL-terminated
+  (`"Razor Fang\0"`), and the engine kept the NUL. A rule naming the move
+  compares the whole string, so it never matched. `feature/equipengine.lua`
+  now strips trailing NULs, the way every other resource-name read already
+  does. Teon's local copy of the same change swapped gear in game.
+- Blood Pacts and pet spells read their names off a different path and are
+  not touched.
+- Still open, from Teon's offline replay of all 152 Ready moves: four whose
+  resource name is not the name players know. Random Needles is
+  `??? Needles`, Dhalmel Berserk is `Berserk`, Frog Kick is `Frogkick`,
+  Defensive Shell is `.`. A rule for those must use the resource's name
+  for now.
+- Tests: run_tests NEB7-NEB10, the pet's own 0x028 through to the name
+  matcher. This build is not checked in game.
+
+## 2026-11-19: Sprinter's Shoes in the Teleports menu (`2026.11.19b`)
+
+AXI-138, WarpedChaos: "Add Sprinter shoes to the dlac quickcast bar".
+
+- `feature/useitem.lua`: a top-strip row after the Chocobo Whistle, label
+  `Sprinter`, command `/dl sprint`, shown only when owned. It locks Feet,
+  equips the shoes, waits out the equip delay on the game clock, uses them
+  and hands Feet back. `/dl sprint off` cancels.
+- Timing from AscensionXI `item_usable` 15754: 15 s equip delay (fallback
+  wait 20, the Provenance Ring's), 15 charges, 5 min between uses. The row
+  shows the charges and the reuse countdown like every other row.
+- Shared list, no id pin: the shoes are a stock item, so CEXI gets the row
+  too.
+- The Star Band half of the ticket is `2026.11.18a`, waiting on its
+  launcher pin (AXI #1329).
+- Tests: run_tests USS1-USS4 (13 checks). Not checked in game.
+
+## 2026-11-20: Defensive Shell reaches PetAction rules by name (`2026.11.20a`)
+
+Henrik, on the four moves left over from AXI-139: "Call them "??? Needles",
+"Berserk", "Frogick Kick" and "Defensive Shell"".
+
+- Three of the four keep the name the client gives them, so a rule names
+  them `??? Needles`, `Berserk` and `Frogkick`. No code for those. "Frogick
+  Kick" is read as the client's `Frogkick`; that reading is mine and is
+  flagged on the PR.
+- Defensive Shell is a custom AscensionXI move (mob skill 4205) and the
+  client table holds `.` for it. The pack now names it:
+  `servers/ascensionxi/modules/stable/movenames.lua`, offered as the pack
+  service `petMoveNames`, which `feature/equipengine.lua` asks after it has
+  read the client's name. Other servers have no such service and keep the
+  client's name.
+- The Stable cards still print Random Needles, Dhalmel Berserk and Frog
+  Kick: that catalog is generated in the AscensionXI repo and is not
+  changed here.
+- Tests: run_tests NEB11-NEB14. Skill id 4205 is from the server's
+  beastmaster catalog, not from a captured packet. Not checked in game.

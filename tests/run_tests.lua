@@ -16803,6 +16803,78 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- USS. useitem Sprinter's Shoes (AXI-138, 2026-11-19) -- the Quickening shoes
+--     ride the top strip after the Chocobo Whistle, owned-only, run by
+--     /dl sprint, and they are the first Feet piece the module drives.
+-- ---------------------------------------------------------------------------
+(function()
+    local savedReg = ashita.events.register;
+    local function load(names, bag0)
+        local cmdHandler = nil;
+        ashita.events.register = function(evt, name, fn)
+            if evt == 'command' then cmdHandler = fn; end
+        end;
+        local said, queued = {}, {};
+        package.loaded['dlac\\chatfmt'] = { print = function(s) said[#said + 1] = s; end };
+        local inv = {
+            GetContainerCountMax = function(self, bag) return (bag == 0) and #bag0 or 0; end,
+            GetContainerItem = function(self, bag, i) return (bag == 0) and bag0[i] or nil; end,
+        };
+        AshitaCore = {
+            GetMemoryManager = function(self) return { GetInventory = function() return inv; end }; end,
+            GetResourceManager = function(self) return {
+                GetItemById = function(self2, id) return { Name = { names[id] }, MaxCharges = 15 }; end,
+            }; end,
+            GetChatManager = function(self) return {
+                QueueCommand = function(self2, mode, cmd) queued[#queued + 1] = cmd; end,
+            }; end,
+        };
+        local useitem = dofile('feature/useitem.lua');
+        ashita.events.register = savedReg;
+        return useitem, cmdHandler, said, queued;
+    end
+    local function topRows(useitem)
+        local names, row = {}, nil;
+        for _, r in ipairs(useitem.menu()) do
+            if r.grp == nil then names[#names + 1] = r.name; end
+            if r.name == "Sprinter's Shoes" then row = r; end
+        end
+        return table.concat(names, '|'), row;
+    end
+
+    local NAMES = { [15754] = "Sprinter's Shoes", [10400] = 'Chocobo Whistle' };
+    local useitem, cmd, said, queued = load(NAMES, {
+        { Id = 15754, Count = 1, Extra = string.char(0, 9) },
+        { Id = 10400, Count = 1, Extra = '' },
+    });
+    local strip, row = topRows(useitem);
+    check('USS1 owned Sprinter\'s Shoes follow the Chocobo Whistle on the top strip', strip, "Chocobo Whistle|Sprinter's Shoes");
+    check('USS1b ...labelled Sprinter', row and row.label, 'Sprinter');
+    check('USS1c ...run by /dl sprint', row and row.cmd, '/dl sprint');
+    check('USS1d ...showing the charges left', tostring(row and row.charges) .. '/' .. tostring(row and row.maxch), '9/15');
+    check('USS1e ...and hidden from the set-building picker', useitem.menuNames()["sprinter's shoes"], true);
+
+    local ok = cmd ~= nil and pcall(cmd, { command = '/dl sprint' });
+    check('USS2 /dl sprint runs', ok, true);
+    local pend = useitem.pending();
+    check('USS2b ...and stages the shoes', pend and pend.name, "Sprinter's Shoes");
+    check('USS2c ...cancelled by /dl sprint off', pend and pend.cancel, '/dl sprint off');
+    check('USS2d ...locking Feet, then equipping there',
+        table.concat(queued, ' ; '), '/dl lock feet on ; /lac disable feet ; /equip feet "Sprinter\'s Shoes"');
+    check('USS2e ...and saying what the use does', (said[#said] or ''):find('Quickening', 1, true) ~= nil, true);
+    pcall(cmd, { command = '/dl sprint off' });
+    check('USS3 /dl sprint off cancels', useitem.pending(), nil);
+    check('USS3b ...and hands Feet back', queued[#queued - 1] .. ' ; ' .. queued[#queued], '/dl lock feet off ; /lac enable feet');
+
+    -- Not owned: no row at all.
+    useitem = load(NAMES, {});
+    local _, none = topRows(useitem);
+    check('USS4 without the shoes there is no row', none, nil);
+
+    AshitaCore = nil;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- UC. useitem Lifter's Ring (Henrik, 2026-11-15, renamed from the Courier's Ring
 --     2026-11-16) -- AscensionXI's round-trip
 --     ring rides the top strip beside Warp, owned-only, run by /dl lift.
@@ -19369,6 +19441,77 @@ end)();
     local pp = eng.parse0x28Pet(pkt);
     check('NEB5 pet actionId decodes', pp.actionId, 900);
     check('NEB6 pet mobskill message decodes', pp.message, 43);
+
+    -- AXI-139: the whole road, packet to rule. The monster-ability resource
+    -- hands the move's name back NUL-terminated ("Razor Fang\0"); kept, no
+    -- rule naming the move ever matched. The pet's own 0x028 (type 7, message
+    -- 43, skill 3849) must reach the PetAction point as plain "Razor Fang".
+    local savedAshita, savedOnEvent, savedPa = AshitaCore, eng.onEvent, eng.state.petAction;
+    local savedNative2, savedGFunc2 = prof.nativeMode, rawget(_G, 'gFunc');
+    prof.nativeMode = function() return true; end
+    _G.gFunc = nil;
+    local asked = nil;
+    AshitaCore = {
+        GetMemoryManager = function() return {
+            GetParty = function() return {
+                GetMemberServerId = function() return 1001; end,
+                GetMemberTargetIndex = function() return 5; end,
+            }; end,
+            GetEntity = function() return {
+                GetPetTargetIndex = function() return 77; end,
+                GetServerId = function() return 2002; end,
+            }; end,
+        }; end,
+        GetResourceManager = function() return {
+            GetString = function(_, tbl, id)
+                asked = tostring(tbl) .. '/' .. tostring(id);
+                return 'Razor Fang\0';
+            end,
+        }; end,
+    };
+    local fired = nil;
+    eng.onEvent = function(name, ctx) fired = { name = name, ctx = ctx }; end
+    eng.handleIncoming({ id = 0x028, data = packStr(40, {
+        { 0x05 * 8, 32, 2002 },         -- the PET authored it
+        { 10 * 8 + 2, 4, 7 },           -- type 7: ability / mobskill
+        { 213, 17, 3849 },              -- the skill
+        { 28 * 8 + 6, 10, 43 },         -- message 43 = a mobskill readies
+    }) });
+    local pa7 = eng.state.petAction;
+    check('NEB7 the pet\'s mobskill asks the monster-ability table', asked, 'monsters.abilities/' .. tostring(3849 - 256));
+    check('NEB8 ...and its name loses the resource\'s trailing NUL',
+        string.format('%q', tostring(pa7 and pa7.Name)), string.format('%q', 'Razor Fang'));
+    check('NEB9 ...so the PetAction point carries the bare name',
+        tostring(fired and fired.name) .. '/' .. tostring(fired and fired.ctx and fired.ctx.Name), 'PetAction/Razor Fang');
+    check('NEB10 ...and a rule naming the move matches it',
+        dispatchM._matchers.name('Razor Fang', { action = { Name = pa7 and pa7.Name } }), true);
+
+    -- The four moves whose client name is not the name on the Stable card
+    -- (Henrik, 2026-11-20): three keep the client's name, and AscensionXI's
+    -- pack names the fourth, whose client name is ".".
+    local sp = require('dlac\\gear\\serverpack');
+    local savedSvc = sp.service('petMoveNames');
+    local function readies(skill, clientName)
+        AshitaCore.GetResourceManager = function() return {
+            GetString = function() return clientName .. '\0'; end,
+        }; end
+        eng.state.petAction = nil;
+        eng.handleIncoming({ id = 0x028, data = packStr(40, {
+            { 0x05 * 8, 32, 2002 }, { 10 * 8 + 2, 4, 7 }, { 213, 17, skill }, { 28 * 8 + 6, 10, 43 },
+        }) });
+        return eng.state.petAction and eng.state.petAction.Name;
+    end
+    sp.provide('petMoveNames', nil);
+    check('NEB11 with no pack, Defensive Shell is the client\'s "."', readies(4205, '.'), '.');
+    sp.provide('petMoveNames', dofile('servers/ascensionxi/modules/stable/movenames.lua'));
+    check('NEB12 AscensionXI names it Defensive Shell', readies(4205, '.'), 'Defensive Shell');
+    check('NEB13 ...and leaves the other three as the client spells them',
+        table.concat({ readies(3867, '??? Needles'), readies(286, 'Berserk'), readies(3868, 'Frogkick') }, '|'),
+        '??? Needles|Berserk|Frogkick');
+    check('NEB14 ...and every other move', readies(3849, 'Razor Fang'), 'Razor Fang');
+    sp.provide('petMoveNames', savedSvc);
+    AshitaCore, eng.onEvent, eng.state.petAction = savedAshita, savedOnEvent, savedPa;
+    prof.nativeMode, _G.gFunc = savedNative2, savedGFunc2;
 end)();
 
 -- ---------------------------------------------------------------------------
