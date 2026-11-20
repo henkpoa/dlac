@@ -222,7 +222,8 @@ local COND_DEFS = {
 
 -- Player-state gates (engine v54): ONE 'Player' entry per handler that
 -- CASCADES into a second parameter combo (Henrik's cascading-menu revision) --
--- 12 parameters: raw + percent vitals variants, TP, and the buff pickers.
+-- 13 parameters: raw + percent vitals variants, TP, the buff pickers and the
+-- sub job. kind 'list' = a fixed dropdown.
 -- kind 'number' = an InputInt threshold; kind 'buff' = the searchable picker.
 local PLAYER_PARAMS = {
     { key = 'playerHPBelow',        kind = 'number', hint = 'raw HP under this' },
@@ -237,6 +238,9 @@ local PLAYER_PARAMS = {
     { key = 'tpAbove',              kind = 'number', hint = 'raw TP over this (1000 = one full shot)' },
     { key = 'buff',    label = 'Has(De)Buff',    kind = 'buff', hint = 'a status effect (buff OR debuff) must be ON you --\ngear up while Asleep, or only while Refresh is active' },
     { key = 'buffNot', label = 'HasNot(De)Buff', kind = 'buff', hint = 'a status effect must NOT be on you' },
+    -- subJob (engine v178): a dropdown of the 22 jobs, the client's job order.
+    { key = 'subJob',  label = 'SubJob', kind = 'list', items = require('dlac\\gear\\jobgate').JOBS,
+      hint = 'your SUB job is this one: SubJob = NIN for a dual-wield set, SubJob = WHM\nfor a cure set. Stack it with any other condition. With no sub job it\nmatches none of them.' },
 };
 
 -- Pet conditions (engine v63): a second cascading entry, the Player shape --
@@ -1907,6 +1911,7 @@ local COND_COLORS = {
     mpbelow = { 0.55, 0.70, 1.00, 1.0 }, mpabove = { 0.55, 0.70, 1.00, 1.0 },
     tpbelow = { 0.95, 0.85, 0.50, 1.0 }, tpabove = { 0.95, 0.85, 0.50, 1.0 },
     buff = { 0.85, 0.65, 1.00, 1.0 },    buffnot = { 0.85, 0.65, 1.00, 1.0 },
+    subjob = { 0.95, 0.80, 0.65, 1.0 },   -- engine v178: who you are, not how you are doing
     -- Pet conditions (engine v63): the pet family reads green; petName a shade
     -- lighter (identity, like `name` vs `skill`).
     pet = { 0.50, 0.90, 0.60, 1.0 }, petstatus = { 0.50, 0.90, 0.60, 1.0 },
@@ -1951,6 +1956,7 @@ local PSTATE_KEYS = {
     playermpbelow = true, playermpabove = true,
     playermppercentbelow = true, playermppercentabove = true,
     tpbelow = true, tpabove = true, buff = true, buffnot = true,
+    subjob = true,   -- engine v178: pstateCtx reads the sub job beside the vitals
     -- v53 alias spellings (percent semantics) stay markable too
     hpbelow = true, hpabove = true, mpbelow = true, mpabove = true,
     -- Pet conditions (engine v63) light too: pet-out is exactly the kind of
@@ -1985,6 +1991,13 @@ local function pstateCtx()
             _psCtx = { player = { HPP = hpp, MPP = party:GetMemberMPPercent(0),
                                   HP = party:GetMemberHP(0), MP = party:GetMemberMP(0),
                                   TP = party:GetMemberTP(0) } };
+            -- The sub job for the subJob marker (v178): the job id through
+            -- jobgate's index -> abbreviation list; id 0 (none) stays nil.
+            -- Inner pcall, like the pet read below.
+            pcall(function()
+                local sj = AshitaCore:GetMemoryManager():GetPlayer():GetSubJob();
+                _psCtx.player.SubJob = require('dlac\\gear\\jobgate').JOBS[sj];
+            end);
             -- ctx.pet for the pet markers (v63): the same read LAC's
             -- gData.GetPet does (data.lua:534) -- pet index 0 or pet HPP 0 is
             -- NO pet, so a dead pet reads as none here exactly like in the
@@ -2245,7 +2258,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet/zone (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/sub job/pet/zone (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end
@@ -2261,7 +2274,7 @@ local function renderTrigRuleBox(h, i, r, setNames, colX)
                 imgui.TextColored(holds and COL_USABLE or COL_DIM,
                     holds and '[on now]' or '[off now]');
                 if imgui.IsItemHovered() then
-                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/pet/zone (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
+                    imgui.SetTooltip('Checked against your CURRENT vitals/buffs/sub job/pet/zone (refreshes every second)\nwith the engine\'s own matcher. The engine re-evaluates at every dispatch.');
                 end
             end
         end
@@ -3001,7 +3014,7 @@ local function renderTrigAddPopup()
         imgui.OpenPopup('##trgcondmenu');
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / buffs; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals, and\nAvatar-Ward matches any Blood Pact: Ward.');
+        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / TP / buffs / sub job; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals, and\nAvatar-Ward matches any Blood Pact: Ward.');
     end
     if imgui.BeginPopup('##trgcondmenu') then
         local function pickDef(di)
