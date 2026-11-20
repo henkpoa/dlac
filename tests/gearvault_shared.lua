@@ -485,7 +485,7 @@ check('SN30 a refusal code becomes words', svm.refusalWords(vc.giCode.SHELF_CAP)
     'the Shared Vault already holds as many of that piece as it can');
 check('SN31 every refusal a share or a take can meet has words', (function()
     for _, k in ipairs({ 'NOT_IN_GROUP', 'BUSY', 'STORE_ERROR', 'STAYS_WITH_YOU', 'SHELF_CAP', 'RARE_IN_STORE',
-                         'NOT_ELIGIBLE', 'NO_ROW', 'RARE_HELD', 'DUPLICATE', 'ITEM_BUSY', 'CLOSED' }) do
+                         'NOT_ELIGIBLE', 'NO_ROW', 'RARE_HELD', 'DUPLICATE', 'ITEM_BUSY', 'CLOSED', 'LEVEL_TOO_LOW' }) do
         if svm.REFUSAL[vc.giCode[k]] == nil then return k; end
     end
     return true;
@@ -499,6 +499,10 @@ svm.take({ rowId = 31, itemId = 12345, name = 'Shared Sword' }); tick();
 reply(takeAck(vc.giCode.RARE_HELD, 0, 0));
 check('SN34 a refused take says why', lastNote(), 'Shared Sword: you already have one of that Rare piece');
 check('SN34a ...as a complaint', notes[#notes] ~= nil and notes[#notes].e, true);
+svm.take({ rowId = 31, itemId = 12345, name = 'Shared Sword' }); tick();
+reply(takeAck(vc.giCode.LEVEL_TOO_LOW, 0, 0));
+check('SN34b a take above your highest job level says why (AscensionXI group-ironman-boosting.md B2)',
+    lastNote(), "Shared Sword: you need a job at that piece's level to take it");
 svm.take({ rowId = 31, itemId = 12345, name = 'Shared Sword' }); tick();
 frame(vc.status.TOO_FAR);
 check('SN35 a take away from a Gear Vault says where to stand',

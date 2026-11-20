@@ -12388,3 +12388,15 @@ Henrik, on the four moves left over from AXI-139: "Call them "??? Needles",
   changed here.
 - Tests: run_tests NEB11-NEB14. Skill id 4205 is from the server's
   beastmaster catalog, not from a captured packet. Not checked in game.
+
+## 2026-11-20: the Shared Vault tab explains the level gate (`2026.11.20b`)
+
+AscensionXI's Group Ironman now refuses a Shared Vault take of gear above the
+taker's highest job level, with the new GroupIronmanCode `LEVEL_TOO_LOW` (39)
+(AscensionXI `documentation/custom/group-ironman-boosting.md` B2, build handoff
+`group-ironman-gil-cap-level-gate.md`). Without words for it the tab said
+"refused (code 39)". `vc.giCode` gains 36-40 to mirror the server's table, and
+`sharedvault.lua` says "you need a job at that piece's level to take it".
+
+- Tests: gearvault_shared SN31 (the code has words) and SN34b (a refused take
+  says why). Both seen failing without the line. Not checked in game.
