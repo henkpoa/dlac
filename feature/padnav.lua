@@ -181,6 +181,13 @@ M.io.windowFocused = function(flags)
     return v == true;
 end
 
+-- The game's own hide-the-interface key (Scroll Lock): nothing of ours is on
+-- screen, so nothing of ours may keep the pad.
+M.io.hudHidden = function()
+    local ok, v = pcall(function() return require('dlac\\feature\\gamehud').hidden(); end);
+    return ok and v == true;
+end
+
 M.io.focusNext = function()
     local im = M.io.imgui();
     if im ~= nil then pcall(function() im.SetNextWindowFocus(); end); end
@@ -454,7 +461,7 @@ end
 -- ---------------------------------------------------------------------------
 function M.onButton(tok, down)
     if type(tok) ~= 'string' then return false; end
-    if down then st.phys[tok] = true; else st.phys[tok] = nil; end
+    if down then st.phys[tok] = true; st.lastTok = tok; else st.phys[tok] = nil; end
 
     -- A release whose press the game saw always goes to the game.
     if not down and st.game[tok] then
@@ -552,6 +559,7 @@ function M.tick(host)
     end
 
     if not st.on then return; end
+    if M.io.hudHidden() then M.release(false); return; end
     M.io.setFlags(true);          -- cheap, and survives anything that resets them
     -- No dlac window is focused: the menu closed (a row was used, or Back
     -- cancelled it), the window was shut, the interface is hidden. The pad
@@ -603,19 +611,31 @@ function M.drawHost(host)
         -- back onto one of those is the end of the pick, not a new target.
         host.ui._tpDrawn = nil;
         pcall(host.popup);
-        if st.on and host.ui._tpDrawn == true then
-            st.quickOpen = true;
-        elseif st.quickOpen then
-            st.quickOpen = false;
-            if st.on and st.focusWant == nil then
-                st.quickKnown = {};
-                for _, k in ipairs(st.winsPrev) do st.quickKnown[k] = true; end
-                for _, k in ipairs(st.wins) do st.quickKnown[k] = true; end
-            end
-        end
+        M.quickDrawn(host.ui._tpDrawn == true);
     end
     im.End();
     if st.on then pcall(M.drawBadge, im); end
+end
+
+-- Called once a frame with "the quick menu drew". While it is up, the windows
+-- of the frame BEFORE are remembered; the frame it is gone, those are the
+-- ones whose focus does not count. The frame before, and not this one: a row
+-- opens its window in the very frame it closes the menu, and that window is
+-- drawn after the menu, so a list taken now would hold the window the player
+-- just asked for and the pad would leave it (field, 2026-11-21: the main
+-- window, the hobby bar and lockstyle all opened without the pad).
+function M.quickDrawn(drawn)
+    if st.on and drawn then
+        st.quickOpen = true;
+        st.quickSeen = st.winsPrev;
+    elseif st.quickOpen then
+        st.quickOpen = false;
+        if st.on and st.focusWant == nil then
+            st.quickKnown = {};
+            for _, k in ipairs(st.quickSeen or {}) do st.quickKnown[k] = true; end
+        end
+        st.quickSeen = nil;
+    end
 end
 
 -- WHO HAS THE CONTROLLER. A small label at the top of the screen for as long
@@ -702,6 +722,22 @@ function M.defaultFocusHere()
     if im ~= nil then pcall(im.SetItemDefaultFocus); end
 end
 
+-- One line for /dl pad state: who has the pad, which dlac window holds it,
+-- which windows Next window can reach, and the last button with its job.
+function M.stateLine()
+    local list = (#st.wins >= #st.winsPrev) and st.wins or st.winsPrev;
+    local last = 'none';
+    if st.lastTok ~= nil then
+        last = M.tokenName(st.lastTok) .. ' (' .. st.lastTok .. ') = ' .. (actionOf(st.lastTok) or 'nothing');
+    end
+    return ('controller state -- %s; focused: %s; windows: %s; last button: %s%s'):format(
+        st.on and 'dlac has it' or 'the game has it',
+        focusHeld() and tostring(st.focusKey) or 'none',
+        (#list > 0) and table.concat(list, ', ') or 'none',
+        last,
+        st.noFocusApi and '; no focus query on this binding' or '');
+end
+
 -- ---------------------------------------------------------------------------
 -- uiflags round trip:  "on=1;combo=d58+d59;ok=d49;back=d50"
 -- ---------------------------------------------------------------------------
@@ -739,8 +775,9 @@ function M._reset()
     st.frame, st.guardUntil = nil, nil;
     st.wins, st.winsPrev, st.baseline = {}, {}, {};
     st.focusFrame, st.focusKey, st.focusWant, st.focusWantUntil = nil, nil, nil, nil;
-    st.quickOpen, st.quickKnown, st.closeQuick = false, nil, nil;
+    st.quickOpen, st.quickKnown, st.closeQuick, st.quickSeen = false, nil, nil, nil;
     st.closeWant, st.closeUntil, st.noFocusApi, st.mainWasVisible = nil, nil, nil, false;
+    st.lastTok = nil;
 end
 
 -- ---------------------------------------------------------------------------
@@ -787,6 +824,7 @@ pcall(function()
     end);
 
     -- /dl pad            what is bound, and whether this client can do it
+    -- /dl pad state      who has the pad, the focused window, the last button
     -- /dl pad flatten all|off   field switch: walk through EVERY dlac panel
     ashita.events.register('command', 'dlac-padnav', function(e)
         local args = e.command:args();
@@ -802,6 +840,11 @@ pcall(function()
         end
         if not M.supported() then
             M.say('controller navigation is not available on this Ashita yet.');
+            return;
+        end
+        -- /dl pad state: what the pad session sees right now (field debug).
+        if (args[3] or ''):lower() == 'state' then
+            M.say(M.stateLine());
             return;
         end
         M.say(('controller navigation %s -- open/close: %s; confirm: %s; back: %s; tabs: %s / %s; next window: %s.'):format(

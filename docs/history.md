@@ -12443,3 +12443,25 @@ lockstyle window up; the hobby bar cannot be reached.
   `docs/reference/axi119-controller-navigation.md`.
 - Tests: tests/padnav.lua PN41-PN45 rewritten, PN81-PN107 new (110 checks).
   Suites 8171 and 1840. Not checked in game.
+
+## 2026-11-21: Controller, Henrik's field round (`2026.11.21b`)
+
+Henrik on `21a`: a window opened from a Teleports row (the main window, the
+hobby bar, lockstyle) came up without the controller; Next window did
+nothing; the pad stayed with dlac under Scroll Lock; and "hobby bar for
+gathering doesn't have send to mog case and satchel, should prolly add that".
+
+- **A row-opened window keeps the pad.** The list of "windows that were
+  already up" was taken the frame after the menu closed. A row opens its
+  window in the frame it closes the menu, drawn after the menu, so the new
+  window was on the list and its focus did not count. The list is now the
+  frame before the menu's last one (`padnav.quickDrawn`).
+- **Scroll Lock** releases the pad at once.
+- **`/dl pad state`**: holder, focused window, reachable windows, last button
+  and its job. Next window's failure is not explained; this is how the next
+  round finds it.
+- **HELM hobby bar**: the Mog Case / Mog Satchel switches of the HELM panel,
+  under the readout (`helmui.renderMoveDestinations`, shared by both).
+- Tests: tests/padnav.lua 112 checks (PN86 now draws the opened window in
+  the menu's last frame, PN108-PN109 new); smoke_ui AXS22 pins the new bar
+  line. Suites 8171 and 1840. Not checked in game.

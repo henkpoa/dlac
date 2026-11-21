@@ -55,6 +55,8 @@ end
 pad.io.windowFocused = focusSeam;
 pad.io.focusNext = function() focusAsked = focusAsked + 1; end
 pad.io.hideCursor = function() end
+local hudHidden = false;
+pad.io.hudHidden = function() return hudHidden; end
 local function draw(name, focus, openT)
     focusNow = focus or false;
     pad.windowHook(false, name, openT);
@@ -178,30 +180,21 @@ check('PN84 window keys', pad._winKey(MAIN) .. ' ' .. pad._winKey(HOBBY) .. ' ' 
 -- 8b. The quick menu closes (a row was used, or Back): a window that was
 --     already up gets the focus back and does NOT hold the pad; a window the
 --     row opened does.
-local function quickFrame(drawn)
-    -- what drawHost does around the menu body, without an ImGui
-    local s = pad._st;
-    if s.on and drawn then s.quickOpen = true;
-    elseif s.quickOpen then
-        s.quickOpen = false;
-        if s.on and s.focusWant == nil then
-            s.quickKnown = {};
-            for _, k in ipairs(s.winsPrev) do s.quickKnown[k] = true; end
-            for _, k in ipairs(s.wins) do s.quickKnown[k] = true; end
-        end
-    end
-end
+local quickFrame = pad.quickDrawn;      -- what drawHost reports each frame
 fresh(); combo(); draw(HOBBY, false); pad.tick(host); open();
 draw(HOBBY, false); draw(HOST, 'popup'); quickFrame(true); clock = 1; pad.tick(host);
 check('PN85a the open quick menu holds the pad', pad.active(), true);
+draw(HOBBY, false); draw(HOST, 'popup'); quickFrame(true); clock = 1.5; pad.tick(host);
 draw(HOBBY, true); quickFrame(false); clock = 2; pad.tick(host);      -- row used: focus falls back
 draw(HOBBY, true); clock = 3; pad.tick(host);
 draw(HOBBY, true); clock = 4; pad.tick(host);
 check('PN85 focus back on a window that was already up: released', pad.active(), false);
 fresh(); combo(); draw(HOBBY, false); pad.tick(host); open();
 draw(HOBBY, false); draw(HOST, 'popup'); quickFrame(true); clock = 1; pad.tick(host);
-draw(HOBBY, false); quickFrame(false); clock = 1.1; pad.tick(host);
-draw(HOBBY, false); draw(LOCK, true); clock = 1.3; pad.tick(host);    -- the row opened lockstyle
+-- The row is used: the menu draws one last time, and the window it opened is
+-- drawn LATER IN THAT SAME FRAME (the frame order of ui\gearui).
+draw(HOBBY, false); draw(HOST, 'popup'); quickFrame(true); draw(LOCK, true); clock = 1.1; pad.tick(host);
+draw(HOBBY, false); quickFrame(false); draw(LOCK, true); clock = 1.3; pad.tick(host);
 draw(HOBBY, false); draw(LOCK, true); clock = 9; pad.tick(host);
 check('PN86 a window the row opened holds the pad', pad.active(), true);
 draw(LOCK, false); draw(HOBBY, true); clock = 10; pad.tick(host);
@@ -259,6 +252,21 @@ draw(HOBBY, true); quickFrame(false); clock = 1; pad.tick(host);
 draw(HOBBY, true); clock = 5; pad.tick(host);
 check('PN99 ...and the window stepped to holds the pad', pad.active(), true);
 check('PN100 XInput default', (function() fresh(); pad.applySaved('on=1;combo=x6+x7'); return pad.tokenName(pad.bindOf('win')); end)(), 'Y');
+
+-- 8f. The game's interface is hidden (Scroll Lock): the pad goes back at once,
+--     whatever claims the focus.
+fresh(); combo(); open();
+draw(MAIN, true); pad.tick(host);
+hudHidden = true; draw(MAIN, true); pad.tick(host);
+check('PN108 interface hidden: released at once', pad.active(), false);
+hudHidden = false;
+
+-- 8g. /dl pad state names the holder, the windows and the last button's job.
+fresh(); combo(); draw(MAIN, false); draw(HOBBY, false); pad.tick(host); visible = true; open();
+draw(MAIN, true); draw(HOBBY, false); pad.tick(host);
+press('d51'); lift('d51');
+check('PN109 the state line', pad.stateLine(),
+      'controller state -- dlac has it; focused: ffxi_lac_gearui; windows: ffxi_lac_gearui, dlac_hobbybar; last button: button 4 (d51) = win');
 
 -- 8e. A binding that cannot answer "is this window focused" falls back to
 --     ImGui's NavActive, as before.

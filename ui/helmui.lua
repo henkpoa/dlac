@@ -345,6 +345,28 @@ M.maxLevel = 4;
 -- ---------------------------------------------------------------------------
 -- The detail view (automationsui: auto.view == 'helm').
 -- ---------------------------------------------------------------------------
+-- The Mog Case / Mog Satchel switches for gathered items. Both gathering
+-- surfaces draw them: the HELM panel ('panel') and the hobby bar ('bar'),
+-- like the dig and fishing switches (Henrik, 2026-11-21: the bar had none).
+-- Returns true when it drew.
+function M.renderMoveDestinations(id)
+    if not gathering.enabled() then return false; end
+    local hwok, hw = pcall(require, 'dlac\\feature\\helmwatch');
+    if not hwok or type(hw) ~= 'table' or type(hw.setMoveDestination) ~= 'function' then return false; end
+    imgui.TextColored(COL_TEXT, 'Move gathered items into:');
+    for _, destination in ipairs({ { 7, 'Mog Case', 'moveCase' }, { 5, 'Mog Satchel', 'moveSatchel' } }) do
+        imgui.SameLine(0, 12);
+        local checked = { hw[destination[3]] == true };
+        if imgui.Checkbox(destination[2] .. '##helmstorage' .. tostring(id or ''), checked) then
+            hw.setMoveDestination(destination[1], checked[1]);
+        end
+        if imgui.IsItemHovered() then
+            imgui.SetTooltip('Moves gathered full stacks and non-stacking items. Partial stacks wait for six seconds without gathering.');
+        end
+    end
+    return true;
+end
+
 function M.render(deps, availW)
     local hwok, hw = pcall(require, 'dlac\\feature\\helmwatch');
     hwok = hwok and type(hw) == 'table';
@@ -414,20 +436,7 @@ function M.render(deps, availW)
         imgui.Spacing();
     end
 
-    if gathering.enabled() and hwok and type(hw.setMoveDestination) == 'function' then
-        imgui.TextColored(COL_TEXT, 'Move gathered items into:');
-        for _, destination in ipairs({ { 7, 'Mog Case', 'moveCase' }, { 5, 'Mog Satchel', 'moveSatchel' } }) do
-            imgui.SameLine(0, 12);
-            local checked = { hw[destination[3]] == true };
-            if imgui.Checkbox(destination[2] .. '##helmstorage', checked) then
-                hw.setMoveDestination(destination[1], checked[1]);
-            end
-            if imgui.IsItemHovered() then
-                imgui.SetTooltip('Moves gathered full stacks and non-stacking items. Partial stacks wait for six seconds without gathering.');
-            end
-        end
-        imgui.Spacing();
-    end
+    if M.renderMoveDestinations('panel') then imgui.Spacing(); end
 
     if gathering.enabled() then
         M.renderPoints('panel');

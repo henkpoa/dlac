@@ -76,14 +76,23 @@ stayed with dlac (reported by Vellhart and Dyce, 2026-11-17 to 11-21). Now:
   no title (`##dlac_tray`, the gauges, the pad host) is a HUD piece: the focus
   resting on it holds nothing, a popup under it does. That is how the
   Teleports menu under the invisible host counts and the host does not.
-- When the Teleports menu closes, the windows already on screen are noted
-  (`quickKnown`). ImGui hands the focus back to whichever of them had it
+- When the Teleports menu closes, the windows that were on screen the frame
+  before its last one are noted (`quickKnown`). The frame before, because a
+  row opens its window in the same frame it closes the menu and that window
+  is drawn after the menu (`ui/gearui` draws the pad host early). `21a` took
+  the list a frame late, so the window the player had just opened was on it
+  and the pad left: the main window, the hobby bar and lockstyle all opened
+  without the pad (Henrik's field round, 2026-11-21; fixed in `21b`). ImGui hands the focus back to whichever of them had it
   before; that is not a choice, so it does not hold the pad. A window the row
   OPENED (not in the list) does, and from then on the older ones count again.
 - On release `SetNavCursorVisible(false)` is tried, so the highlight does not
   stay on a window the pad no longer drives.
 - If the binding cannot answer `IsWindowFocused`, the old `NavActive` rule is
   used.
+- With the game's interface hidden (Scroll Lock, `feature/gamehud`) the pad
+  is released at once (`21b`).
+- `/dl pad state` prints who has the pad, the focused dlac window, the
+  windows Next window can reach, and the last button with the job it did.
 
 The closing combination shuts a session-opened window by setting its open
 flag to false at its next Begin, which every dlac window already treats as a

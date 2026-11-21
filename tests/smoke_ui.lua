@@ -2404,8 +2404,8 @@ end)();
     check('AXS21 no category or refresh buttons', table.concat(buttons, '\n'):find('##hb_')
         or table.concat(buttons, '\n'):find('Refresh'), nil);
     local barText = {}; for i = barStart + 1, #text do barText[#barText + 1] = text[i]; end;
-    check('AXS22 compact AXI bar shows points and two bonuses', table.concat(barText, '\n'),
-        'HELM points: 12345\nExtra rolls: +60%\nTool break: -20 pp');
+    check('AXS22 compact AXI bar shows points, two bonuses and the storage switches', table.concat(barText, '\n'),
+        'HELM points: 12345\nExtra rolls: +60%\nTool break: -20 pp\nMove gathered items into:');
     rendered = table.concat(text, '\n');
     for _, label in ipairs({ 'HELM points: unknown', 'HELM points: 12345', '2500 points', '10000 points',
         'Field Cap', 'Worker Cap', 'Worker +1 (reserved)', 'Unavailable', 'Rock Bottom', 'Branch Manager', 'Grass Roots' }) do
