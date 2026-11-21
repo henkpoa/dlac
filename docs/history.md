@@ -12530,3 +12530,18 @@ you are moving?"
   1840. Not checked in game; whether Ashita's binding takes the third
   argument of InvisibleButton is unconfirmed (it is tried once and dropped
   if refused).
+
+## 2026-11-21: Controller, the tooltip really moves (`2026.11.21g`)
+
+Henrik on `21f`: the on / off pill works from the pad; "Tooltip doesn't move,
+it's always below."
+
+- The placement read the item's rectangle and the screen size inside one
+  guarded block and accepted only numbers or Lua tables. The likely miss:
+  this binding hands back an ImVec2 object for the screen size (the label's
+  own code reads it with `.x`), so the read gave nothing and the tooltip was
+  left alone, silently. Each read is now guarded on its own and takes
+  numbers, tables or objects. Not confirmed in game that this was the cause.
+- `/dl pad state` ends with what the last tooltip did: where it was placed,
+  or why it was not moved.
+- Tests: tests/padnav.lua 142 checks (PN136-PN139 new). Not checked in game.

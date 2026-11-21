@@ -453,22 +453,34 @@ function M.tooltipSpot(dir, r, w, h, dw, dh)
     return nil;
 end
 
-local function pair(a, b)                 -- a binding answers x, y or one table
-    if type(a) == 'table' then return a.x or a[1], a.y or a[2]; end
-    return a, b;
+local function pair(a, b)                 -- a binding answers x, y, or one table, or one ImVec2
+    if type(a) == 'number' then return a, b; end
+    local x, y = nil, nil;
+    pcall(function() x, y = a.x, a.y; end);
+    if type(x) ~= 'number' then pcall(function() x, y = a[1], a[2]; end); end
+    return x, y;
 end
 
--- { x0, y0, x1, y1 } of the last item, its focus, the text's size, the screen.
+-- { x0, y0, x1, y1 } of the last item, the tooltip's size, the screen -- or
+-- nil and WHY (kept for /dl pad state). Every call is guarded on its own: the
+-- first cut ran them in one pcall, read the screen size as a table when the
+-- binding hands back an ImVec2, and so never moved a tooltip (field,
+-- 2026-11-21).
 M.io.tipFacts = function(text)
     local im = M.io.imgui();
-    if im == nil or im.IsItemFocused() ~= true then return nil; end
-    local x0, y0 = pair(im.GetItemRectMin());
-    local x1, y1 = pair(im.GetItemRectMax());
-    local w, h = 220, 120;                -- BeginTooltip: no text, a fair guess
-    if type(text) == 'string' then w, h = pair(im.CalcTextSize(text)); end
-    local dw, dh = pair(im.GetIO().DisplaySize);
-    if type(x0) ~= 'number' or type(y1) ~= 'number' or type(w) ~= 'number' or type(h) ~= 'number'
-       or type(dw) ~= 'number' or type(dh) ~= 'number' then return nil; end
+    if im == nil then return nil, 'no imgui'; end
+    local okf, focused = pcall(function() return im.IsItemFocused(); end);
+    if okf and focused ~= true then return nil, 'not the item under the cursor'; end
+    local x0, y0, x1, y1, w, h, dw, dh;
+    pcall(function() x0, y0 = pair(im.GetItemRectMin()); end);
+    pcall(function() x1, y1 = pair(im.GetItemRectMax()); end);
+    if type(x0) ~= 'number' or type(y0) ~= 'number' or type(x1) ~= 'number' or type(y1) ~= 'number' then
+        return nil, 'no item rect';
+    end
+    if type(text) == 'string' then pcall(function() w, h = pair(im.CalcTextSize(text)); end); end
+    if type(w) ~= 'number' or type(h) ~= 'number' then w, h = 220, 120; end   -- no text to measure: a fair guess
+    pcall(function() dw, dh = pair(im.GetIO().DisplaySize); end);
+    if type(dw) ~= 'number' or type(dh) ~= 'number' then return nil, 'no screen size'; end
     return { x0, y0, x1, y1 }, w + 18, h + 14, dw, dh;      -- + the tooltip's own padding
 end
 
@@ -480,12 +492,15 @@ end
 -- lib\imguicompat calls this just before every SetTooltip / BeginTooltip.
 function M.tooltipHook(text)
     if not st.on or st.lastDir == nil then return; end
-    pcall(function()
+    local ok, err = pcall(function()
         local r, w, h, dw, dh = M.io.tipFacts(text);
-        if r == nil then return; end
+        if r == nil then st.tipWhy = w or 'no facts'; return; end
         local x, y, px, py = M.tooltipSpot(st.lastDir, r, w, h, dw, dh);
-        if x ~= nil then M.io.tipPlace(x, y, px, py); end
+        if x == nil then st.tipWhy = 'no room ' .. st.lastDir .. '-side'; return; end
+        M.io.tipPlace(x, y, px, py);
+        st.tipWhy = ('placed %d,%d after %s'):format(x, y, st.lastDir);
     end);
+    if not ok then st.tipWhy = 'error: ' .. tostring(err); end
 end
 
 -- after = false just before the window's Begin, true just after it.
@@ -814,7 +829,8 @@ function M.stateLine()
         focusHeld() and tostring(st.focusKey) or 'none',
         (#list > 0) and table.concat(list, ', ') or 'none',
         last,
-        st.noFocusApi and '; no focus query on this binding' or '');
+        (st.noFocusApi and '; no focus query on this binding' or '')
+            .. (st.tipWhy and ('; last tooltip: ' .. st.tipWhy) or ''));
 end
 
 -- ---------------------------------------------------------------------------
@@ -856,7 +872,7 @@ function M._reset()
     st.focusFrame, st.focusKey, st.focusWant, st.focusWantUntil = nil, nil, nil, nil;
     st.quickOpen, st.quickKnown, st.closeQuick, st.quickSeen = false, nil, nil, nil;
     st.closeWant, st.closeUntil, st.noFocusApi, st.mainWasVisible = nil, nil, nil, false;
-    st.lastTok, st.lastDir = nil, nil;
+    st.lastTok, st.lastDir, st.tipWhy = nil, nil, nil;
 end
 
 -- ---------------------------------------------------------------------------

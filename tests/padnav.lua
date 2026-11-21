@@ -436,6 +436,7 @@ do
     -- The hook: only while the pad is ours, only after a direction, only on
     -- the item under the controller's cursor (tipFacts answers nil otherwise).
     local placed, facts = {}, true;
+    local keptFacts = pad.io.tipFacts;
     pad.io.tipFacts = function(text)
         if not facts then return nil; end
         return r, 200, 60, 1920, 1080;
@@ -455,6 +456,26 @@ do
     facts = false; pad.tooltipHook('tip');
     check('PN129 a mouse hover (not the cursor\'s item) is not moved', #placed, 2);
     check('PN130 the shim carries the hook', compat.navTooltip, pad.tooltipHook);
+    -- The real fact reader against a binding that answers ImVec2-like
+    -- objects (indexable, not tables of numbers) for the screen and rects.
+    local function vec(x, y) return setmetatable({}, { __index = { x = x, y = y } }); end
+    local fakeIm = { IsItemFocused = function() return true; end,
+                     GetItemRectMin = function() return vec(100, 300); end,
+                     GetItemRectMax = function() return 260, 320; end,
+                     CalcTextSize = function() return 182, 46; end,
+                     GetIO = function() return { DisplaySize = vec(1920, 1080) }; end };
+    local keptImgui = pad.io.imgui;
+    pad.io.imgui = function() return fakeIm; end
+    local rr, w, h, dw, dh = keptFacts('tip');
+    check('PN136 facts from mixed return shapes', table.concat(rr, ',') .. ' ' .. w .. 'x' .. h .. ' ' .. dw .. 'x' .. dh,
+          '100,300,260,320 200x60 1920x1080');
+    fakeIm.IsItemFocused = function() return false; end
+    check('PN137 a mouse hover says why', select(2, keptFacts('tip')), 'not the item under the cursor');
+    fakeIm.IsItemFocused = function() error('not bound'); end
+    check('PN138 no focus query: the tooltip is still placed', keptFacts('tip') ~= nil, true);
+    pad.io.imgui = keptImgui;
+    facts = true; pad.tooltipHook('tip');
+    check('PN139 /dl pad state carries the last tooltip', pad.stateLine():match('last tooltip: (.+)$'), 'placed 100,328 after up');
 end
 
 -- 20. The compat shim: an invisible button is a controller stop, and a
