@@ -12495,3 +12495,18 @@ hobby bar."
   (`SetCursorPosX/Y`, `InvisibleButton`).
 - Tests: no new checks (the suites draw the bar with a stand-in ImGui).
   Suites 8171 and 1840, padnav 119. Not checked in game.
+
+## 2026-11-21: Controller, the on / off pill (`2026.11.21e`)
+
+Henrik on `21d`: L1 / R1 change hobbies, "but can't still access the on / off
+button on hobbies".
+
+- `panelkit.pill` (the green / red switch on every hobby bar, the HELM and
+  fishing panels, the Gear Helpers rows, the Job helper rows) is an invisible
+  button that read `IsItemClicked()`, which hears the mouse only. The
+  controller's cursor could stand on it and Confirm did nothing. It now takes
+  the button's own answer, which Confirm also gives.
+- With the mouse the pill now switches when the button is let go over it,
+  not when it goes down. That is what every ordinary button does.
+- A white rim shows while the controller's cursor is on the pill.
+- Tests: suites 8171 and 1840, padnav 119; no new checks. Not checked in game.
