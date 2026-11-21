@@ -103,6 +103,21 @@ The closing combination shuts a session-opened window by setting its open
 flag to false at its next Begin, which every dlac window already treats as a
 click on its own x. The request lives three frames.
 
+## Invisible buttons and tooltips (`2026.11.21f`)
+
+- **Invisible buttons.** On ImGui 1.90+ the controller's cursor skips an
+  `InvisibleButton` unless `ImGuiButtonFlags_EnableNav` (8) is passed.
+  `lib/imguicompat` adds it to every call that names no flags, so the on / off
+  pill (`panelkit.pill`) and the hobby bar's icon tabs are stops. A widget
+  drawn as a picture plus `IsItemClicked()` is still not one; it needs a
+  button over it.
+- **Tooltips.** ImGui hangs a tooltip under the cursor's item, over the row
+  the cursor is heading for. `imguicompat` calls `padnav.tooltipHook` before
+  every `SetTooltip` / `BeginTooltip`; for the item under the controller's
+  cursor it sets the tooltip's position to the side the cursor came from
+  (moving down: above; up: below; right: left; left: right). No room on that
+  side, or a mouse hover: ImGui's own placement.
+
 ## Panels tuned so far
 
 Sets tab: the left panel, the slot grid, the slot's list and its rows; the

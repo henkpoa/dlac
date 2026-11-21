@@ -417,6 +417,79 @@ do
     compat.navWindow = pad.windowHook;
 end
 
+-- 19. Tooltips go on the side the cursor came from; no room there = ImGui's own.
+do
+    local r = { 100, 300, 260, 320 };            -- the item: x0, y0, x1, y1
+    local function spot(dir, rect, w, h)
+        local x, y, px, py = pad.tooltipSpot(dir, rect or r, w or 200, h or 60, 1920, 1080);
+        if x == nil then return 'imgui'; end
+        return x .. ',' .. y .. ' pivot ' .. px .. ',' .. py;
+    end
+    check('PN117 moving down: above the item', spot('down'), '100,292 pivot 0,1');
+    check('PN118 moving up: below it', spot('up'), '100,328 pivot 0,0');
+    check('PN119 moving right: to its left', spot('right', { 400, 300, 560, 320 }), '392,300 pivot 1,0');
+    check('PN120 moving left: to its right', spot('left'), '268,300 pivot 0,0');
+    check('PN121 no room above: left to ImGui', spot('down', { 100, 40, 260, 60 }), 'imgui');
+    check('PN122 no room below: left to ImGui', spot('up', { 100, 1040, 260, 1060 }), 'imgui');
+    check('PN123 no room to the left: left to ImGui', spot('right'), 'imgui');
+    check('PN124 a wide tooltip is kept on screen', spot('down', { 1800, 300, 1900, 320 }), '1720,292 pivot 0,1');
+    -- The hook: only while the pad is ours, only after a direction, only on
+    -- the item under the controller's cursor (tipFacts answers nil otherwise).
+    local placed, facts = {}, true;
+    pad.io.tipFacts = function(text)
+        if not facts then return nil; end
+        return r, 200, 60, 1920, 1080;
+    end
+    pad.io.tipPlace = function(x, y, px, py) placed[#placed + 1] = x .. ',' .. y; end
+    fresh(); combo();
+    pad.tooltipHook('tip');
+    check('PN125 pad at rest: the tooltip is not moved', #placed, 0);
+    open(); pad.tooltipHook('tip');
+    check('PN126 no direction pressed yet: not moved', #placed, 0);
+    pad.onDpadAngle(18000); pad.onDpadAngle(-1);
+    pad.tooltipHook('tip');
+    check('PN127 after d-pad down: above the item', placed[1], '100,292');
+    pad.onDpadAngle(0); pad.onDpadAngle(-1);
+    pad.tooltipHook('tip');
+    check('PN128 after d-pad up: below it', placed[2], '100,328');
+    facts = false; pad.tooltipHook('tip');
+    check('PN129 a mouse hover (not the cursor\'s item) is not moved', #placed, 2);
+    check('PN130 the shim carries the hook', compat.navTooltip, pad.tooltipHook);
+end
+
+-- 20. The compat shim: an invisible button is a controller stop, and a
+--     tooltip tells the hook first.
+do
+    local calls, tips = {}, {};
+    local fake = { ImageWithBg = function() end,
+                   InvisibleButton = function(...) calls[#calls + 1] = select('#', ...) .. ':' .. tostring((select(3, ...))); return true; end,
+                   SetTooltip = function(t) tips[#tips + 1] = 'raw:' .. t; end };
+    package.loaded.imgui = fake;
+    compat.installed, compat.wrapped, compat.invisibleNav = false, false, nil;
+    compat.install();
+    fake.InvisibleButton('##a', { 10, 10 });
+    check('PN131 no flags given: EnableNav is added', calls[1], '3:8');
+    fake.InvisibleButton('##a', { 10, 10 }, 1);
+    check('PN132 the caller\'s own flags pass untouched', calls[2], '3:1');
+    compat.navTooltip = function(t) tips[#tips + 1] = 'hook:' .. tostring(t); end
+    fake.SetTooltip('hello');
+    check('PN133 the tooltip hook is heard first', table.concat(tips, ' '), 'hook:hello raw:hello');
+    compat.navTooltip = pad.tooltipHook;
+    -- A binding that refuses the third argument: asked once, then plain.
+    local refusing = { ImageWithBg = function() end,
+                       InvisibleButton = function(...)
+                           if select('#', ...) > 2 then error('no matching overload'); end
+                           calls[#calls + 1] = 'plain'; return true;
+                       end };
+    package.loaded.imgui = refusing;
+    compat.installed, compat.wrapped, compat.invisibleNav = false, false, nil;
+    compat.install();
+    refusing.InvisibleButton('##a', { 10, 10 });
+    check('PN134 a refusing binding still gets its button', calls[#calls], 'plain');
+    check('PN135 ...and is not asked again', compat.invisibleNav, false);
+    compat.invisibleNav = nil;
+end
+
 -- 18. The hobby bar's own step: over the hobbies switched on, wrapping.
 do
     package.loaded.imgui = nil;

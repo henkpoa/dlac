@@ -12510,3 +12510,23 @@ button on hobbies".
   not when it goes down. That is what every ordinary button does.
 - A white rim shows while the controller's cursor is on the pill.
 - Tests: suites 8171 and 1840, padnav 119; no new checks. Not checked in game.
+
+## 2026-11-21: Controller, the pill is a stop and tooltips step aside (`2026.11.21f`)
+
+Henrik on `21e`: "Still can't target on / off in hobby bar", and "the tooltip
+when scrolling with D-pad is usually just under what you have selected. That
+makes it in the way. Can you make the tooltip be in the opposite direction
+you are moving?"
+
+- **The pill and the hobby icons are controller stops.** ImGui 1.90+ skips an
+  invisible button from the pad unless `ImGuiButtonFlags_EnableNav` is
+  passed; the older ImGui stopped on all of them. `lib/imguicompat` now adds
+  the flag on the new binding. `21d` and `21e` put the right widgets in place
+  and could not have worked without this.
+- **Tooltips go where you came from** while dlac has the pad: moving down,
+  above the item; up, below; right, to the left; left, to the right. Where
+  that side has no room, and for a mouse hover, nothing changes.
+- Tests: tests/padnav.lua 138 checks (PN117-PN135 new). Suites 8171 and
+  1840. Not checked in game; whether Ashita's binding takes the third
+  argument of InvisibleButton is unconfirmed (it is tried once and dropped
+  if refused).

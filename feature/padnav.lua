@@ -323,6 +323,9 @@ local function feedAction(action, down)
     end
     local key = M.io.key(name);
     if key == nil then return; end
+    if down and (action == 'up' or action == 'down' or action == 'left' or action == 'right') then
+        st.lastDir = action;      -- where the cursor is heading (tooltip placement)
+    end
     if down then st.fed[key] = true; else st.fed[key] = nil; end
     M.io.feed(key, down);
 end
@@ -415,6 +418,74 @@ local function winBegun(name, open)
         st.quickKnown = nil;
     end
     st.focusFrame, st.focusKey = (st.frame or 0), key;
+end
+
+-- ---------------------------------------------------------------------------
+-- TOOLTIPS OUT OF THE WAY (Henrik, 2026-11-21)
+-- ---------------------------------------------------------------------------
+-- ImGui hangs a tooltip just under the item the controller's cursor is on:
+-- going down a list, it covers the row you are about to reach. So it goes on
+-- the side you came from -- moving down, above the item; moving up, below;
+-- moving right, to the left; moving left, to the right. Where that side has
+-- no room on screen, ImGui's own placement is kept. Only the item under the
+-- controller's cursor is touched; a mouse hover keeps following the mouse.
+M.TIP_GAP = 8;
+
+-- PURE. r = { x0, y0, x1, y1 } of the item; w, h the tooltip; dw, dh the
+-- screen. Returns x, y, pivotX, pivotY -- or nil for "leave it to ImGui".
+function M.tooltipSpot(dir, r, w, h, dw, dh)
+    local gap = M.TIP_GAP;
+    local function inX(x) return math.max(0, math.min(x, dw - w)); end
+    local function inY(y) return math.max(0, math.min(y, dh - h)); end
+    if dir == 'down' then
+        if r[2] - gap - h < 0 then return nil; end
+        return inX(r[1]), r[2] - gap, 0, 1;
+    elseif dir == 'up' then
+        if r[4] + gap + h > dh then return nil; end
+        return inX(r[1]), r[4] + gap, 0, 0;
+    elseif dir == 'right' then
+        if r[1] - gap - w < 0 then return nil; end
+        return r[1] - gap, inY(r[2]), 1, 0;
+    elseif dir == 'left' then
+        if r[3] + gap + w > dw then return nil; end
+        return r[3] + gap, inY(r[2]), 0, 0;
+    end
+    return nil;
+end
+
+local function pair(a, b)                 -- a binding answers x, y or one table
+    if type(a) == 'table' then return a.x or a[1], a.y or a[2]; end
+    return a, b;
+end
+
+-- { x0, y0, x1, y1 } of the last item, its focus, the text's size, the screen.
+M.io.tipFacts = function(text)
+    local im = M.io.imgui();
+    if im == nil or im.IsItemFocused() ~= true then return nil; end
+    local x0, y0 = pair(im.GetItemRectMin());
+    local x1, y1 = pair(im.GetItemRectMax());
+    local w, h = 220, 120;                -- BeginTooltip: no text, a fair guess
+    if type(text) == 'string' then w, h = pair(im.CalcTextSize(text)); end
+    local dw, dh = pair(im.GetIO().DisplaySize);
+    if type(x0) ~= 'number' or type(y1) ~= 'number' or type(w) ~= 'number' or type(h) ~= 'number'
+       or type(dw) ~= 'number' or type(dh) ~= 'number' then return nil; end
+    return { x0, y0, x1, y1 }, w + 18, h + 14, dw, dh;      -- + the tooltip's own padding
+end
+
+M.io.tipPlace = function(x, y, px, py)
+    local im = M.io.imgui();
+    if im ~= nil then im.SetNextWindowPos({ x, y }, ImGuiCond_Always or 1, { px, py }); end
+end
+
+-- lib\imguicompat calls this just before every SetTooltip / BeginTooltip.
+function M.tooltipHook(text)
+    if not st.on or st.lastDir == nil then return; end
+    pcall(function()
+        local r, w, h, dw, dh = M.io.tipFacts(text);
+        if r == nil then return; end
+        local x, y, px, py = M.tooltipSpot(st.lastDir, r, w, h, dw, dh);
+        if x ~= nil then M.io.tipPlace(x, y, px, py); end
+    end);
 end
 
 -- after = false just before the window's Begin, true just after it.
@@ -703,6 +774,7 @@ pcall(function()
     local compat = require('dlac\\lib\\imguicompat');
     compat.navFlatten = M.flatten;
     compat.navWindow = M.windowHook;
+    compat.navTooltip = M.tooltipHook;
 end);
 
 -- MOVING THE CURSOR BY HAND. ImGui's cursor sits on a widget id: remove the
@@ -784,7 +856,7 @@ function M._reset()
     st.focusFrame, st.focusKey, st.focusWant, st.focusWantUntil = nil, nil, nil, nil;
     st.quickOpen, st.quickKnown, st.closeQuick, st.quickSeen = false, nil, nil, nil;
     st.closeWant, st.closeUntil, st.noFocusApi, st.mainWasVisible = nil, nil, nil, false;
-    st.lastTok = nil;
+    st.lastTok, st.lastDir = nil, nil;
 end
 
 -- ---------------------------------------------------------------------------
