@@ -12480,3 +12480,18 @@ button combination though, nor can I use L1 and R1 to change between hobbies."
   before.
 - Tests: tests/padnav.lua 119 checks (PN90 changed, PN110-PN116 new). Suites
   8171 and 1840. Not checked in game.
+
+## 2026-11-21: Controller, the hobby bar's icon tabs (`2026.11.21d`)
+
+Henrik on `21c`: "I can activate the hobbies, I cannot choose them from the
+hobby bar."
+
+- The four hobby tabs are pictures (`imgui.Image` read with `IsItemClicked`),
+  and the controller's cursor only stops on widgets. Each icon now has an
+  invisible button over the same 64 px square, so the d-pad reaches it and
+  Confirm picks it. The row lays out as before, and the mouse click still
+  works. A white frame marks the tab under the cursor.
+- Both Ashitas draw the button; the calls are ones dlac already uses
+  (`SetCursorPosX/Y`, `InvisibleButton`).
+- Tests: no new checks (the suites draw the bar with a stand-in ImGui).
+  Suites 8171 and 1840, padnav 119. Not checked in game.

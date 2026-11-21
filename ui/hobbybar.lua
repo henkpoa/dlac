@@ -103,6 +103,9 @@ local function iconTab(t, isSel, isActive)
     local h = iconHandle(t.img or t.n);
     if h == nil then return false, false; end
     local x, y = imgui.GetCursorScreenPos();
+    -- Window-local too: the calls every dlac panel already uses to step back.
+    local lx, ly = nil, nil;
+    pcall(function() lx, ly = imgui.GetCursorPosX(), imgui.GetCursorPosY(); end);
     local tint = isSel and { 1, 1, 1, 1 } or { 1, 1, 1, 0.45 };
     local drew = pcall(function()
         imgui.Image(h, { ICON_W, ICON_W }, { 0, 0 }, { 1, 1 }, tint);
@@ -112,6 +115,22 @@ local function iconTab(t, isSel, isActive)
     end
     if not drew then return false, false; end
     local clicked = imgui.IsItemClicked();
+    -- A picture is not something the controller's cursor can stop on, so the
+    -- tabs could be seen and not chosen from the pad (Henrik, 2026-11-21). An
+    -- invisible button over the same square is: same size, so the row lays
+    -- out as before, and the hover below now reads the button.
+    if type(lx) == 'number' and type(ly) == 'number' then
+        imgui.SetCursorPosX(lx); imgui.SetCursorPosY(ly);
+        if imgui.InvisibleButton('##hbicon' .. tostring(t.k), { ICON_W, ICON_W }) then clicked = true; end
+        -- The cursor's own frame, in case this binding's invisible button
+        -- draws none.
+        pcall(function()
+            if imgui.IsItemFocused() and type(x) == 'number' and type(y) == 'number' then
+                imgui.GetWindowDrawList():AddRect({ x - 1, y - 1 }, { x + ICON_W + 1, y + ICON_W + 1 },
+                                                  0xFFFFFFFF, 4, ImDrawCornerFlags_All or 0, 1);
+            end
+        end);
+    end
     if isActive and type(x) == 'number' and type(y) == 'number' then
         -- 0x00CC00 reads green whichever byte order the binding packs, so the
         -- armed marker cannot come out red on a different imgui build.
