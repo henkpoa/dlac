@@ -25,7 +25,8 @@ pad.io.feed = function(key, down) fed[#fed + 1] = key .. (down and '+' or '-'); 
 pad.io.setFlags = function(want) flags = want; end
 pad.io.navActive = function() return navActive; end
 pad.io.now = function() return clock; end
-pad.io.cycleTab = function(dir) tabs[#tabs + 1] = dir; end
+local tabKeys = {};
+pad.io.cycleTab = function(dir, key) tabs[#tabs + 1] = dir; tabKeys[#tabKeys + 1] = key or '-'; end
 pad.say = function() end
 
 local ui, visible = {}, false;
@@ -210,7 +211,8 @@ press('d58'); press('d59'); pad.tick(host);
 draw(MAIN, false, mainOpen); draw(LOCK, false, lockOpen); draw(HOBBY, false, hobbyOpen);
 check('PN88 combo close: the lockstyle window the session opened is shut', lockOpen[1], false);
 check('PN89 ...the window that was up before stays', mainOpen[1], true);
-check('PN90 ...and so does the hobby bar', hobbyOpen[1], true);
+check('PN90 ...and the hobby bar the session opened is shut too', hobbyOpen[1], false);
+hobbyOpen[1] = true;
 lockOpen[1] = true;
 draw(LOCK, false, lockOpen);
 check('PN91 the close is asked once', lockOpen[1], true);
@@ -267,6 +269,22 @@ draw(MAIN, true); draw(HOBBY, false); pad.tick(host);
 press('d51'); lift('d51');
 check('PN109 the state line', pad.stateLine(),
       'controller state -- dlac has it; focused: ffxi_lac_gearui; windows: ffxi_lac_gearui, dlac_hobbybar; last button: button 4 (d51) = win');
+
+-- 8h. Previous / next tab goes to the focused window: the hobby bar steps its
+--     hobbies, any other window the main tabs. A hobby bar that was up before
+--     the session survives the closing combo.
+fresh(); combo(); draw(HOBBY, false, hobbyOpen); pad.tick(host); open();
+draw(HOBBY, true, hobbyOpen); pad.tick(host);
+tabKeys = {};
+press('d53'); lift('d53');
+check('PN110 next tab on the hobby bar names it', tabKeys[1], 'dlac_hobbybar');
+draw(HOBBY, false, hobbyOpen); draw(MAIN, true); pad.tick(host);
+press('d52'); lift('d52');
+check('PN111 ...on the main window it does not', tabKeys[2], 'ffxi_lac_gearui');
+press('d58'); press('d59'); pad.tick(host);
+draw(HOBBY, false, hobbyOpen);
+check('PN112 a hobby bar up before the session stays', hobbyOpen[1], true);
+lift('d59'); lift('d58');
 
 -- 8e. A binding that cannot answer "is this window focused" falls back to
 --     ImGui's NavActive, as before.
@@ -397,6 +415,31 @@ do
     fake.Begin('W##k');
     check('PN107 no hook: straight through', argc[3], 1);
     compat.navWindow = pad.windowHook;
+end
+
+-- 18. The hobby bar's own step: over the hobbies switched on, wrapping.
+do
+    package.loaded.imgui = nil;
+    local uih = require('dlac\\ui\\uihost');
+    local gate = require('dlac\\lib\\featuregate');
+    local keptEnabled = gate.helperEnabled;
+    local off = { fish = true };
+    gate.helperEnabled = function(k) return not off[k]; end
+    local hui = { _hobbySel = 'craft' };
+    uih.services = uih.services or {};
+    local keptUi = uih.services.ui;
+    uih.services.ui = hui;
+    package.loaded['dlac\\ui\\hobbybar'] = nil;
+    local hb = require('dlac\\ui\\hobbybar');
+    hb.cycle(1);
+    check('PN113 next hobby', hui._hobbySel, 'helm');
+    hb.cycle(1);
+    check('PN114 a hobby that is switched off is skipped', hui._hobbySel, 'choco');
+    hb.cycle(1);
+    check('PN115 it wraps', hui._hobbySel, 'craft');
+    hb.cycle(-1);
+    check('PN116 and back', hui._hobbySel, 'choco');
+    gate.helperEnabled, uih.services.ui = keptEnabled, keptUi;
 end
 
 print(('padnav: %d checks passed'):format(n));

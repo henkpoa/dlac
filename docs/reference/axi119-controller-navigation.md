@@ -28,8 +28,13 @@ Ashita is a later step (see "The older Ashita").
 - The combination also closes what the controller session opened: the
   Teleports menu, and every dlac window that came up after the combination was
   pressed (the lockstyle window opened from the menu, the main window). Windows
-  that were up before stay, and the hobby bar always stays
-  (`padnav.KEEP_OPEN`).
+  that were up before stay. The hobby bar follows the same rule since `21c`
+  (it was exempt in `21a`; `padnav.KEEP_OPEN` is the exemption list, now
+  empty).
+- **Previous tab / Next tab** act on the focused window: on the hobby bar they
+  step through the hobbies that are switched on (`hobbybar.cycle`, `21c`),
+  anywhere else through the main window's tabs. Stepping shows a hobby's
+  controls; it does not switch the hobby on.
 - While dlac has the controller a label at the top of the screen says so:
   "Controller: dlac" and the combination that hands it back.
 - `/dl pad` prints what is bound. `/dl pad flatten all` is a field switch (this

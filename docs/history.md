@@ -12465,3 +12465,18 @@ gathering doesn't have send to mog case and satchel, should prolly add that".
 - Tests: tests/padnav.lua 112 checks (PN86 now draws the opened window in
   the menu's last frame, PN108-PN109 new); smoke_ui AXS22 pins the new bar
   line. Suites 8171 and 1840. Not checked in game.
+
+## 2026-11-21: Controller, the hobby bar (`2026.11.21c`)
+
+Henrik on `21b`: "now it works better. I cannot close the hobby bar with the
+button combination though, nor can I use L1 and R1 to change between hobbies."
+
+- **The combination closes a hobby bar the session opened.** `21a` exempted
+  the bar after Dyce's note that it should stay up. A bar that was open
+  before the session still stays, which covers that case.
+- **L1 / R1 on the hobby bar step through the hobbies** that are switched on,
+  wrapping (`hobbybar.cycle`). The step changes which hobby's controls are
+  shown and arms nothing. On any other window they step the main tabs as
+  before.
+- Tests: tests/padnav.lua 119 checks (PN90 changed, PN110-PN116 new). Suites
+  8171 and 1840. Not checked in game.

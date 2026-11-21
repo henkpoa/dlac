@@ -152,6 +152,22 @@ function M.close()
     ui._hobbyBar = false;
 end
 
+-- Step the SHOWN hobby by one, wrapping, over the hobbies that are switched
+-- on (the controller's previous / next tab buttons, feature\padnav). It only
+-- changes which hobby's controls are shown; it arms nothing.
+function M.cycle(dir)
+    local ui = uiTable(); if ui == nil then return false; end
+    local keys, at = {}, 0;
+    for _, tab in ipairs(TABS) do
+        if gate.helperEnabled(tab.k) then keys[#keys + 1] = tab.k; end
+    end
+    if #keys < 2 then return false; end
+    local sel = effectiveSel(ui);
+    for i, k in ipairs(keys) do if k == sel then at = i; end end
+    ui._hobbySel = keys[((at - 1 + (dir or 1)) % #keys) + 1];
+    return true;
+end
+
 -- Pure visibility toggle (the header button): always closes when open, so it can
 -- dismiss the bar even while a hobby is active (which locks the selection).
 function M.toggleVisible()

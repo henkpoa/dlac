@@ -87,9 +87,10 @@ M.BIND_LABEL = { combo = 'Open / close', ok = 'Confirm', back = 'Back',
                  prev = 'Previous tab', next = 'Next tab', win = 'Next window' };
 
 -- Windows the closing combo never shuts, even when the pad session opened
--- them: the hobby bar is meant to stay up while the hobby runs (Dyce,
--- 2026-11-19).
-M.KEEP_OPEN = { dlac_hobbybar = true };
+-- them. Empty: the hobby bar was here in 21a, and Henrik could not close it
+-- from the pad (2026-11-21). A bar that was up BEFORE the session still
+-- stays, which is the case Dyce asked for.
+M.KEEP_OPEN = {};
 
 local FOCUS_CHILD   = 1;   -- ImGuiFocusedFlags_ChildWindows
 local FOCUS_NOPOPUP = 8;   -- ImGuiFocusedFlags_NoPopupHierarchy
@@ -219,8 +220,13 @@ M.io.setFlags = function(want)
     end);
 end
 
-M.io.cycleTab = function(dir)
-    pcall(function() require('dlac\\ui\\uihost').cycleTab(dir); end);
+-- Previous / next tab belongs to the focused window: the hobby bar steps its
+-- hobbies, everything else steps the main window's tabs.
+M.io.cycleTab = function(dir, key)
+    pcall(function()
+        if key == 'dlac_hobbybar' then require('dlac\\ui\\hobbybar').cycle(dir);
+        else require('dlac\\ui\\uihost').cycleTab(dir); end
+    end);
 end
 
 M.say = function(line)
@@ -309,8 +315,9 @@ end
 local function feedAction(action, down)
     local name = ACTION_KEY[action];
     if name == nil then
-        if down and action == 'prev' then M.io.cycleTab(-1); end
-        if down and action == 'next' then M.io.cycleTab(1); end
+        local key = focusHeld() and st.focusKey or nil;
+        if down and action == 'prev' then M.io.cycleTab(-1, key); end
+        if down and action == 'next' then M.io.cycleTab(1, key); end
         if down and action == 'win' then M.cycleWindow(); end
         return;
     end
