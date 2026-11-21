@@ -109,6 +109,12 @@ function M.renderContent(availW)
                     imgui.TextUnformatted(string.format('Extra rolls: +%g%%', bonuses.extraRoll));
                     imgui.TextUnformatted(string.format('Tool break: -%g pp', bonuses.breakReduction));
                 end
+                -- Where gathered items go: the panel's own switches, on the
+                -- bar too (Henrik, 2026-11-21), under the readout like the
+                -- dig and fishing bars.
+                if type(panel) == 'table' and type(panel.renderMoveDestinations) == 'function' then
+                    pcall(panel.renderMoveDestinations, 'bar');
+                end
                 imgui.Dummy({ BAR_MIN_W, 1 });
                 return;
             end

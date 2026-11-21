@@ -260,6 +260,62 @@ function M.install()
         end;
     end
 
+    -- Begin: unchanged, but controller navigation (feature\padnav) is told
+    -- about every dlac window -- before the call so it can ask for the focus,
+    -- after it so it can read the focus and close a window it opened. The
+    -- arguments pass through as given (a trailing nil would miss the
+    -- overload); nil hook = nobody asked.
+    local rawBegin = imgui.Begin;
+    if rawBegin ~= nil then
+        imgui.Begin = function(...)
+            local hook = M.navWindow;
+            if hook == nil then return rawBegin(...); end
+            local name, open = ...;
+            hook(false, name, open);
+            local r = rawBegin(...);
+            hook(true, name, open);
+            return r;
+        end;
+    end
+
+    -- InvisibleButton: on this generation the controller's cursor SKIPS it
+    -- unless ImGuiButtonFlags_EnableNav is passed (the older ImGui stopped on
+    -- every button). dlac's pills and icon tabs are invisible buttons, so
+    -- from the pad they could be seen and never reached (field, 2026-11-21).
+    -- A call that names its own flags is left alone; a binding that refuses
+    -- the third argument is asked once and never again.
+    local rawInvisible = imgui.InvisibleButton;
+    if rawInvisible ~= nil then
+        imgui.InvisibleButton = function(id, size, flags)
+            if flags ~= nil then return rawInvisible(id, size, flags); end
+            if M.invisibleNav ~= false then
+                local okn, r = pcall(rawInvisible, id, size, ImGuiButtonFlags_EnableNav or 8);
+                if okn then M.invisibleNav = true; return r; end
+                M.invisibleNav = false;
+            end
+            return rawInvisible(id, size);
+        end;
+    end
+
+    -- SetTooltip / BeginTooltip: unchanged, but controller navigation is told
+    -- first, so it can place the tooltip away from where the cursor is
+    -- heading (nil hook = nobody asked). BeginTooltip has no text to measure.
+    local rawSetTooltip, rawBeginTooltip = imgui.SetTooltip, imgui.BeginTooltip;
+    if rawSetTooltip ~= nil then
+        imgui.SetTooltip = function(...)
+            local hook = M.navTooltip;
+            if hook ~= nil then hook((...)); end
+            return rawSetTooltip(...);
+        end;
+    end
+    if rawBeginTooltip ~= nil then
+        imgui.BeginTooltip = function(...)
+            local hook = M.navTooltip;
+            if hook ~= nil then hook(nil); end
+            return rawBeginTooltip(...);
+        end;
+    end
+
     -- ImageButton: a leading str_id now, framePadding via style. A call that
     -- already leads with a string is speaking the new shape -- pass it through.
     local rawImageButton = imgui.ImageButton;

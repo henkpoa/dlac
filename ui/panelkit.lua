@@ -465,9 +465,19 @@ function M.pill(im, on, id, tipOnText, tipOffText)
     local toggled = false;
     local ok = pcall(function()
         local x, y = im.GetCursorScreenPos();
-        im.InvisibleButton('##onoff_' .. tostring(id), { W, H });
-        toggled = im.IsItemClicked();
+        -- The button's own answer, not IsItemClicked: that one hears the
+        -- mouse only, so the controller's Confirm reached the pill and did
+        -- nothing (Henrik, 2026-11-21). A binding whose button answers
+        -- nothing keeps the old read.
+        local pressed = im.InvisibleButton('##onoff_' .. tostring(id), { W, H });
+        if pressed == nil then toggled = im.IsItemClicked(); else toggled = (pressed == true); end
         local dl = im.GetWindowDrawList();
+        -- The controller's cursor is on it: a white rim, since an invisible
+        -- button may draw no highlight of its own.
+        local okf, focused = pcall(function() return im.IsItemFocused(); end);
+        if okf and focused == true then
+            dl:AddRect({ x - 2, y - 2 }, { x + W + 2, y + H + 2 }, 0xFFFFFFFF, H / 2 + 2, ImDrawCornerFlags_All or 0, 1);
+        end
         local track = 0xFF2E2E9E;                       -- ARGB red
         if on == true then track = 0xFF2E8B2E; end      -- ARGB green
         local knob = 0xFFEEEEEE;

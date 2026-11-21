@@ -15,13 +15,28 @@ Ashita is a later step (see "The older Ashita").
   the game and the d-pad moves a highlight through dlac's windows. With a dlac
   window already open it walks that window; with none open it opens the
   Teleports menu.
-- **Confirm**, **Back**, **Previous tab** and **Next tab** have defaults (A / B /
-  LB / RB on an XInput pad; Cross / Circle / L1 / R1 on a PlayStation pad) and
-  can each be rebound the same way.
-- The controller goes back to the game when the combination is pressed again
-  (which also closes the Teleports menu, and the main window if this session
-  opened it), or by itself when no ImGui window has the focus any more — a
-  Teleports row was used, the window was closed, the interface was hidden.
+- **Confirm**, **Back**, **Previous tab**, **Next tab** and **Next window** have
+  defaults (A / B / LB / RB / Y on an XInput pad; Cross / Circle / L1 / R1 /
+  Triangle on a PlayStation pad) and can each be rebound the same way.
+- **Next window** (`2026.11.21a`) moves the cursor to the next open dlac window
+  — the hobby bar, the lockstyle window, the main window — and wraps. From the
+  Teleports menu it closes the menu and lands on the first one.
+- The controller goes back to the game when the combination is pressed again,
+  or by itself when no **dlac** window has the focus any more — a Teleports row
+  was used, the menu was cancelled with Back, the window was closed, the
+  interface was hidden.
+- The combination also closes what the controller session opened: the
+  Teleports menu, and every dlac window that came up after the combination was
+  pressed (the lockstyle window opened from the menu, the main window). Windows
+  that were up before stay. The hobby bar follows the same rule since `21c`
+  (it was exempt in `21a`; `padnav.KEEP_OPEN` is the exemption list, now
+  empty).
+- **Previous tab / Next tab** act on the focused window: on the hobby bar they
+  step through the hobbies that are switched on (`hobbybar.cycle`, `21c`),
+  anywhere else through the main window's tabs. Stepping shows a hobby's
+  controls; it does not switch the hobby on.
+- While dlac has the controller a label at the top of the screen says so:
+  "Controller: dlac" and the combination that hands it back.
 - `/dl pad` prints what is bound. `/dl pad flatten all` is a field switch (this
   session only): walk straight through every dlac panel, to judge tabs that
   have not been tuned yet. `/dl pad flatten off` returns to the listed panels.
@@ -46,9 +61,62 @@ short version:
 | Panels | ImGui's navigation treats each child panel as a box to enter and leave. `lib/imguicompat`'s `BeginChild` wrapper asks `padnav.flatten(id)` and adds `ImGuiChildFlags_NavFlattened` for the listed panels, only while dlac holds the pad. |
 | Tabs | `uihost.cycleTab(±1)` steps from the tab that was open on the last pass, through the existing `selectTab`. |
 | Quick menu with nothing open | `padnav.drawHost` draws an empty, invisible window and opens `##dlac_teleports` under it. |
+| Which window has the focus | `lib/imguicompat` wraps `imgui.Begin` and calls `padnav.windowHook` before and after every dlac window. After the Begin, `IsWindowFocused(ChildWindows)` says whether the focus is in that window or a popup under it. |
 
 The navigation flags are global to ImGui, so while dlac holds the pad other
 addons' windows are walkable too.
+
+## When the controller goes back (`2026.11.21a`)
+
+The first release held the pad for as long as ImGui's `io.NavActive` was true.
+That is true for ANY focused window, another addon's included, so after a
+Teleports row was used the focus fell to the next window on screen and the pad
+stayed with dlac (reported by Vellhart and Dyce, 2026-11-17 to 11-21). Now:
+
+- Each addon has its own Lua state and its own `imgui` table, so the Begin
+  wrapper sees dlac's windows and nobody else's. The pad is held only on a
+  frame where one of them reported the focus; `IDLE_S` (0.4 s) without one
+  releases it.
+- A window's key is its ImGui id (after `###`, else after `##`). A window with
+  no title (`##dlac_tray`, the gauges, the pad host) is a HUD piece: the focus
+  resting on it holds nothing, a popup under it does. That is how the
+  Teleports menu under the invisible host counts and the host does not.
+- When the Teleports menu closes, the windows that were on screen the frame
+  before its last one are noted (`quickKnown`). The frame before, because a
+  row opens its window in the same frame it closes the menu and that window
+  is drawn after the menu (`ui/gearui` draws the pad host early). `21a` took
+  the list a frame late, so the window the player had just opened was on it
+  and the pad left: the main window, the hobby bar and lockstyle all opened
+  without the pad (Henrik's field round, 2026-11-21; fixed in `21b`). ImGui hands the focus back to whichever of them had it
+  before; that is not a choice, so it does not hold the pad. A window the row
+  OPENED (not in the list) does, and from then on the older ones count again.
+- On release `SetNavCursorVisible(false)` is tried, so the highlight does not
+  stay on a window the pad no longer drives.
+- If the binding cannot answer `IsWindowFocused`, the old `NavActive` rule is
+  used.
+- With the game's interface hidden (Scroll Lock, `feature/gamehud`) the pad
+  is released at once (`21b`).
+- `/dl pad state` prints who has the pad, the focused dlac window, the
+  windows Next window can reach, and the last button with the job it did.
+
+The closing combination shuts a session-opened window by setting its open
+flag to false at its next Begin, which every dlac window already treats as a
+click on its own x. The request lives three frames.
+
+## Invisible buttons and tooltips (`2026.11.21f`)
+
+- **Invisible buttons.** On ImGui 1.90+ the controller's cursor skips an
+  `InvisibleButton` unless `ImGuiButtonFlags_EnableNav` (8) is passed.
+  `lib/imguicompat` adds it to every call that names no flags, so the on / off
+  pill (`panelkit.pill`) and the hobby bar's icon tabs are stops. A widget
+  drawn as a picture plus `IsItemClicked()` is still not one; it needs a
+  button over it.
+- **Tooltips.** ImGui hangs a tooltip under the cursor's item, over the row
+  the cursor is heading for. `imguicompat` calls `padnav.tooltipHook` before
+  every `SetTooltip` / `BeginTooltip`; for the item under the controller's
+  cursor it sets the tooltip's position to the side the cursor came from
+  (moving down: above; up: below; right: left; left: right). No room on that
+  side, or a mouse hover: ImGui's own placement.
 
 ## Panels tuned so far
 
@@ -85,3 +153,17 @@ registered against the pad's behaviour.
 - Scrolling lists with a flattened panel (ImGui documents the flag as
   unreliable on a scrolling child in older versions).
 - The left stick on a DirectInput pad while dlac holds the pad.
+
+Added with `2026.11.21a`, none checked in game:
+
+- Use a Teleports row, and cancel the menu with Back: the pad is the game's
+  again within half a second, with the hobby bar open and with it closed.
+- The label shows while dlac has the pad and goes when it does not.
+- Next window from the Teleports menu reaches the hobby bar; a hobby can be
+  switched on and off there.
+- Open the lockstyle window from the pad, then the combination: it closes.
+- Whether `IsWindowFocused` and `SetNavCursorVisible` exist on this binding
+  (the first has a fallback, the second is cosmetic).
+- The blue frame Dyce saw around the screen: not reproduced and not
+  explained. The likely cause is ImGui's highlight on a screen-sized window
+  of another addon that took the focus; if so it is gone with this change.

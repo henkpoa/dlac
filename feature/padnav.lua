@@ -79,12 +79,21 @@ local DIRECTION = { x0 = 'up', x1 = 'down', x2 = 'left', x3 = 'right',
 -- XInput row is the standard; the DirectInput row is the PlayStation layout
 -- (Cross, Circle, L1, R1) and only a starting guess for any other pad.
 local DEFAULTS = {
-    x = { ok = 'x12', back = 'x13', prev = 'x8',  next = 'x9'  },
-    d = { ok = 'd49', back = 'd50', prev = 'd52', next = 'd53' },
+    x = { ok = 'x12', back = 'x13', prev = 'x8',  next = 'x9',  win = 'x15' },
+    d = { ok = 'd49', back = 'd50', prev = 'd52', next = 'd53', win = 'd51' },
 };
-M.BINDS = { 'ok', 'back', 'prev', 'next' };
+M.BINDS = { 'ok', 'back', 'prev', 'next', 'win' };
 M.BIND_LABEL = { combo = 'Open / close', ok = 'Confirm', back = 'Back',
-                 prev = 'Previous tab', next = 'Next tab' };
+                 prev = 'Previous tab', next = 'Next tab', win = 'Next window' };
+
+-- Windows the closing combo never shuts, even when the pad session opened
+-- them. Empty: the hobby bar was here in 21a, and Henrik could not close it
+-- from the pad (2026-11-21). A bar that was up BEFORE the session still
+-- stays, which is the case Dyce asked for.
+M.KEEP_OPEN = {};
+
+local FOCUS_CHILD   = 1;   -- ImGuiFocusedFlags_ChildWindows
+local FOCUS_NOPOPUP = 8;   -- ImGuiFocusedFlags_NoPopupHierarchy
 
 local XNAME = { [0] = 'D-pad up', [1] = 'D-pad down', [2] = 'D-pad left', [3] = 'D-pad right',
                 [4] = 'Start', [5] = 'Back', [6] = 'L3', [7] = 'R3', [8] = 'LB', [9] = 'RB',
@@ -113,6 +122,15 @@ local st = {
     flagsSet = false,
     flattenAll = false,
     dpad     = {},       -- DirectInput d-pad: direction token -> true
+    wins     = {},       -- walkable dlac windows begun since the last tick, in order
+    winsPrev = {},       -- ...and the full list of the frame before
+    baseline = {},       -- window key -> true: up when this pad session began
+    focusFrame = nil,    -- the frame a dlac window last had the focus
+    focusKey = nil,      -- ...and which one
+    focusWant = nil,     -- window key to focus (the Next window button)
+    quickOpen = false,   -- the quick menu this session opened is on screen
+    quickKnown = nil,    -- window key -> true: was up when the quick menu closed
+    closeWant = nil,     -- window key -> true: shut it at its next Begin
 };
 M._st = st;
 
@@ -154,6 +172,34 @@ M.io.navActive = function()
     return ok and v == true;
 end
 
+-- Is the window being drawn (the one just begun) the focused one? nil when
+-- the binding cannot say, and the caller falls back to navActive.
+M.io.windowFocused = function(flags)
+    local im = M.io.imgui();
+    if im == nil then return nil; end
+    local ok, v = pcall(function() return im.IsWindowFocused(flags); end);
+    if not ok then return nil; end
+    return v == true;
+end
+
+-- The game's own hide-the-interface key (Scroll Lock): nothing of ours is on
+-- screen, so nothing of ours may keep the pad.
+M.io.hudHidden = function()
+    local ok, v = pcall(function() return require('dlac\\feature\\gamehud').hidden(); end);
+    return ok and v == true;
+end
+
+M.io.focusNext = function()
+    local im = M.io.imgui();
+    if im ~= nil then pcall(function() im.SetNextWindowFocus(); end); end
+end
+
+-- The highlight must not stay behind on a window the pad no longer drives.
+M.io.hideCursor = function()
+    local im = M.io.imgui();
+    if im ~= nil then pcall(function() im.SetNavCursorVisible(false); end); end
+end
+
 -- Set or clear ONLY the two bits we own, so a flag another addon set stays.
 M.io.setFlags = function(want)
     local im = M.io.imgui();
@@ -174,8 +220,13 @@ M.io.setFlags = function(want)
     end);
 end
 
-M.io.cycleTab = function(dir)
-    pcall(function() require('dlac\\ui\\uihost').cycleTab(dir); end);
+-- Previous / next tab belongs to the focused window: the hobby bar steps its
+-- hobbies, everything else steps the main window's tabs.
+M.io.cycleTab = function(dir, key)
+    pcall(function()
+        if key == 'dlac_hobbybar' then require('dlac\\ui\\hobbybar').cycle(dir);
+        else require('dlac\\ui\\uihost').cycleTab(dir); end
+    end);
 end
 
 M.say = function(line)
@@ -237,15 +288,44 @@ end
 -- ---------------------------------------------------------------------------
 -- taking and giving back the pad
 -- ---------------------------------------------------------------------------
+local function focusHeld()
+    return st.focusFrame ~= nil and st.focusFrame >= (st.frame or 0) - 1;
+end
+
+-- THE NEXT WINDOW BUTTON: the cursor steps to the next open dlac window (the
+-- hobby bar, the lockstyle window, the main window), wrapping. From the quick
+-- menu it closes the menu and lands on the first one.
+function M.cycleWindow()
+    local list = st.winsPrev;
+    if #list == 0 then return false; end
+    local at = 0;
+    if focusHeld() then
+        for i, k in ipairs(list) do
+            if k == st.focusKey then at = i; end
+        end
+    end
+    local to = list[(at % #list) + 1];
+    if at ~= 0 and to == st.focusKey then return false; end    -- the only window
+    st.focusWant, st.focusWantUntil = to, (st.frame or 0) + 5;
+    st.quickKnown = nil;
+    if st.quickOpen then st.closeQuick = true; end
+    return true;
+end
+
 local function feedAction(action, down)
     local name = ACTION_KEY[action];
     if name == nil then
-        if down and action == 'prev' then M.io.cycleTab(-1); end
-        if down and action == 'next' then M.io.cycleTab(1); end
+        local key = focusHeld() and st.focusKey or nil;
+        if down and action == 'prev' then M.io.cycleTab(-1, key); end
+        if down and action == 'next' then M.io.cycleTab(1, key); end
+        if down and action == 'win' then M.cycleWindow(); end
         return;
     end
     local key = M.io.key(name);
     if key == nil then return; end
+    if down and (action == 'up' or action == 'down' or action == 'left' or action == 'right') then
+        st.lastDir = action;      -- where the cursor is heading (tooltip placement)
+    end
     if down then st.fed[key] = true; else st.fed[key] = nil; end
     M.io.feed(key, down);
 end
@@ -253,6 +333,11 @@ end
 function M.take(host)
     if st.on or not st.enabled or not M.supported() then return false; end
     st.on, st.pending, st.idleAt = true, nil, nil;
+    st.focusFrame, st.focusKey, st.focusWant = nil, nil, nil;
+    st.quickOpen, st.quickKnown, st.closeQuick = false, nil, nil;
+    st.baseline = {};
+    for _, k in ipairs(st.winsPrev) do st.baseline[k] = true; end
+    for _, k in ipairs(st.wins) do st.baseline[k] = true; end
     M.io.setFlags(true);
     st.takeHost = true;       -- the next tick reads what was on screen
     return true;
@@ -266,8 +351,162 @@ function M.release(closeWindows)
     for key in pairs(st.fed) do M.io.feed(key, false); end
     st.fed = {};
     M.io.setFlags(false);
+    M.io.hideCursor();
     st.closeOnRelease = (closeWindows == true);
+    -- Every window that came up during the session (the lockstyle window
+    -- from the quick menu, say) is shut at its next Begin, as if its own x
+    -- had been clicked.
+    if closeWindows == true then
+        local want, any = {}, false;
+        for _, list in ipairs({ st.winsPrev, st.wins }) do
+            for _, k in ipairs(list) do
+                if not st.baseline[k] and not M.KEEP_OPEN[k] then want[k] = true; any = true; end
+            end
+        end
+        if any then st.closeWant, st.closeUntil = want, (st.frame or 0) + 3; end
+    end
+    st.focusWant, st.quickOpen, st.quickKnown, st.closeQuick = nil, false, nil, nil;
     return true;
+end
+
+-- ---------------------------------------------------------------------------
+-- WHICH dlac WINDOW HAS THE FOCUS (lib\imguicompat's Begin wrapper reports
+-- every dlac window through M.windowHook)
+-- ---------------------------------------------------------------------------
+-- ImGui's own io.NavActive is true whenever ANY window is focused, another
+-- addon's included: after a Teleports row was used the focus fell to whatever
+-- window was next and the pad never came back (Vellhart, Dyce, 2026-11-17 to
+-- 11-21). So the pad is held on dlac's own windows only.
+--
+-- A window's key is its ImGui id: the part after '###', else after '##',
+-- else the whole name. A window with no title ('##dlac_tray', the gauges, the
+-- pad host) is a HUD piece: the focus resting on it holds nothing, but a
+-- popup opened under it (the quick menu) does.
+local function winKey(name)
+    local k = name:match('###(.+)$') or name:match('##(.+)$');
+    return k or name;
+end
+M._winKey = winKey;
+
+local function winBegin(name)
+    if not st.on or st.focusWant == nil or type(name) ~= 'string' then return; end
+    if winKey(name) == st.focusWant then M.io.focusNext(); end
+end
+
+local function winBegun(name, open)
+    if type(name) ~= 'string' then return; end
+    local key = winKey(name);
+    if st.closeWant ~= nil and st.closeWant[key] then
+        st.closeWant[key] = nil;
+        if type(open) == 'table' then open[1] = false; end
+        return;
+    end
+    if not st.enabled then return; end
+    local hud = (name:sub(1, 2) == '##');
+    if not hud then st.wins[#st.wins + 1] = key; end
+    if not st.on or st.noFocusApi then return; end
+    local focused = M.io.windowFocused(FOCUS_CHILD);
+    if focused == nil then st.noFocusApi = true; return; end
+    if focused and hud then
+        focused = (M.io.windowFocused(FOCUS_CHILD + FOCUS_NOPOPUP) ~= true);
+    end
+    if not focused then return; end
+    -- A window that was already up when the quick menu closed got the focus
+    -- BACK, it was not chosen: the pick is done and the pad goes home.
+    if st.quickKnown ~= nil then
+        if st.quickKnown[key] then return; end
+        st.quickKnown = nil;
+    end
+    st.focusFrame, st.focusKey = (st.frame or 0), key;
+end
+
+-- ---------------------------------------------------------------------------
+-- TOOLTIPS OUT OF THE WAY (Henrik, 2026-11-21)
+-- ---------------------------------------------------------------------------
+-- ImGui hangs a tooltip just under the item the controller's cursor is on:
+-- going down a list, it covers the row you are about to reach. So it goes on
+-- the side you came from -- moving down, above the item; moving up, below;
+-- moving right, to the left; moving left, to the right. Where that side has
+-- no room on screen, ImGui's own placement is kept. Only the item under the
+-- controller's cursor is touched; a mouse hover keeps following the mouse.
+M.TIP_GAP = 8;
+
+-- PURE. r = { x0, y0, x1, y1 } of the item; w, h the tooltip; dw, dh the
+-- screen. Returns x, y, pivotX, pivotY -- or nil for "leave it to ImGui".
+function M.tooltipSpot(dir, r, w, h, dw, dh)
+    local gap = M.TIP_GAP;
+    local function inX(x) return math.max(0, math.min(x, dw - w)); end
+    local function inY(y) return math.max(0, math.min(y, dh - h)); end
+    if dir == 'down' then
+        if r[2] - gap - h < 0 then return nil; end
+        return inX(r[1]), r[2] - gap, 0, 1;
+    elseif dir == 'up' then
+        if r[4] + gap + h > dh then return nil; end
+        return inX(r[1]), r[4] + gap, 0, 0;
+    elseif dir == 'right' then
+        if r[1] - gap - w < 0 then return nil; end
+        return r[1] - gap, inY(r[2]), 1, 0;
+    elseif dir == 'left' then
+        if r[3] + gap + w > dw then return nil; end
+        return r[3] + gap, inY(r[2]), 0, 0;
+    end
+    return nil;
+end
+
+local function pair(a, b)                 -- a binding answers x, y, or one table, or one ImVec2
+    if type(a) == 'number' then return a, b; end
+    local x, y = nil, nil;
+    pcall(function() x, y = a.x, a.y; end);
+    if type(x) ~= 'number' then pcall(function() x, y = a[1], a[2]; end); end
+    return x, y;
+end
+
+-- { x0, y0, x1, y1 } of the last item, the tooltip's size, the screen -- or
+-- nil and WHY (kept for /dl pad state). Every call is guarded on its own: the
+-- first cut ran them in one pcall, read the screen size as a table when the
+-- binding hands back an ImVec2, and so never moved a tooltip (field,
+-- 2026-11-21).
+M.io.tipFacts = function(text)
+    local im = M.io.imgui();
+    if im == nil then return nil, 'no imgui'; end
+    local okf, focused = pcall(function() return im.IsItemFocused(); end);
+    if okf and focused ~= true then return nil, 'not the item under the cursor'; end
+    local x0, y0, x1, y1, w, h, dw, dh;
+    pcall(function() x0, y0 = pair(im.GetItemRectMin()); end);
+    pcall(function() x1, y1 = pair(im.GetItemRectMax()); end);
+    if type(x0) ~= 'number' or type(y0) ~= 'number' or type(x1) ~= 'number' or type(y1) ~= 'number' then
+        return nil, 'no item rect';
+    end
+    if type(text) == 'string' then pcall(function() w, h = pair(im.CalcTextSize(text)); end); end
+    if type(w) ~= 'number' or type(h) ~= 'number' then w, h = 220, 120; end   -- no text to measure: a fair guess
+    pcall(function() dw, dh = pair(im.GetIO().DisplaySize); end);
+    if type(dw) ~= 'number' or type(dh) ~= 'number' then return nil, 'no screen size'; end
+    return { x0, y0, x1, y1 }, w + 18, h + 14, dw, dh;      -- + the tooltip's own padding
+end
+
+M.io.tipPlace = function(x, y, px, py)
+    local im = M.io.imgui();
+    if im ~= nil then im.SetNextWindowPos({ x, y }, ImGuiCond_Always or 1, { px, py }); end
+end
+
+-- lib\imguicompat calls this just before every SetTooltip / BeginTooltip.
+function M.tooltipHook(text)
+    if not st.on or st.lastDir == nil then return; end
+    local ok, err = pcall(function()
+        local r, w, h, dw, dh = M.io.tipFacts(text);
+        if r == nil then st.tipWhy = w or 'no facts'; return; end
+        local x, y, px, py = M.tooltipSpot(st.lastDir, r, w, h, dw, dh);
+        if x == nil then st.tipWhy = 'no room ' .. st.lastDir .. '-side'; return; end
+        M.io.tipPlace(x, y, px, py);
+        st.tipWhy = ('placed %d,%d after %s'):format(x, y, st.lastDir);
+    end);
+    if not ok then st.tipWhy = 'error: ' .. tostring(err); end
+end
+
+-- after = false just before the window's Begin, true just after it.
+function M.windowHook(after, name, open)
+    if not st.enabled and st.closeWant == nil then return; end
+    if after then pcall(winBegun, name, open); else pcall(winBegin, name); end
 end
 
 -- ---------------------------------------------------------------------------
@@ -315,7 +554,7 @@ end
 -- ---------------------------------------------------------------------------
 function M.onButton(tok, down)
     if type(tok) ~= 'string' then return false; end
-    if down then st.phys[tok] = true; else st.phys[tok] = nil; end
+    if down then st.phys[tok] = true; st.lastTok = tok; else st.phys[tok] = nil; end
 
     -- A release whose press the game saw always goes to the game.
     if not down and st.game[tok] then
@@ -392,6 +631,11 @@ function M.tick(host)
         if ui._tpClose <= 0 then ui._tpClose = nil; end
     end
 
+    st.winsPrev, st.wins = st.wins, {};
+    if st.closeWant ~= nil and st.frame > (st.closeUntil or 0) then st.closeWant = nil; end
+    if st.focusWant ~= nil and st.frame > (st.focusWantUntil or 0) then st.focusWant = nil; end
+    if st.closeQuick then st.closeQuick = nil; ui._tpClose = 2; end
+
     if st.takeHost then
         st.takeHost = nil;
         st.mainWasVisible = (host.visible() == true);
@@ -408,11 +652,15 @@ function M.tick(host)
     end
 
     if not st.on then return; end
+    if M.io.hudHidden() then M.release(false); return; end
     M.io.setFlags(true);          -- cheap, and survives anything that resets them
-    -- Nothing of ImGui's is focused: the menu closed (a row was used), the
-    -- window was shut, the interface is hidden. The pad goes back by itself.
-    -- (IDLE_S also covers the frames between the combo and the menu drawing.)
-    if M.io.navActive() then
+    -- No dlac window is focused: the menu closed (a row was used, or Back
+    -- cancelled it), the window was shut, the interface is hidden. The pad
+    -- goes back by itself. (IDLE_S also covers the frames between the combo
+    -- and the menu drawing, and between a menu row and the window it opens.)
+    local held;
+    if st.noFocusApi then held = M.io.navActive(); else held = focusHeld(); end
+    if held then
         st.idleAt = nil;
     else
         local now = M.io.now();
@@ -451,9 +699,65 @@ function M.drawHost(host)
             end
             im.OpenPopup('##dlac_teleports');
         end
+        -- Is the quick menu on screen? Its body raises ui._tpDrawn. The frame
+        -- it goes away, every window already up is noted: the focus falling
+        -- back onto one of those is the end of the pick, not a new target.
+        host.ui._tpDrawn = nil;
         pcall(host.popup);
+        M.quickDrawn(host.ui._tpDrawn == true);
     end
     im.End();
+    if st.on then pcall(M.drawBadge, im); end
+end
+
+-- Called once a frame with "the quick menu drew". While it is up, the windows
+-- of the frame BEFORE are remembered; the frame it is gone, those are the
+-- ones whose focus does not count. The frame before, and not this one: a row
+-- opens its window in the very frame it closes the menu, and that window is
+-- drawn after the menu, so a list taken now would hold the window the player
+-- just asked for and the pad would leave it (field, 2026-11-21: the main
+-- window, the hobby bar and lockstyle all opened without the pad).
+function M.quickDrawn(drawn)
+    if st.on and drawn then
+        st.quickOpen = true;
+        st.quickSeen = st.winsPrev;
+    elseif st.quickOpen then
+        st.quickOpen = false;
+        if st.on and st.focusWant == nil then
+            st.quickKnown = {};
+            for _, k in ipairs(st.quickSeen or {}) do st.quickKnown[k] = true; end
+        end
+        st.quickSeen = nil;
+    end
+end
+
+-- WHO HAS THE CONTROLLER. A small label at the top of the screen for as long
+-- as the buttons are dlac's and not the game's (Dyce, 2026-11-17: nothing on
+-- screen said so).
+function M.drawBadge(im)
+    local flags = 0;
+    for _, name in ipairs({ 'ImGuiWindowFlags_NoTitleBar', 'ImGuiWindowFlags_NoResize',
+                            'ImGuiWindowFlags_NoMove', 'ImGuiWindowFlags_NoScrollbar',
+                            'ImGuiWindowFlags_NoSavedSettings', 'ImGuiWindowFlags_AlwaysAutoResize',
+                            'ImGuiWindowFlags_NoNav', 'ImGuiWindowFlags_NoFocusOnAppearing',
+                            'ImGuiWindowFlags_NoMouseInputs' }) do
+        local v = rawget(_G, name);
+        if type(v) == 'number' then flags = flags + v; end
+    end
+    pcall(function()
+        local ds = im.GetIO().DisplaySize;
+        local w = ds.x or ds[1];
+        im.SetNextWindowPos({ w * 0.5, 6 }, ImGuiCond_Always or 1, { 0.5, 0 });
+    end);
+    if im.Begin('##dlac_padbadge', { true }, flags) then
+        im.TextColored({ 0.45, 0.85, 1.0, 1.0 }, 'Controller: dlac');
+        im.TextDisabled(M.badgeLine());
+    end
+    im.End();
+end
+
+function M.badgeLine()
+    return M.comboName() .. ' to hand it back';
 end
 
 -- ---------------------------------------------------------------------------
@@ -481,7 +785,12 @@ end
 
 -- The compat shim's BeginChild asks through this hook (it is nil, and costs
 -- one comparison, on an install where this module never loaded).
-pcall(function() require('dlac\\lib\\imguicompat').navFlatten = M.flatten; end);
+pcall(function()
+    local compat = require('dlac\\lib\\imguicompat');
+    compat.navFlatten = M.flatten;
+    compat.navWindow = M.windowHook;
+    compat.navTooltip = M.tooltipHook;
+end);
 
 -- MOVING THE CURSOR BY HAND. ImGui's cursor sits on a widget id: remove the
 -- row under it and the cursor falls back to the top of the window. A caller
@@ -505,6 +814,23 @@ function M.defaultFocusHere()
     if not st.on then return; end
     local im = M.io.imgui();
     if im ~= nil then pcall(im.SetItemDefaultFocus); end
+end
+
+-- One line for /dl pad state: who has the pad, which dlac window holds it,
+-- which windows Next window can reach, and the last button with its job.
+function M.stateLine()
+    local list = (#st.wins >= #st.winsPrev) and st.wins or st.winsPrev;
+    local last = 'none';
+    if st.lastTok ~= nil then
+        last = M.tokenName(st.lastTok) .. ' (' .. st.lastTok .. ') = ' .. (actionOf(st.lastTok) or 'nothing');
+    end
+    return ('controller state -- %s; focused: %s; windows: %s; last button: %s%s'):format(
+        st.on and 'dlac has it' or 'the game has it',
+        focusHeld() and tostring(st.focusKey) or 'none',
+        (#list > 0) and table.concat(list, ', ') or 'none',
+        last,
+        (st.noFocusApi and '; no focus query on this binding' or '')
+            .. (st.tipWhy and ('; last tooltip: ' .. st.tipWhy) or ''));
 end
 
 -- ---------------------------------------------------------------------------
@@ -542,6 +868,11 @@ function M._reset()
     st.dirty, st.idleAt, st.openQuick, st.takeHost, st.closeOnRelease = false, nil, false, nil, nil;
     st.flattenAll, st.dpad, st.ownCfg, st.ownBk = false, {}, nil, nil;
     st.frame, st.guardUntil = nil, nil;
+    st.wins, st.winsPrev, st.baseline = {}, {}, {};
+    st.focusFrame, st.focusKey, st.focusWant, st.focusWantUntil = nil, nil, nil, nil;
+    st.quickOpen, st.quickKnown, st.closeQuick, st.quickSeen = false, nil, nil, nil;
+    st.closeWant, st.closeUntil, st.noFocusApi, st.mainWasVisible = nil, nil, nil, false;
+    st.lastTok, st.lastDir, st.tipWhy = nil, nil, nil;
 end
 
 -- ---------------------------------------------------------------------------
@@ -588,6 +919,7 @@ pcall(function()
     end);
 
     -- /dl pad            what is bound, and whether this client can do it
+    -- /dl pad state      who has the pad, the focused window, the last button
     -- /dl pad flatten all|off   field switch: walk through EVERY dlac panel
     ashita.events.register('command', 'dlac-padnav', function(e)
         local args = e.command:args();
@@ -605,9 +937,15 @@ pcall(function()
             M.say('controller navigation is not available on this Ashita yet.');
             return;
         end
-        M.say(('controller navigation %s -- open/close: %s; confirm: %s; back: %s; tabs: %s / %s.'):format(
+        -- /dl pad state: what the pad session sees right now (field debug).
+        if (args[3] or ''):lower() == 'state' then
+            M.say(M.stateLine());
+            return;
+        end
+        M.say(('controller navigation %s -- open/close: %s; confirm: %s; back: %s; tabs: %s / %s; next window: %s.'):format(
             st.enabled and 'ON' or 'OFF', M.comboName(), M.tokenName(M.bindOf('ok')),
-            M.tokenName(M.bindOf('back')), M.tokenName(M.bindOf('prev')), M.tokenName(M.bindOf('next'))));
+            M.tokenName(M.bindOf('back')), M.tokenName(M.bindOf('prev')), M.tokenName(M.bindOf('next')),
+            M.tokenName(M.bindOf('win'))));
     end);
 
     ashita.events.register('unload', 'dlac-padnav-unload', function()
