@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.20b';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.21h';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -585,7 +585,10 @@ addon.version = '2026.11.20b';  -- date of the last shipped change (Ashita print
                                 --  11.20a = AscensionXI's Defensive Shell
                                 --  reaches PetAction rules under its name,
                                 --  not the client's ".": AXI-139;
-                                --  11.20b = the Shared Vault tab says why a
+                                --  11.20b = a trigger condition in the Player
+                                --  menu of every handler: SubJob, a dropdown
+                                --  of the jobs (engine v178);
+                                --  11.21h = the Shared Vault tab says why a
                                 --  take above your highest job level is
                                 --  refused: AscensionXI's Group Ironman
                                 --  level gate)

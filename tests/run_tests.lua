@@ -6460,6 +6460,56 @@ end)();
 end)();
 
 -- ---------------------------------------------------------------------------
+-- SJ. subJob (engine v178): my sub job's abbreviation off ctx.player.SubJob,
+--     case-blind. No sub job (nil) or no player matches no value. Tier 95 with
+--     the other Player gates: it overlays the rule it refines, under a mode.
+-- ---------------------------------------------------------------------------
+(function()
+    local mm = dispatchM._matchers;
+    local nin = { player = { Status = 'Engaged', MainJob = 'WAR', SubJob = 'NIN' } };
+    local none = { player = { Status = 'Engaged', MainJob = 'WAR' } };
+    check('SJ1 subJob matches the sub job',           mm.subjob('NIN', nin), true);
+    check('SJ2 ...case-blind',                        mm.subjob('nin', nin), true);
+    check('SJ3 another job is quiet',                 mm.subjob('WHM', nin), false);
+    check('SJ4 the MAIN job is not the sub job',      mm.subjob('WAR', nin), false);
+    check('SJ5 no sub job matches nothing',           mm.subjob('NIN', none), false);
+    check('SJ6 no player matches nothing',            mm.subjob('NIN', {}), false);
+    check('SJ7 a junk value matches nothing',         mm.subjob(true, nin), false);
+    local dp = dispatchM.defaultPriority;
+    check('SJ8 subJob sits at 95', dp({ subJob = 'NIN' }), 95);
+    check('SJ9 a sub-job rule overlays the name rule it refines',
+        dp({ name = 'Evisceration', subJob = 'NIN' }) > dp({ name = 'Evisceration' }), true);
+    check('SJ10 mode still outranks it', dp({ mode = 'DT' }) > dp({ subJob = 'NIN' }), true);
+    local mt = dispatchM._matches;
+    local rule = { when = { status = 'Engaged', subjob = 'NIN' } };
+    check('SJ11 engaged /NIN fires', mt(rule, nin), true);
+    check('SJ12 engaged /WHM quiet',
+        mt(rule, { player = { Status = 'Engaged', SubJob = 'WHM' } }), false);
+    check('SJ13 idle /NIN quiet',
+        mt(rule, { player = { Status = 'Idle', SubJob = 'NIN' } }), false);
+    -- the | leg: either sub job
+    local either = { when = { status = 'Engaged' }, whenAny = { { subjob = 'NIN' }, { subjob = 'DNC' } }, set = 'Tp_DW' };
+    local nrm = dispatchM._normalize({ Default = { either } });
+    check('SJ14 a NIN-or-DNC rule loads', nrm.Default ~= nil and #nrm.Default, 1);
+    check('SJ14b ...and fires on the second sub job',
+        mt(nrm.Default[1], { player = { Status = 'Idle', SubJob = 'DNC' } }), true);
+    check('SJ14c ...quiet on neither, not engaged',
+        mt(nrm.Default[1], { player = { Status = 'Idle', SubJob = 'WHM' } }), false);
+    local text = dispatchM.serializeTriggers({
+        Default = { { when = { status = 'Engaged', subjob = 'NIN' }, set = 'Tp_DW' } },
+        Weaponskill = { { when = { any = true, subJob = 'SAM' }, set = 'Ws_Sam' } },
+    });
+    check('SJ15 serializes pretty', text:find('subJob = "NIN"', 1, true) ~= nil, true);
+    check('SJ16 round-trip byte-stable',
+        dispatchM.serializeTriggers((loadstring or load)(text)()) == text, true);
+    local norm, warns = dispatchM._normalize((loadstring or load)(text)());
+    check('SJ17 normalize keeps both rules at 95, no warning',
+        tostring(norm.Default and norm.Default[1] and norm.Default[1].prio) .. '/'
+            .. tostring(norm.Weaponskill and norm.Weaponskill[1] and norm.Weaponskill[1].prio) .. '/'
+            .. tostring(#(warns or {})), '95/95/0');
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TG. Target condition (engine v81): WHO the action is aimed at; v1 value
 --     'Self'. ctx.targetSelf is the injected seam (live: GetActionTarget's
 --     entity index vs my own party index, one read per dispatch); tri-state --
