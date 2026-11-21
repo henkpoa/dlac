@@ -12413,3 +12413,33 @@ change is both for AXI and CEXI."
 - The list is all 22 jobs on both servers. There is no "no sub job" value.
 - Tests: run_tests SJ1-SJ17, smoke_ui TB71-TB76. Suites 8171 and 1840.
   Not checked in game.
+
+## 2026-11-21: Controller navigation, the first field round (`2026.11.21a`)
+
+Player reports on the AscensionXI Discord thread, 2026-11-17 to 11-21 (Dyce,
+Vellhart): nothing shows when dlac has the controller; using or cancelling a
+Teleports row does not give it back; the closing combination leaves the
+lockstyle window up; the hobby bar cannot be reached.
+
+- **The pad comes back.** It was held while ImGui's `io.NavActive` was true,
+  which any focused window satisfies, another addon's included. It is now
+  held only while one of dlac's own windows (or a popup under one) has the
+  focus. `lib/imguicompat` wraps `imgui.Begin` on the new binding and reports
+  each window to `padnav.windowHook`. A window that merely gets the focus back
+  when the Teleports menu closes does not hold the pad.
+- **A label while dlac has it**: "Controller: dlac" and the combination, top
+  centre. A label and not a changed icon is my call: the Teleports icon is not
+  on screen for everyone.
+- **Next window**, a fifth bindable button (Y / Triangle by default): steps
+  through the open dlac windows, so the hobby bar and the lockstyle window
+  are reachable.
+- **The closing combination closes what the session opened**, the lockstyle
+  window included. Windows that were up before stay; the hobby bar always
+  stays (Dyce withdrew that request).
+- Not done, and waiting for a decision: a lockstyle tied to a hobby, and
+  movement speed gear while fishing gear replaces the idle set (both
+  Vellhart).
+- AscensionXI's Ashita only, as before. Reference:
+  `docs/reference/axi119-controller-navigation.md`.
+- Tests: tests/padnav.lua PN41-PN45 rewritten, PN81-PN107 new (110 checks).
+  Suites 8171 and 1840. Not checked in game.

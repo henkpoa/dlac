@@ -1754,6 +1754,7 @@ local function renderTeleportsPopup()
     -- The controller's close combo (feature\padnav): a popup can only be
     -- closed from inside itself, so the request arrives as a flag.
     if ui._tpClose ~= nil then imgui.CloseCurrentPopup(); end
+    ui._tpDrawn = true;   -- padnav's host reads this: its quick menu is on screen
     -- Only a MOVE pins the menu. The baseline is wherever this open APPEARED
     -- (the click spot, or the pin), so "position differs from baseline" can
     -- never turn the default placement into an accidental pin. Fresh opens are

@@ -260,6 +260,24 @@ function M.install()
         end;
     end
 
+    -- Begin: unchanged, but controller navigation (feature\padnav) is told
+    -- about every dlac window -- before the call so it can ask for the focus,
+    -- after it so it can read the focus and close a window it opened. The
+    -- arguments pass through as given (a trailing nil would miss the
+    -- overload); nil hook = nobody asked.
+    local rawBegin = imgui.Begin;
+    if rawBegin ~= nil then
+        imgui.Begin = function(...)
+            local hook = M.navWindow;
+            if hook == nil then return rawBegin(...); end
+            local name, open = ...;
+            hook(false, name, open);
+            local r = rawBegin(...);
+            hook(true, name, open);
+            return r;
+        end;
+    end
+
     -- ImageButton: a leading str_id now, framePadding via style. A call that
     -- already leads with a string is speaking the new shape -- pass it through.
     local rawImageButton = imgui.ImageButton;
