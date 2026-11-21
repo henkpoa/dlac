@@ -4976,6 +4976,68 @@ end)();
                 check('TB70 its hint names the Signet the latent needs',
                     (nd and nd.hint or ''):find('Signet', 1, true) ~= nil, true);
             end
+
+            -- TB71-76. subJob (engine v178) in the Player cascade of EVERY
+            -- handler: a dropdown of the 22 jobs, picked through the real
+            -- value combo, saved, loaded by the engine, and edited back.
+            local PLY = (type(CAS) == 'table' and type(CAS.player) == 'table') and CAS.player.params or nil;
+            if type(PLY) == 'table' and type(DEFS) == 'table' then
+                local D = require('dlac\\dispatch');
+                local sjIdx, sjP = nil, nil;
+                for i, p in ipairs(PLY) do if p.key == 'subJob' then sjIdx, sjP = i, p; end end
+                check('TB71 the Player cascade offers SubJob as a list of the 22 jobs',
+                    tostring(sjP and sjP.kind) .. '/' .. tostring(sjP and #(sjP.items or {})) .. '/'
+                        .. tostring(sjP and sjP.items and sjP.items[1]) .. '/' .. tostring(sjP and sjP.items and sjP.items[22]),
+                    'list/22/WAR/RUN');
+                local function plyDef(h)
+                    for i, d in ipairs(DEFS[h] or {}) do if d.kind == 'player' then return i; end end
+                    return nil;
+                end
+                local missing = {};
+                for _, h in ipairs({ 'Default', 'Precast', 'Midcast', 'Ability', 'Item',
+                                     'Weaponskill', 'Preshot', 'Midshot', 'PetAction' }) do
+                    if plyDef(h) == nil then missing[#missing + 1] = h; end
+                end
+                check('TB72 every handler carries the Player cascade', table.concat(missing, ','), '');
+                if sjIdx ~= nil then
+                    local savedBC = IM.BeginCombo;
+                    local bad, dropped = {}, {};
+                    for _, case in ipairs({ { 'Default', 'NIN', 13 }, { 'Weaponskill', 'SAM', 12 }, { 'Midcast', 'WHM', 3 } }) do
+                        local h, job, ji = case[1], case[2], case[3];
+                        trig.data = {};
+                        trig.addFor, trig.addConds, trig._addDef = h, {}, plyDef(h);
+                        trig._addPlayer = sjIdx;
+                        trig._addValSel = nil; trig.addValText[1] = ''; trig.addSet = 'Sub';
+                        trig.addNote, trig.addSwap = nil, nil;
+                        trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+                        IM.BeginCombo = function(id) return id == '##trgcondval'; end;
+                        frame(job .. '##trgcpv' .. ji);
+                        IM.BeginCombo = savedBC;
+                        frame('+ & condition##trgac');
+                        frame('Add rule###trgaddgo');
+                        local r = trig.data[h] and trig.data[h][1];
+                        local got = (type(r) == 'table') and (r.when or {}).subjob;
+                        if got ~= job then bad[#bad + 1] = h .. '=' .. tostring(got); end
+                        local norm, warns = D._normalize({ [h] = { r } });
+                        local nr = ((norm or {})[h] or {})[1];
+                        if nr == nil or #(warns or {}) ~= 0 or nr.prio ~= 95 then dropped[#dropped + 1] = h; end
+                    end
+                    check('TB73 picked from the job dropdown, saved as the abbreviation', table.concat(bad, ','), '');
+                    check('TB74 ...and the engine loads it at 95', table.concat(dropped, ','), '');
+
+                    -- 'e' on a pending row reloads the cascade entry with its job.
+                    trig.data = {};
+                    trig.addFor, trig._addDef, trig._addPlayer = 'Ability', 1, 1;
+                    trig.addConds = { { key = 'subjob', value = 'DNC' } };
+                    trig.addNote, trig.addSwap = nil, nil;
+                    frame('e##trgce1');
+                    check('TB75 editing subJob = DNC reloads it',
+                        tostring(trig._addDef == plyDef('Ability')) .. '/' .. tostring(trig._addPlayer == sjIdx) .. '/'
+                            .. tostring(trig._addValSel) .. '/' .. tostring(#trig.addConds),
+                        'true/true/DNC/0');
+                    check('TB76 the subJob popups stayed balanced', depth.popup, 0);
+                end
+            end
         end
     end
 

@@ -12388,3 +12388,28 @@ Henrik, on the four moves left over from AXI-139: "Call them "??? Needles",
   changed here.
 - Tests: run_tests NEB11-NEB14. Skill id 4205 is from the server's
   beastmaster catalog, not from a captured packet. Not checked in game.
+
+## 2026-11-20: SubJob in the Player menu (`2026.11.20b`, engine v178)
+
+Henrik: "Can we add condition to player cascading menu for subjob and all
+available jobs to choose. Sometimes you want to match on subjob, this should
+be possible in every category basically where player is available. This
+change is both for AXI and CEXI."
+
+- **The condition**, engine v178: `subJob = 'NIN'`, the abbreviation of your
+  sub job, compared case-blind against `ctx.player.SubJob`. No sub job
+  matches no value. General client code, no pack data, so AscensionXI and
+  CatsEyeXI get the same thing.
+- **The GUI**: Player > SubJob in the Triggers tab, on every handler (the
+  Player cascade is appended to all nine). The value is a dropdown of the 22
+  jobs in the client's order, from `gear/jobgate.lua`. It has the live
+  `[on now]` marker; the marker's addon-side read is `GetSubJob()` through the
+  same job list.
+- **Tier 95**, with the other Player gates. That is my call: it makes a
+  sub-job rule overlay the rule it refines at any tier (a name rule at 50
+  included), and a mode still wins. The cost is that it also sits above
+  `moving` (25), so an idle sub-job set that fills Feet covers the movement
+  piece unless the rule gets a hand priority.
+- The list is all 22 jobs on both servers. There is no "no sub job" value.
+- Tests: run_tests SJ1-SJ17, smoke_ui TB71-TB76. Suites 8171 and 1840.
+  Not checked in game.

@@ -18,7 +18,7 @@
 
 addon.name    = 'dlac';
 addon.author  = 'Mindie';
-addon.version = '2026.11.20a';  -- date of the last shipped change (Ashita prints it at
+addon.version = '2026.11.20b';  -- date of the last shipped change (Ashita prints it at
                                 -- load) -- bump alongside every commit that changes behavior
                                 -- (03f = engine v163: the contest explains its own plan;
                                 --  03g = one floating tray: Teleports + the E-Box crates;
@@ -584,7 +584,10 @@ addon.version = '2026.11.20a';  -- date of the last shipped change (Ashita print
                                 --  /dl sprint, AXI-138;
                                 --  11.20a = AscensionXI's Defensive Shell
                                 --  reaches PetAction rules under its name,
-                                --  not the client's ".": AXI-139)
+                                --  not the client's ".": AXI-139;
+                                --  11.20b = a trigger condition in the Player
+                                --  menu of every handler: SubJob, a dropdown
+                                --  of the jobs (engine v178))
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
