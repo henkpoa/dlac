@@ -587,7 +587,11 @@ addon.version = '2026.11.22a';  -- date of the last shipped change (Ashita print
                                 --  not the client's ".": AXI-139;
                                 --  11.20b = a trigger condition in the Player
                                 --  menu of every handler: SubJob, a dropdown
-                                --  of the jobs (engine v178))
+                                --  of the jobs (engine v178);
+                                --  11.21h = the Shared Vault tab says why a
+                                --  take above your highest job level is
+                                --  refused: AscensionXI's Group Ironman
+                                --  level gate)
 addon.desc    ='Gear sets, triggers and live stats with level scaling -- dlac equips your gear itself.';
 
 -- Load BEACON ('/dl check' field round, 2026-07-23): written by PLAIN io at
