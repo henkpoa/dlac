@@ -51,6 +51,7 @@ M.REFUSAL =
     [vc.giCode.RARE_HELD]      = 'you already have one of that Rare piece',
     [vc.giCode.DUPLICATE]      = 'your Gear Vault already holds that piece (or its pair)',
     [vc.giCode.ITEM_BUSY]      = 'you cannot do that right now',
+    [vc.giCode.LEVEL_TOO_LOW]  = "you need a job at that piece's level to take it",
 };
 
 -- A whole frame refused or lost (vaultclient's err words).

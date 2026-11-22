@@ -12413,3 +12413,18 @@ change is both for AXI and CEXI."
 - The list is all 22 jobs on both servers. There is no "no sub job" value.
 - Tests: run_tests SJ1-SJ17, smoke_ui TB71-TB76. Suites 8171 and 1840.
   Not checked in game.
+
+## 2026-11-21: the Shared Vault tab explains the level gate (`2026.11.21h`)
+
+Built on November 20 as `2026.11.20b` and renumbered when the SubJob
+condition took that version on main (`2026.11.21a` to `21g` are dlac#267's).
+
+AscensionXI's Group Ironman now refuses a Shared Vault take of gear above the
+taker's highest job level, with the new GroupIronmanCode `LEVEL_TOO_LOW` (39)
+(AscensionXI `documentation/custom/group-ironman-boosting.md` B2, build handoff
+`group-ironman-gil-cap-level-gate.md`). Without words for it the tab said
+"refused (code 39)". `vc.giCode` gains 36-40 to mirror the server's table, and
+`sharedvault.lua` says "you need a job at that piece's level to take it".
+
+- Tests: gearvault_shared SN31 (the code has words) and SN34b (a refused take
+  says why). Both seen failing without the line. Not checked in game.
