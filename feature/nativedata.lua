@@ -299,6 +299,7 @@ function M.GetPetAction()
         elseif action.Type == 'MobSkill' then
             t.Id = action.Id;
             t.Name = action.Name;
+            t.MoveType = action.MoveType;   -- a server pack's answer, or nil (readyType)
         end
     end);
     return t;
