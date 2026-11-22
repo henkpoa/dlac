@@ -12414,6 +12414,138 @@ change is both for AXI and CEXI."
 - Tests: run_tests SJ1-SJ17, smoke_ui TB71-TB76. Suites 8171 and 1840.
   Not checked in game.
 
+## 2026-11-21: Controller navigation, the first field round (`2026.11.21a`)
+
+Player reports on the AscensionXI Discord thread, 2026-11-17 to 11-21 (Dyce,
+Vellhart): nothing shows when dlac has the controller; using or cancelling a
+Teleports row does not give it back; the closing combination leaves the
+lockstyle window up; the hobby bar cannot be reached.
+
+- **The pad comes back.** It was held while ImGui's `io.NavActive` was true,
+  which any focused window satisfies, another addon's included. It is now
+  held only while one of dlac's own windows (or a popup under one) has the
+  focus. `lib/imguicompat` wraps `imgui.Begin` on the new binding and reports
+  each window to `padnav.windowHook`. A window that merely gets the focus back
+  when the Teleports menu closes does not hold the pad.
+- **A label while dlac has it**: "Controller: dlac" and the combination, top
+  centre. A label and not a changed icon is my call: the Teleports icon is not
+  on screen for everyone.
+- **Next window**, a fifth bindable button (Y / Triangle by default): steps
+  through the open dlac windows, so the hobby bar and the lockstyle window
+  are reachable.
+- **The closing combination closes what the session opened**, the lockstyle
+  window included. Windows that were up before stay; the hobby bar always
+  stays (Dyce withdrew that request).
+- Not done, and waiting for a decision: a lockstyle tied to a hobby, and
+  movement speed gear while fishing gear replaces the idle set (both
+  Vellhart).
+- AscensionXI's Ashita only, as before. Reference:
+  `docs/reference/axi119-controller-navigation.md`.
+- Tests: tests/padnav.lua PN41-PN45 rewritten, PN81-PN107 new (110 checks).
+  Suites 8171 and 1840. Not checked in game.
+
+## 2026-11-21: Controller, Henrik's field round (`2026.11.21b`)
+
+Henrik on `21a`: a window opened from a Teleports row (the main window, the
+hobby bar, lockstyle) came up without the controller; Next window did
+nothing; the pad stayed with dlac under Scroll Lock; and "hobby bar for
+gathering doesn't have send to mog case and satchel, should prolly add that".
+
+- **A row-opened window keeps the pad.** The list of "windows that were
+  already up" was taken the frame after the menu closed. A row opens its
+  window in the frame it closes the menu, drawn after the menu, so the new
+  window was on the list and its focus did not count. The list is now the
+  frame before the menu's last one (`padnav.quickDrawn`).
+- **Scroll Lock** releases the pad at once.
+- **`/dl pad state`**: holder, focused window, reachable windows, last button
+  and its job. Next window's failure is not explained; this is how the next
+  round finds it.
+- **HELM hobby bar**: the Mog Case / Mog Satchel switches of the HELM panel,
+  under the readout (`helmui.renderMoveDestinations`, shared by both).
+- Tests: tests/padnav.lua 112 checks (PN86 now draws the opened window in
+  the menu's last frame, PN108-PN109 new); smoke_ui AXS22 pins the new bar
+  line. Suites 8171 and 1840. Not checked in game.
+
+## 2026-11-21: Controller, the hobby bar (`2026.11.21c`)
+
+Henrik on `21b`: "now it works better. I cannot close the hobby bar with the
+button combination though, nor can I use L1 and R1 to change between hobbies."
+
+- **The combination closes a hobby bar the session opened.** `21a` exempted
+  the bar after Dyce's note that it should stay up. A bar that was open
+  before the session still stays, which covers that case.
+- **L1 / R1 on the hobby bar step through the hobbies** that are switched on,
+  wrapping (`hobbybar.cycle`). The step changes which hobby's controls are
+  shown and arms nothing. On any other window they step the main tabs as
+  before.
+- Tests: tests/padnav.lua 119 checks (PN90 changed, PN110-PN116 new). Suites
+  8171 and 1840. Not checked in game.
+
+## 2026-11-21: Controller, the hobby bar's icon tabs (`2026.11.21d`)
+
+Henrik on `21c`: "I can activate the hobbies, I cannot choose them from the
+hobby bar."
+
+- The four hobby tabs are pictures (`imgui.Image` read with `IsItemClicked`),
+  and the controller's cursor only stops on widgets. Each icon now has an
+  invisible button over the same 64 px square, so the d-pad reaches it and
+  Confirm picks it. The row lays out as before, and the mouse click still
+  works. A white frame marks the tab under the cursor.
+- Both Ashitas draw the button; the calls are ones dlac already uses
+  (`SetCursorPosX/Y`, `InvisibleButton`).
+- Tests: no new checks (the suites draw the bar with a stand-in ImGui).
+  Suites 8171 and 1840, padnav 119. Not checked in game.
+
+## 2026-11-21: Controller, the on / off pill (`2026.11.21e`)
+
+Henrik on `21d`: L1 / R1 change hobbies, "but can't still access the on / off
+button on hobbies".
+
+- `panelkit.pill` (the green / red switch on every hobby bar, the HELM and
+  fishing panels, the Gear Helpers rows, the Job helper rows) is an invisible
+  button that read `IsItemClicked()`, which hears the mouse only. The
+  controller's cursor could stand on it and Confirm did nothing. It now takes
+  the button's own answer, which Confirm also gives.
+- With the mouse the pill now switches when the button is let go over it,
+  not when it goes down. That is what every ordinary button does.
+- A white rim shows while the controller's cursor is on the pill.
+- Tests: suites 8171 and 1840, padnav 119; no new checks. Not checked in game.
+
+## 2026-11-21: Controller, the pill is a stop and tooltips step aside (`2026.11.21f`)
+
+Henrik on `21e`: "Still can't target on / off in hobby bar", and "the tooltip
+when scrolling with D-pad is usually just under what you have selected. That
+makes it in the way. Can you make the tooltip be in the opposite direction
+you are moving?"
+
+- **The pill and the hobby icons are controller stops.** ImGui 1.90+ skips an
+  invisible button from the pad unless `ImGuiButtonFlags_EnableNav` is
+  passed; the older ImGui stopped on all of them. `lib/imguicompat` now adds
+  the flag on the new binding. `21d` and `21e` put the right widgets in place
+  and could not have worked without this.
+- **Tooltips go where you came from** while dlac has the pad: moving down,
+  above the item; up, below; right, to the left; left, to the right. Where
+  that side has no room, and for a mouse hover, nothing changes.
+- Tests: tests/padnav.lua 138 checks (PN117-PN135 new). Suites 8171 and
+  1840. Not checked in game; whether Ashita's binding takes the third
+  argument of InvisibleButton is unconfirmed (it is tried once and dropped
+  if refused).
+
+## 2026-11-21: Controller, the tooltip really moves (`2026.11.21g`)
+
+Henrik on `21f`: the on / off pill works from the pad; "Tooltip doesn't move,
+it's always below."
+
+- The placement read the item's rectangle and the screen size inside one
+  guarded block and accepted only numbers or Lua tables. The likely miss:
+  this binding hands back an ImVec2 object for the screen size (the label's
+  own code reads it with `.x`), so the read gave nothing and the tooltip was
+  left alone, silently. Each read is now guarded on its own and takes
+  numbers, tables or objects. Not confirmed in game that this was the cause.
+- `/dl pad state` ends with what the last tooltip did: where it was placed,
+  or why it was not moved.
+- Tests: tests/padnav.lua 142 checks (PN136-PN139 new). Not checked in game.
+
 ## 2026-11-21: the Shared Vault tab explains the level gate (`2026.11.21h`)
 
 Built on November 20 as `2026.11.20b` and renumbered when the SubJob
@@ -12428,3 +12560,21 @@ taker's highest job level, with the new GroupIronmanCode `LEVEL_TOO_LOW` (39)
 
 - Tests: gearvault_shared SN31 (the code has words) and SN34b (a refused take
   says why). Both seen failing without the line. Not checked in game.
+
+## 2026-11-22: Controller, hold Confirm for the right-click menu (`2026.11.22a`)
+
+Henrik: "Can we make it so if you hold the confirm button on an item, you get
+the right click menu?"
+
+- Confirm held for half a second (`padnav.HOLD_S`) is a right-click on the
+  item under the controller's cursor. Every right-click menu in the tree
+  reads "item hovered and `IsMouseClicked(1)`", and the item under the cursor
+  already reads as hovered, so `lib/imguicompat` answers `IsMouseClicked(1)`
+  (and `IsItemClicked(1)` for the focused item) with yes for one frame. No
+  call site changed.
+- The cost: Confirm now presses on RELEASE, not on the way down, because a
+  press that might become a hold cannot be sent early. A short press feeds
+  the key down and up together.
+- Settings > Controller says so in its hover text.
+- Tests: tests/padnav.lua 157 checks (PN140-PN153 new; PN24, PN40 follow the
+  press-on-release). Not checked in game.

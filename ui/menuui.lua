@@ -776,8 +776,11 @@ local function setController()
         'Work dlac\'s windows from a controller. Hold one button and press another\n'
         .. '(the combination you bind below): the controller stops reaching the game\n'
         .. 'and moves a highlight through dlac instead. The same combination, or\n'
-        .. 'closing the menu, gives the controller back.\n'
-        .. 'With no dlac window open, the combination opens the Teleports menu.',
+        .. 'closing the menu, gives the controller back; a label at the top of the\n'
+        .. 'screen shows while dlac has it.\n'
+        .. 'With the main window closed, the combination opens the Teleports menu.\n'
+        .. 'Next window moves to another open dlac window (the hobby bar, lockstyle).\n'
+        .. 'Hold Confirm on an item for its right-click menu.',
         function() return pad.enabled(); end,
         function(v) pad.setEnabled(v); end);
 
@@ -787,7 +790,7 @@ local function setController()
     -- 1"); in the middle it ran under the button (field, 2026-11-17). The
     -- label column is measured, so a larger font cannot clip it either.
     local labelW = px(110);
-    for _, which in ipairs({ 'combo', 'ok', 'back', 'prev', 'next' }) do
+    for _, which in ipairs({ 'combo', 'ok', 'back', 'prev', 'next', 'win' }) do
         pcall(function()
             local tw = imgui.CalcTextSize(pad.BIND_LABEL[which]);
             if type(tw) == 'number' and tw + px(14) > labelW then labelW = tw + px(14); end
