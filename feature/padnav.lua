@@ -348,6 +348,7 @@ end
 function M.release(closeWindows)
     if not st.on then return false; end
     st.on, st.pending, st.idleAt, st.openQuick = false, nil, nil, false;
+    st.okAt, st.rcFrame = nil, nil;
     for key in pairs(st.fed) do M.io.feed(key, false); end
     st.fed = {};
     M.io.setFlags(false);
@@ -592,8 +593,29 @@ function M.onButton(tok, down)
         return true;
     end
     local a = actionOf(tok);
+    if a == 'ok' then
+        -- Confirm waits for the release: a short press is the press it always
+        -- was, a press held for HOLD_S is a right-click on the item under the
+        -- cursor (the tick fires it) and its release does nothing more.
+        if down then st.okAt = M.io.now();
+        elseif st.okAt ~= nil then
+            st.okAt = nil;
+            feedAction(a, true); feedAction(a, false);
+        end
+        return true;
+    end
     if a ~= nil then feedAction(a, down); end
     return true;
+end
+
+-- HOLD CONFIRM = RIGHT-CLICK (Henrik, 2026-11-22). dlac's right-click menus
+-- all ask "is this item hovered, and was the right mouse button clicked";
+-- under the controller's cursor "hovered" is already true for the item the
+-- cursor is on. So for the one frame after Confirm has been held HOLD_S,
+-- lib\imguicompat answers the second half with yes.
+M.HOLD_S = 0.5;
+function M.rightClick()
+    return st.on and st.rcFrame ~= nil and st.rcFrame == st.frame;
 end
 
 -- DirectInput's d-pad is one ANGLE; turn a change into per-direction presses.
@@ -654,6 +676,9 @@ function M.tick(host)
     if not st.on then return; end
     if M.io.hudHidden() then M.release(false); return; end
     M.io.setFlags(true);          -- cheap, and survives anything that resets them
+    if st.okAt ~= nil and M.io.now() - st.okAt >= M.HOLD_S then
+        st.okAt, st.rcFrame = nil, st.frame;      -- true until the next tick: every window draws once
+    end
     -- No dlac window is focused: the menu closed (a row was used, or Back
     -- cancelled it), the window was shut, the interface is hidden. The pad
     -- goes back by itself. (IDLE_S also covers the frames between the combo
@@ -790,6 +815,7 @@ pcall(function()
     compat.navFlatten = M.flatten;
     compat.navWindow = M.windowHook;
     compat.navTooltip = M.tooltipHook;
+    compat.navRightClick = M.rightClick;
 end);
 
 -- MOVING THE CURSOR BY HAND. ImGui's cursor sits on a widget id: remove the
@@ -873,6 +899,7 @@ function M._reset()
     st.quickOpen, st.quickKnown, st.closeQuick, st.quickSeen = false, nil, nil, nil;
     st.closeWant, st.closeUntil, st.noFocusApi, st.mainWasVisible = nil, nil, nil, false;
     st.lastTok, st.lastDir, st.tipWhy = nil, nil, nil;
+    st.okAt, st.rcFrame = nil, nil;
 end
 
 -- ---------------------------------------------------------------------------

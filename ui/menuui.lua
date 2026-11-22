@@ -779,7 +779,8 @@ local function setController()
         .. 'closing the menu, gives the controller back; a label at the top of the\n'
         .. 'screen shows while dlac has it.\n'
         .. 'With the main window closed, the combination opens the Teleports menu.\n'
-        .. 'Next window moves to another open dlac window (the hobby bar, lockstyle).',
+        .. 'Next window moves to another open dlac window (the hobby bar, lockstyle).\n'
+        .. 'Hold Confirm on an item for its right-click menu.',
         function() return pad.enabled(); end,
         function(v) pad.setEnabled(v); end);
 

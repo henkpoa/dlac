@@ -12545,3 +12545,21 @@ it's always below."
 - `/dl pad state` ends with what the last tooltip did: where it was placed,
   or why it was not moved.
 - Tests: tests/padnav.lua 142 checks (PN136-PN139 new). Not checked in game.
+
+## 2026-11-22: Controller, hold Confirm for the right-click menu (`2026.11.22a`)
+
+Henrik: "Can we make it so if you hold the confirm button on an item, you get
+the right click menu?"
+
+- Confirm held for half a second (`padnav.HOLD_S`) is a right-click on the
+  item under the controller's cursor. Every right-click menu in the tree
+  reads "item hovered and `IsMouseClicked(1)`", and the item under the cursor
+  already reads as hovered, so `lib/imguicompat` answers `IsMouseClicked(1)`
+  (and `IsItemClicked(1)` for the focused item) with yes for one frame. No
+  call site changed.
+- The cost: Confirm now presses on RELEASE, not on the way down, because a
+  press that might become a hold cannot be sent early. A short press feeds
+  the key down and up together.
+- Settings > Controller says so in its hover text.
+- Tests: tests/padnav.lua 157 checks (PN140-PN153 new; PN24, PN40 follow the
+  press-on-release). Not checked in game.

@@ -107,8 +107,9 @@ pad.onDpadAngle(9000);
 check('PN22 sliding off a diagonal releases one', fed[5], 'ImGuiKey_GamepadDpadUp-');
 pad.onDpadAngle(-1); fed = {};
 check('PN23 confirm (default d49) is blocked', press('d49'), true);
-check('PN24 ...and fed', fed[1], 'ImGuiKey_GamepadFaceDown+');
+check('PN24 ...and fed at its release, press and release together', #fed, 0);
 lift('d49');
+check('PN24b the short press', table.concat(fed, ' '), 'ImGuiKey_GamepadFaceDown+ ImGuiKey_GamepadFaceDown-');
 check('PN25 an unbound button is still blocked', press('d60'), true);
 check('PN26 ...and feeds nothing', #fed, 2);
 lift('d60');
@@ -146,8 +147,8 @@ check('PN39 a main window the session opened is closed', visible, false);
 
 -- 7. Held keys are let go when the pad goes back.
 fresh(); combo(); open(); fed = {};
-press('d49'); press('d58'); press('d59');
-check('PN40 a key still down is released to ImGui', fed[#fed], 'ImGuiKey_GamepadFaceDown-');
+press('dD'); press('d58'); press('d59');
+check('PN40 a key still down is released to ImGui', fed[#fed], 'ImGuiKey_GamepadDpadDown-');
 
 -- 8. Nothing focused: the pad goes back by itself, after the grace, screen untouched.
 --    "Focused" is a dlac window's own focus: ImGui's NavActive stays true on
@@ -509,6 +510,46 @@ do
     check('PN134 a refusing binding still gets its button', calls[#calls], 'plain');
     check('PN135 ...and is not asked again', compat.invisibleNav, false);
     compat.invisibleNav = nil;
+end
+
+-- 21. Confirm held down is a right-click on the item under the cursor.
+do
+    fresh(); combo(); open(); fed = {};
+    draw(MAIN, true); pad.tick(host);
+    press('d49'); clock = clock + 0.3; pad.tick(host);
+    check('PN140 held a short while: nothing yet', pad.rightClick(), false);
+    clock = clock + 0.3; pad.tick(host);
+    check('PN141 held past HOLD_S: a right-click this frame', pad.rightClick(), true);
+    draw(MAIN, true); pad.tick(host);
+    check('PN142 ...and for one frame only', pad.rightClick(), false);
+    lift('d49');
+    check('PN143 its release presses nothing', #fed, 0);
+    press('d49'); clock = clock + 0.1; lift('d49'); draw(MAIN, true); pad.tick(host);
+    check('PN144 a short press is still a press', #fed, 2);
+    check('PN145 ...and no right-click', pad.rightClick(), false);
+    press('d49'); press('d58'); press('d59'); clock = clock + 1; pad.tick(host);
+    check('PN146 handing the pad back forgets a held Confirm', pad.rightClick(), false);
+    check('PN147 the shim carries the hook', compat.navRightClick, pad.rightClick);
+
+    -- The shim: button 1 hears the hook, the left button never does.
+    local asked, yes, focused = {}, false, true;
+    local fake = { ImageWithBg = function() end,
+                   IsMouseClicked = function(b) asked[#asked + 1] = 'm' .. tostring(b); return false; end,
+                   IsItemClicked = function(b) asked[#asked + 1] = 'i' .. tostring(b); return false; end,
+                   IsItemFocused = function() return focused; end };
+    package.loaded.imgui = fake;
+    compat.installed, compat.wrapped = false, false;
+    compat.install();
+    compat.navRightClick = function() return yes; end
+    check('PN148 no hold: the mouse is asked', fake.IsMouseClicked(1), false);
+    yes = true;
+    check('PN149 held: the right button reads clicked', fake.IsMouseClicked(1), true);
+    check('PN150 ...the left button does not', fake.IsMouseClicked(0), false);
+    check('PN151 IsItemClicked(1) on the item under the cursor', fake.IsItemClicked(1), true);
+    focused = false;
+    check('PN152 ...and on no other item', fake.IsItemClicked(1), false);
+    check('PN153 IsItemClicked() with no button stays with the mouse', fake.IsItemClicked(), false);
+    compat.navRightClick = pad.rightClick;
 end
 
 -- 18. The hobby bar's own step: over the hobbies switched on, wrapping.

@@ -118,6 +118,16 @@ click on its own x. The request lives three frames.
   (moving down: above; up: below; right: left; left: right). No room on that
   side, or a mouse hover: ImGui's own placement.
 
+## Hold Confirm = right-click (`2026.11.22a`)
+
+Confirm waits for its release. Let go inside `padnav.HOLD_S` (0.5 s) and the
+key goes to ImGui down and up together. Held longer, the tick marks one frame
+in which `imguicompat` answers `IsMouseClicked(1)` with yes, and
+`IsItemClicked(1)` with yes for the focused item; the release then sends
+nothing. The right-click menus are untouched: they read "item hovered and
+right button clicked", and ImGui already reports the item under the
+controller's cursor as hovered.
+
 ## Panels tuned so far
 
 Sets tab: the left panel, the slot grid, the slot's list and its rows; the

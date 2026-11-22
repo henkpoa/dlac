@@ -316,6 +316,30 @@ function M.install()
         end;
     end
 
+    -- IsMouseClicked(1) / IsItemClicked(1): unchanged, but controller navigation
+    -- can answer yes for one frame -- Confirm held down is a right-click on the
+    -- item under the controller's cursor (nil hook = nobody asked). The tree's
+    -- right-click menus all read "item hovered and IsMouseClicked(1)", and the
+    -- item under the cursor already reads as hovered.
+    local rawIsMouseClicked, rawIsItemClicked = imgui.IsMouseClicked, imgui.IsItemClicked;
+    if rawIsMouseClicked ~= nil then
+        imgui.IsMouseClicked = function(...)
+            local hook = M.navRightClick;
+            if hook ~= nil and (...) == 1 and hook() == true then return true; end
+            return rawIsMouseClicked(...);
+        end;
+    end
+    if rawIsItemClicked ~= nil then
+        imgui.IsItemClicked = function(...)
+            local hook = M.navRightClick;
+            if hook ~= nil and (...) == 1 and hook() == true then
+                local okf, focused = pcall(function() return imgui.IsItemFocused(); end);
+                if okf and focused == true then return true; end
+            end
+            return rawIsItemClicked(...);
+        end;
+    end
+
     -- ImageButton: a leading str_id now, framePadding via style. A call that
     -- already leads with a string is speaking the new shape -- pass it through.
     local rawImageButton = imgui.ImageButton;
