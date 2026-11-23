@@ -7213,6 +7213,183 @@ end)();
 -- ---------------------------------------------------------------------------
 
 -- ---------------------------------------------------------------------------
+-- RDY. What a companion's Ready move does (engine v179, AXI-155): readyType =
+--      Physical / Magic / Breath / Effect / Buff / Heal. The engine holds no
+--      table: a server pack answers (service 'petMoveTypes') and the answer
+--      rides the action as MoveType. MobSkill actions only. Tier 30.
+-- ---------------------------------------------------------------------------
+(function()
+    local mm, rdy = dispatchM._matchers, dispatchM.readyTypeOf;
+    local function move(kind, name) return { action = { ActionType = 'MobSkill', Name = name or 'Razor Fang', MoveType = kind } }; end
+    -- The SERVER's answer, move by move: all 152 moves of AscensionXI's
+    -- modules/custom/lua/beastmaster_catalog.lua as { mob skill id, name, type },
+    -- typed by what scripts/actions/mobskills/<script>.lua and the companion
+    -- overrides in beastmaster_moves.lua do. main 4887de3a, 2026-11-22. Pinned
+    -- row by row, so the pack's table answers to the source and not to itself.
+    local SERVER_ROWS = {
+        -- Physical
+        { 3863, 'Big Scissors', 'Physical' }, { 3853, 'Blockhead', 'Physical' },
+        { 3854, 'Brain Crush', 'Physical' }, { 3911, 'Chomp Rush', 'Physical' },
+        { 3850, 'Claw Cyclone', 'Physical' }, { 291, 'Claw Storm', 'Physical' },
+        { 460, 'Cross Attack', 'Physical' }, { 3892, 'Cyclotail', 'Physical' },
+        { 353, 'Death Scissors', 'Physical' }, { 3894, 'Double Claw', 'Physical' },
+        { 294, 'Eye Scratch', 'Physical' }, { 431, 'Fluid Spread', 'Physical' },
+        { 432, 'Fluid Toss', 'Physical' }, { 3840, 'Foot Kick', 'Physical' },
+        { 3868, 'Frog Kick', 'Physical' }, { 424, 'Full-force Blow', 'Physical' },
+        { 3895, 'Grapple', 'Physical' }, { 3843, 'Head Butt', 'Physical' },
+        { 622, 'Helldive', 'Physical' }, { 395, 'Jet Stream', 'Physical' },
+        { 3857, 'Lamb Chop', 'Physical' }, { 3846, 'Leaf Dagger', 'Physical' },
+        { 350, 'Mandible Bite', 'Physical' }, { 3885, 'Mandibular Bite', 'Physical' },
+        { 3866, 'Needleshot', 'Physical' }, { 3891, 'Nimble Snap', 'Physical' },
+        { 3871, 'Numbshroom', 'Physical' }, { 507, 'Painful Whip', 'Physical' },
+        { 506, 'Palsynyxis', 'Physical' }, { 1699, 'Pecking Flurry', 'Physical' },
+        { 351, 'Poison Sting', 'Physical' }, { 3875, 'Power Attack', 'Physical' },
+        { 3870, 'Queasyshroom', 'Physical' }, { 3867, 'Random Needles', 'Physical' },
+        { 3849, 'Razor Fang', 'Physical' }, { 3877, 'Rhino Attack', 'Physical' },
+        { 3910, 'Ripper Fang', 'Physical' }, { 452, 'Screwdriver', 'Physical' },
+        { 3909, 'Scythe Tail', 'Physical' }, { 3872, 'Shakeshroom', 'Physical' },
+        { 334, 'Sharp Sting', 'Physical' }, { 3859, 'Sheep Charge', 'Physical' },
+        { 810, 'Sickle Slash', 'Physical' }, { 3938, 'Somersault', 'Physical' },
+        { 290, 'Spinning Claw', 'Physical' }, { 3897, 'Spinning Top', 'Physical' },
+        { 3905, 'Spiral Spin', 'Physical' }, { 687, 'Sprout Smack', 'Physical' },
+        { 685, 'Sprout Spin', 'Physical' }, { 281, 'Stomping', 'Physical' },
+        { 289, 'Stone Throw', 'Physical' }, { 3900, 'Suction', 'Physical' },
+        { 3904, 'Sudden Lunge', 'Physical' }, { 3851, 'Tail Blow', 'Physical' },
+        { 456, 'Tentacle', 'Physical' }, { 288, 'Vicious Claw', 'Physical' },
+        { 3842, 'Whirl Claws', 'Physical' }, { 3845, 'Wild Oats', 'Physical' },
+        { 354, 'Wild Rage', 'Physical' },
+        -- Magic
+        { 3907, 'Acid Mist', 'Magic' }, { 811, 'Acid Spray', 'Magic' }, { 450, 'Aqua Ball', 'Magic' },
+        { 394, 'Blood Drain', 'Magic' }, { 423, 'Brain Drain', 'Magic' },
+        { 3914, 'Corrosive Ooze', 'Magic' }, { 3880, 'Cursed Sphere', 'Magic' },
+        { 437, 'Death Ray', 'Magic' }, { 433, 'Digest', 'Magic' }, { 3901, 'Drainkiss', 'Magic' },
+        { 3841, 'Dust Cloud', 'Magic' }, { 355, 'Earth Pounder', 'Magic' },
+        { 336, 'Final Sting', 'Magic' }, { 3852, 'Fireball', 'Magic' }, { 425, 'Gastric Bomb', 'Magic' },
+        { 458, 'Ink Jet', 'Magic' }, { 462, 'Maelstrom', 'Magic' }, { 3913, 'Purulent Ooze', 'Magic' },
+        { 426, 'Sandspin', 'Magic' }, { 427, 'Tremors', 'Magic' }, { 3881, 'Venom', 'Magic' },
+        { 463, 'Whirlwind', 'Magic' }, { 1720, 'Wind Shear', 'Magic' }, { 623, 'Wing Cutter', 'Magic' },
+        -- Breath
+        { 3861, 'Bubble Shower', 'Breath' }, { 349, 'Cold Breath', 'Breath' },
+        { 1718, 'Crosswind', 'Breath' }, { 3874, 'Dark Spore', 'Breath' },
+        { 376, 'Foul Breath', 'Breath' }, { 348, 'Numbing Breath', 'Breath' },
+        { 345, 'Poison Breath', 'Breath' }, { 416, 'Sand Breath', 'Breath' },
+        { 3873, 'Silence Gas', 'Breath' }, { 451, 'Splash Breath', 'Breath' },
+        -- Effect
+        { 292, 'Blank Gaze', 'Effect' }, { 3899, 'Blaster', 'Effect' }, { 3898, 'Chaotic Eye', 'Effect' },
+        { 284, 'Cold Stare', 'Effect' }, { 3844, 'Dream Flower', 'Effect' },
+        { 1701, 'Feather Tickle', 'Effect' }, { 3896, 'Filamented Hold', 'Effect' },
+        { 2183, 'Fuscous Ooze', 'Effect' }, { 504, 'Gas Shell', 'Effect' },
+        { 3889, 'Geist Wall', 'Effect' }, { 3887, 'Gloeosuccus', 'Effect' }, { 438, 'Hex Eye', 'Effect' },
+        { 3876, 'Hi-Freq Field', 'Effect' }, { 3855, 'Infrasonics', 'Effect' },
+        { 3924, 'Intimidate', 'Effect' }, { 3906, 'Noisome Powder', 'Effect' },
+        { 3890, 'Numbing Noise', 'Effect' }, { 1721, 'Obfuscate', 'Effect' },
+        { 3888, 'Palsy Pollen', 'Effect' }, { 3848, 'Roar', 'Effect' }, { 275, 'Sandblast', 'Effect' },
+        { 276, 'Sandpit', 'Effect' }, { 3847, 'Scream', 'Effect' }, { 3860, 'Sheep Song', 'Effect' },
+        { 686, 'Slumber Powder', 'Effect' }, { 393, 'Sonic Boom', 'Effect' },
+        { 280, 'Sonic Wave', 'Effect' }, { 3886, 'Soporific', 'Effect' },
+        { 429, 'Sound Vacuum', 'Effect' }, { 812, 'Spider Web', 'Effect' }, { 3879, 'Spoil', 'Effect' },
+        { 3869, 'Spore', 'Effect' }, { 344, 'Sticky Thread', 'Effect' },
+        { 508, 'Suctorial Tentacle', 'Effect' }, { 3908, 'TP Drainkiss', 'Effect' },
+        { 3893, 'Toxic Spit', 'Effect' }, { 392, 'Ultrasonics', 'Effect' },
+        { 3884, 'Venom Spray', 'Effect' },
+        -- Buff
+        { 3862, 'Bubble Curtain', 'Buff' }, { 346, 'Cocoon', 'Buff' }, { 4205, 'Defensive Shell', 'Buff' },
+        { 286, 'Dhalmel Berserk', 'Buff' }, { 459, 'Hard Membrane', 'Buff' },
+        { 3865, 'Metallic Body', 'Buff' }, { 3858, 'Rage', 'Buff' }, { 418, 'Regeneration', 'Buff' },
+        { 3878, 'Rhino Guard', 'Buff' }, { 3864, 'Scissor Guard', 'Buff' }, { 3856, 'Secretion', 'Buff' },
+        { 356, 'Sharp Strike', 'Buff' }, { 454, 'Water Shield', 'Buff' }, { 3926, 'Water Wall', 'Buff' },
+        { 285, 'Whistle', 'Buff' }, { 1722, 'Zephyr Mantle', 'Buff' },
+        -- Heal
+        { 440, 'Catharsis', 'Heal' }, { 287, 'Healing Breeze', 'Heal' }, { 295, 'Magic Fruit', 'Heal' },
+        { 335, 'Pollen', 'Heal' }, { 3903, 'Wild Carrot', 'Heal' },
+    };
+    local types = dofile('servers/ascensionxi/modules/stable/movetypes.lua');
+    local wrong, per, ids = {}, {}, {};
+    for _, row in ipairs(SERVER_ROWS) do
+        local got = types.typeOf(row[1], row[2]);
+        if got ~= row[3] then wrong[#wrong + 1] = row[2] .. '=' .. tostring(got); end
+        per[row[3]] = (per[row[3]] or 0) + 1;
+        ids[row[1]] = true;
+    end
+    check('RDY1 every companion move reads the server\'s type', table.concat(wrong, ', '), '');
+    check('RDY2 ...59 physical, 24 magic, 10 breath, 38 effect, 16 buff, 5 heal',
+        string.format('%d/%d/%d/%d/%d/%d', per.Physical or 0, per.Magic or 0, per.Breath or 0,
+            per.Effect or 0, per.Buff or 0, per.Heal or 0), '59/24/10/38/16/5');
+    local n, extra = 0, {};
+    for id in pairs(types.TYPES) do
+        n = n + 1;
+        if not ids[id] then extra[#extra + 1] = tostring(id); end
+    end
+    check('RDY3 ...and the table holds those 152 rows and nothing else',
+        tostring(n) .. '/' .. table.concat(extra, ','), '152/');
+    check('RDY4 a skill the server does not list has no type', types.typeOf(1, 'Foot Kick'), nil);
+    check('RDY5 the id decides, not the name: Defensive Shell under the client\'s "."', types.typeOf(4205, '.'), 'Buff');
+    check('RDY6 the four ranged moves are Physical',
+        table.concat({ types.typeOf(3846), types.typeOf(3866), types.typeOf(334), types.typeOf(289) }, '/'),
+        'Physical/Physical/Physical/Physical');
+
+    -- The engine side: the action's MoveType, MobSkill only, never a guess.
+    check('RDY7 a typed MobSkill reads its type', rdy(move('Physical')), 'Physical');
+    check('RDY8 a MobSkill no pack typed: nil', rdy(move(nil)), nil);
+    check('RDY9 an avatar\'s pact (an Ability) never matches',
+        rdy({ action = { ActionType = 'Ability', Name = 'Tail Whip', MoveType = 'Physical' } }), nil);
+    check('RDY10 a pet spell never matches', rdy({ action = { ActionType = 'Spell', MoveType = 'Magic' } }), nil);
+    check('RDY11 no action (Default): nil', rdy({ player = { Status = 'Idle' } }), nil);
+
+    check('RDY12 readyType = Physical fires on a physical move', mm.readytype('Physical', move('Physical')), true);
+    check('RDY13 ...not on a magic one', mm.readytype('Physical', move('Magic')), false);
+    check('RDY14 a hand-written lowercase value still matches', mm.readytype('effect', move('Effect')), true);
+    check('RDY15 an untyped move matches none of the six',
+        mm.readytype('Physical', move(nil)) or mm.readytype('Magic', move(nil)) or mm.readytype('Breath', move(nil))
+            or mm.readytype('Effect', move(nil)) or mm.readytype('Buff', move(nil)) or mm.readytype('Heal', move(nil)), false);
+    check('RDY16 rageType stays quiet on a Ready move, even on a pact\'s name',
+        mm.ragetype('Physical', move('Physical', 'Tail Whip')), false);
+
+    local dp = dispatchM.defaultPriority;
+    check('RDY17 readyType sits at 30', dp({ readyType = 'Physical' }), 30);
+    check('RDY18 a name rule (50) outranks it', dp({ name = 'Razor Fang' }) > dp({ readyType = 'Physical' }), true);
+
+    local mt = dispatchM._matches;
+    local dmg = { when = {}, whenAny = { { readytype = 'Magic' }, { readytype = 'Breath' } } };
+    check('RDY19 matches(): Magic | Breath fires on a breath move', mt(dmg, move('Breath')), true);
+    check('RDY20 ...and stays quiet on a physical one', mt(dmg, move('Physical')), false);
+
+    local text = dispatchM.serializeTriggers({
+        PetAction = {
+            { when = { readyType = 'Physical' }, set = 'Ready_Physical' },
+            { when = { readyType = 'Effect' },   set = 'Ready_MACC' },
+        },
+    });
+    check('RDY21 readyType serializes PRETTY-case', text:find('readyType = "Physical"', 1, true) ~= nil, true);
+    local t2 = (loadstring or load)(text)();
+    check('RDY22 round-trip byte-stable', dispatchM.serializeTriggers(t2) == text, true);
+    local norm, warns = dispatchM._normalize(t2);
+    check('RDY23 normalize keeps both rules, warns nothing',
+        #(norm.PetAction or {}) == 2 and #(warns or {}) == 0, true);
+    check('RDY24 normalized prio = 30', norm.PetAction[1].prio, 30);
+
+    -- The LIVE shape: the native engine's GetPetAction hands the pack's
+    -- answer through, off the pet action state the 0x028 stream writes.
+    local savedEngMod = package.loaded['dlac\\feature\\equipengine'];
+    local eng = dofile('feature/equipengine.lua');
+    package.loaded['dlac\\feature\\equipengine'] = eng;
+    local nd = dofile('feature/nativedata.lua');
+    package.loaded['dlac\\feature\\equipengine'] = savedEngMod;
+    local savedPa, savedGetPet = eng.state.petAction, nd.GetPet;
+    nd.GetPet = function() return { Name = 'Wild Rabbit', Status = 'Engaged' }; end;
+    eng.state.petAction = { Type = 'MobSkill', Id = 3840, Name = 'Foot Kick', MoveType = 'Physical', Completion = math.huge };
+    local live = nd.GetPetAction();
+    check('RDY25 live: the move reads as a typed MobSkill',
+        string.format('%s/%s/%s', tostring(live and live.ActionType), tostring(live and live.Name), tostring(live and live.MoveType)),
+        'MobSkill/Foot Kick/Physical');
+    check('RDY26 ...and readyType = Physical fires on it', mm.readytype('Physical', { action = live }), true);
+    eng.state.petAction = { Type = 'MobSkill', Id = 300, Name = 'Tail Whip', Completion = math.huge };
+    check('RDY27 live: a move no pack typed matches nothing',
+        mm.readytype('Physical', { action = nd.GetPetAction() }), false);
+    eng.state.petAction, nd.GetPet = savedPa, savedGetPet;
+end)();
+
+-- ---------------------------------------------------------------------------
 -- TGM. Trigger Groups model (G2, issue #25, ADR 0009): the pure GUI-side CRUD +
 --      name / member validation the Groups tab drives (groupsmodel.lua). Group
 --      names and member names compare case-insensitively (engine parity), an
@@ -19559,6 +19736,19 @@ end)();
         table.concat({ readies(3867, '??? Needles'), readies(286, 'Berserk'), readies(3868, 'Frogkick') }, '|'),
         '??? Needles|Berserk|Frogkick');
     check('NEB14 ...and every other move', readies(3849, 'Razor Fang'), 'Razor Fang');
+    -- AXI-155: the same moment asks the pack what the move does.
+    local savedTypes = sp.service('petMoveTypes');
+    local function typed(skill)
+        readies(skill, 'x');
+        return eng.state.petAction and eng.state.petAction.MoveType;
+    end
+    sp.provide('petMoveTypes', nil);
+    check('NEB15 with no pack a pet move carries no type', typed(3849), nil);
+    sp.provide('petMoveTypes', dofile('servers/ascensionxi/modules/stable/movetypes.lua'));
+    check('NEB16 AscensionXI types the move as the pet readies it',
+        table.concat({ tostring(typed(3849)), tostring(typed(4205)), tostring(typed(335)) }, '|'), 'Physical|Buff|Heal');
+    check('NEB17 ...and leaves a move it does not list untyped', typed(999), nil);
+    sp.provide('petMoveTypes', savedTypes);
     sp.provide('petMoveNames', savedSvc);
     AshitaCore, eng.onEvent, eng.state.petAction = savedAshita, savedOnEvent, savedPa;
     prof.nativeMode, _G.gFunc = savedNative2, savedGFunc2;

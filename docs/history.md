@@ -12579,6 +12579,38 @@ the right click menu?"
 - Tests: tests/padnav.lua 157 checks (PN140-PN153 new; PN24, PN40 follow the
   press-on-release). Not checked in game.
 
+## 2026-11-22: Pet-Ready, what a Ready move does (`2026.11.22b`, engine v179)
+
+Ticket AXI-155 (TheMunimai: "Could we get a function in triggers under pet
+action for Ready Physical / Magical like BP Rage"). Henrik: "can you go
+through the code on AXI and categorize them?", then took both recommendations:
+the ranged moves count as Physical, and the moves that deal no damage get
+types of their own.
+
+- **The condition**, engine v179: `readyType` = Physical / Magic / Breath /
+  Effect / Buff / Heal, on PetAction, tier 30 beside `rageType`.
+- **No table in the engine.** The pacts are every server's; the companion
+  moves are AscensionXI's own. As the pet readies a move the engine asks the
+  server pack service `petMoveTypes` and files the answer on the action
+  (`MoveType`). With no pack, or a move the pack does not list, the condition
+  matches nothing.
+- **AscensionXI's answer**: `servers/ascensionxi/modules/stable/movetypes.lua`,
+  keyed by mob skill id, so "??? Needles" and "." need nothing special. All
+  152 moves of the server's `beastmaster_catalog.lua`, typed by what each
+  script does (main 4887de3a): 59 Physical, 24 Magic, 10 Breath, 38 Effect,
+  16 Buff, 5 Heal. The server's own `ready-scaling.json` "kind" column gives
+  the same split.
+- Judgement calls: Leaf Dagger, Needleshot, Sharp Sting and Stone Throw are
+  Physical (the server runs them through its ranged helper). Random Needles
+  is Physical though its damage is a fixed roll. Final Sting is Magic though
+  it scales only with the pet's HP. TP Drainkiss and Feather Tickle only
+  remove TP on a companion, so they are Effect. No move is hybrid.
+- **The menu**: a cascade, Pet-Ready, on PetAction. It is listed only where a
+  pack answers, so CatsEyeXI does not see a menu that can never match.
+- A server move added later has no type until the table is regenerated; a
+  move whose script changes type needs the same.
+- Tests: run_tests RDY1-RDY27 and NEB15-NEB17, smoke_ui TRD1-TRD9. Suites
+  8201 and 1849. RDY1 seen failing with one row changed. Not checked in game.
 ## 2026-11-23: a renamed item takes its new name in saved gear (`2026.11.23a`)
 
 AXI-157 (Fallen): the equipment window's card still said "Courier's Ring" for

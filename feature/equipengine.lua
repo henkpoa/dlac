@@ -1025,6 +1025,13 @@ function M.handleIncoming(e)
                         local better = svc and svc.nameOf and svc.nameOf(p.actionId, pa.Name) or nil;
                         if type(better) == 'string' and better ~= '' then pa.Name = better; end
                     end);
+                    -- ...and what the move does (the readyType condition):
+                    -- the client has no such field, so only a pack answers
+                    pcall(function()
+                        local svc = require('dlac\\gear\\serverpack').service('petMoveTypes');
+                        local kind = svc and svc.typeOf and svc.typeOf(p.actionId, pa.Name) or nil;
+                        if type(kind) == 'string' and kind ~= '' then pa.MoveType = kind; end
+                    end);
                 else
                     pa.Type = 'Ability';
                     pa.Resource = AshitaCore:GetResourceManager():GetAbilityById(p.actionId + 512);

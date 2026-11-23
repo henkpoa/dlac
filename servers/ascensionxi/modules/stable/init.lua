@@ -14,6 +14,10 @@ gauge._read = function() return recast.liveRemainingSeconds({ timerId = 102 }); 
 pcall(function()
     require('dlac\\gear\\serverpack').provide('petMoveNames', require('dlac\\servers\\ascensionxi\\modules\\stable\\movenames'));
 end);
+-- ...and what the move does, for the readyType condition (AXI-155).
+pcall(function()
+    require('dlac\\gear\\serverpack').provide('petMoveTypes', require('dlac\\servers\\ascensionxi\\modules\\stable\\movetypes'));
+end);
 local catalog = require('dlac\\servers\\ascensionxi\\modules\\stable\\catalog');
 local state, pending, habitats;
 local notice = 'Open the Stable to load your companions.';

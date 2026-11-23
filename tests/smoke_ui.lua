@@ -4819,6 +4819,100 @@ end)();
                 check('TB50 the Avatar-Rage parameters are reachable', type(RAGE), 'table');
             end
 
+            -- TRD1-8. The Pet-Ready cascade (engine v179, AXI-155), PetAction
+            -- only, the Avatar-Rage shape -- and listed only where a server
+            -- pack answers what a Ready move does (service 'petMoveTypes').
+            local READY = (type(CAS) == 'table' and type(CAS.ready) == 'table') and CAS.ready.params or nil;
+            if type(READY) == 'table' and type(DEFS) == 'table' then
+                local D = require('dlac\\dispatch');
+                local sp = require('dlac\\gear\\serverpack');
+                local savedSvc = sp.service('petMoveTypes');
+                local function readyDef(h)
+                    for i, d in ipairs(DEFS[h] or {}) do if d.kind == 'ready' then return i; end end
+                    return nil;
+                end
+                local elsewhere = {};
+                for h, _ in pairs(DEFS) do
+                    if h ~= 'PetAction' and readyDef(h) ~= nil then elsewhere[#elsewhere + 1] = h; end
+                end
+                check('TRD1 PetAction offers Pet-Ready, no other handler does',
+                    tostring(readyDef('PetAction') ~= nil) .. '/' .. table.concat(elsewhere, ','), 'true/');
+
+                local savedBP, savedBM, savedMI = IM.BeginPopup, IM.BeginMenu, IM.MenuItem;
+                IM.BeginPopup = function(id)
+                    local s = tostring(id);
+                    if s == '##dlac_trigadd' or s == '##trgcondmenu' then depth.popup = depth.popup + 1; return true; end
+                    return false;
+                end
+                IM.BeginMenu = function(l) REC[#REC + 1] = 'menu:' .. tostring(l); return tostring(l) == 'Pet-Ready##trgcready'; end
+                IM.MenuItem  = function(l) REC[#REC + 1] = 'item:' .. tostring(l); return tostring(l) == CLICK; end
+                local function openMenu(click)
+                    trig.data = {};
+                    trig.addFor, trig.addConds, trig._addDef = 'PetAction', {}, 1;
+                    trig._addValSel = nil; trig.addValText[1] = ''; trig.addSet = 'Ready_MACC';
+                    trig.addNote, trig.addSwap = nil, nil;
+                    trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;
+                    frame(click);
+                    local menus, items = {}, {};
+                    for _, l in ipairs(REC) do
+                        local m = l:match('^menu:([^#]+)##trgc');
+                        if m then menus[m] = true; end
+                        local it = l:match('^item:(Ready: [^#]+)##trgcready');
+                        if it then items[#items + 1] = it; end
+                    end
+                    return menus, items;
+                end
+                -- No pack answers: the menu leaves the cascade out, Avatar-Rage stays.
+                sp.provide('petMoveTypes', nil);
+                local menus0 = openMenu(nil);
+                check('TRD2 with no pack answering, the menu leaves Pet-Ready out',
+                    tostring(menus0['Pet-Ready']) .. '/' .. tostring(menus0['Avatar-Rage']), 'nil/true');
+                sp.provide('petMoveTypes', { typeOf = function() return nil; end });
+                local menus1, items = openMenu('Ready: Effect##trgcready4');
+                check('TRD3 with a pack, the cascade lists the six, in order',
+                    tostring(menus1['Pet-Ready']) .. '/' .. table.concat(items, ','),
+                    'true/Ready: Physical,Ready: Magic,Ready: Breath,Ready: Effect,Ready: Buff,Ready: Heal');
+                local cur = DEFS.PetAction[trig._addDef];
+                check('TRD4 clicking Ready: Effect lands the cascade and the entry',
+                    tostring(cur and cur.kind) .. '/' .. tostring(trig._addReady), 'ready/4');
+                IM.BeginPopup, IM.BeginMenu, IM.MenuItem = savedBP, savedBM, savedMI;
+                frame(nil);
+                local btn = false;
+                for _, l in ipairs(REC) do if l == 'Ready: Effect###trgcondbtn' then btn = true; end end
+                check('TRD5 ...and the condition button names it', btn, true);
+
+                local bad, dropped = {}, {};
+                for ri, p in ipairs(READY) do
+                    trig.data = {};
+                    trig.addFor, trig.addConds, trig._addDef = 'PetAction', {}, readyDef('PetAction');
+                    trig._addReady = ri;
+                    trig._addValSel = nil; trig.addSet = 'Ready';
+                    trig.addNote, trig.addSwap = nil, nil;
+                    frame('+ & condition##trgac');
+                    frame('Add rule###trgaddgo');
+                    local r = trig.data.PetAction and trig.data.PetAction[1];
+                    local got = (type(r) == 'table') and (r.when or {}).readytype or nil;
+                    if got ~= p.value then bad[#bad + 1] = tostring(p.value) .. '=' .. tostring(got); end
+                    local norm, warns = D._normalize({ PetAction = { r } });
+                    if #((norm or {}).PetAction or {}) ~= 1 or #(warns or {}) ~= 0 then dropped[#dropped + 1] = tostring(p.value); end
+                end
+                check('TRD6 each Ready entry saves as readyType = its value', table.concat(bad, ','), '');
+                check('TRD7 ...and the engine loads every one', table.concat(dropped, ','), '');
+
+                trig.data = {};
+                trig.addFor, trig._addDef, trig._addReady = 'PetAction', 1, 1;
+                trig.addConds = { { key = 'readytype', value = 'Heal' } };
+                trig.addNote, trig.addSwap = nil, nil;
+                frame('e##trgce1');
+                cur = DEFS.PetAction[trig._addDef];
+                check('TRD8 editing readyType = Heal reloads Ready: Heal',
+                    tostring(cur and cur.kind) .. '/' .. tostring(trig._addReady) .. '/' .. tostring(#trig.addConds), 'ready/6/0');
+                check('TRD9 the Pet-Ready popups stayed balanced', depth.popup, 0);
+                sp.provide('petMoveTypes', savedSvc);
+            else
+                check('TRD1 the Pet-Ready parameters are reachable', type(READY), 'table');
+            end
+
             -- TB58-64. Avatar-Ward, PetAction only: ONE plain entry (no
             -- cascade) that saves abilityType = Blood Pact: Ward -- the type
             -- the client gives every ward -- so the engine needs nothing new.
