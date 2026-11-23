@@ -12578,3 +12578,32 @@ the right click menu?"
 - Settings > Controller says so in its hover text.
 - Tests: tests/padnav.lua 157 checks (PN140-PN153 new; PN24, PN40 follow the
   press-on-release). Not checked in game.
+
+## 2026-11-23: a renamed item takes its new name in saved gear (`2026.11.23a`)
+
+AXI-157 (Fallen): the equipment window's card still said "Courier's Ring" for
+the ring AscensionXI renamed to the Lifter's Ring on 11-16. Henrik saw the
+same name in the Gear Vault.
+
+- The catalog and the Teleports row were renamed in `2026.11.16a`. The old
+  name lived in the player's own gear.lua: a character who scanned the ring
+  before the rename has `Name = "Courier's Ring"` saved, and an owned record
+  answers before the catalog (`gearoracle.lookup`), so every card that asks
+  "what is item 26582" got the saved name. The Gear Vault reads the same
+  record. The login repair corrected Level, Jobs and slot from the catalog,
+  never the Name.
+- It is more than a label: the engine matches a set's entry to the bags by
+  the client's name, so an entry still named Courier's Ring does not equip a
+  ring the client calls Lifter's Ring.
+- `gearimport.computeCatalogRepairs` takes a third argument, id -> the
+  client's name, and `repairCatalog` passes the resource manager's. The entry
+  takes that name; the key (`CouriersRing`) stays, so saved sets still point
+  at it. The client's name and not the catalog's, because the client's is the
+  one equips match (the scan already saves that one). Only for ids the
+  catalog knows, only plain printable names, and only a `Name = "..."` line,
+  so the written line reads back as the same name and the repair runs once.
+- A character who rescanned after the rename may hold a second entry
+  (`LiftersRing`) beside the old one. Both now read Lifter's Ring; `/dl fix`
+  lists the pair.
+- Tests: tests/gear_repair.lua NR1-NR11. Run over a real saved file holding
+  the old name: one line changed. Not checked in game.
