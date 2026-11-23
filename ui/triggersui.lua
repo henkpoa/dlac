@@ -208,6 +208,9 @@ local COND_DEFS = {
         { key = 'element',  kind = 'list', items = { 'Fire', 'Ice', 'Wind', 'Earth', 'Thunder', 'Water', 'Light', 'Dark', 'Non-Elemental' } },
         -- engine v175: a cascade of its own, PetAction only (RAGE_PARAMS below)
         { key = 'rageType', kind = 'rage', label = 'Avatar-Rage' },
+        -- engine v179: the same shape for a companion's Ready move
+        -- (READY_PARAMS below); listed only where a server pack answers
+        { key = 'readyType', kind = 'ready', label = 'Pet-Ready' },
         -- Any Blood Pact: Ward, one entry, no cascade. The client files every
         -- ward under the Blood Pact: Ward recast timer, so this is the
         -- abilityType the engine already reads off the pet's action -- no
@@ -285,14 +288,41 @@ local RAGE_PARAMS = {
       hint = 'the Blood Pact: Rage deals BREATH damage -- Nether Blast.\nFires as the avatar readies it.' },
 };
 
+-- The Pet-Ready cascade (engine v179), PetAction only: what the companion's
+-- Ready move does. ONE key, six 'fixed' values, the Avatar-Rage shape. The
+-- answer is a server pack's (service 'petMoveTypes'), so the cascade is
+-- listed only where one answers.
+local READY_PARAMS = {
+    { key = 'readyType', label = 'Ready: Physical', kind = 'fixed', value = 'Physical',
+      hint = 'your pet\'s Ready move deals PHYSICAL damage -- Razor Fang, Claw Cyclone,\nSheep Charge and the rest, the ranged moves (Needleshot, Leaf Dagger)\nincluded. Fires as the pet readies it.' },
+    { key = 'readyType', label = 'Ready: Magic',    kind = 'fixed', value = 'Magic',
+      hint = 'the Ready move deals MAGIC damage -- Fireball, Cursed Sphere, Wing\nCutter, the drains (Blood Drain, Digest, Drainkiss) and the rest.\nFires as the pet readies it.' },
+    { key = 'readyType', label = 'Ready: Breath',   kind = 'fixed', value = 'Breath',
+      hint = 'the Ready move deals BREATH damage -- Cold Breath, Poison Breath,\nSand Breath and the rest. Fires as the pet readies it.' },
+    { key = 'readyType', label = 'Ready: Effect',   kind = 'fixed', value = 'Effect',
+      hint = 'the Ready move lands a status effect and deals NO damage -- Roar,\nSheep Song, Spore, Sandpit and the rest: the place for pet magic\naccuracy. Fires as the pet readies it.' },
+    { key = 'readyType', label = 'Ready: Buff',     kind = 'fixed', value = 'Buff',
+      hint = 'the Ready move is a buff on the pet itself -- Rage, Scissor Guard,\nMetallic Body and the rest. Fires as the pet readies it.' },
+    { key = 'readyType', label = 'Ready: Heal',     kind = 'fixed', value = 'Heal',
+      hint = 'the Ready move heals the pet -- Wild Carrot, Pollen, Magic Fruit,\nCatharsis, Healing Breeze. Fires as the pet readies it.' },
+};
+
 -- The cascading rows of the condition chooser: def kind -> its menu title, its
 -- parameters and the trig field holding the picked one. Player and Pet ride
--- every handler (appended below); Avatar-Rage is PetAction's own.
+-- every handler (appended below); Avatar-Rage and Pet-Ready are PetAction's
+-- own. `service` names the server pack service a cascade's answers come from:
+-- without it the condition could never match, so the menu leaves it out.
 local CASCADES = {
     player = { title = 'Player',      params = PLAYER_PARAMS, slot = '_addPlayer' },
     pet    = { title = 'Pet',         params = PET_PARAMS,    slot = '_addPet' },
     rage   = { title = 'Avatar-Rage', params = RAGE_PARAMS,   slot = '_addRage' },
+    ready  = { title = 'Pet-Ready',   params = READY_PARAMS,  slot = '_addReady', service = 'petMoveTypes' },
 };
+local function cascadeListed(cs)
+    if cs == nil or cs.service == nil then return true; end
+    local ok, svc = pcall(function() return require('dlac\\gear\\serverpack').service(cs.service); end);
+    return ok and svc ~= nil;
+end
 do
     -- Append the shared nation-control/player/pet pickers once per defs table.
     local seenDef = {};
@@ -392,6 +422,7 @@ local trig = {
     addFor = nil, addConds = {}, _addDef = 1, _addValSel = nil, _addPlayer = 1,
     _addPet = 1,          -- the Pet cascade's picked parameter (engine v63)
     _addRage = 1,         -- the Avatar-Rage cascade's (engine v175)
+    _addReady = 1,        -- the Pet-Ready cascade's (engine v179)
     _condDrill = false,   -- no-BeginMenu fallback: which drill-down is open --
                           -- false closed, else its CASCADES kind (truthy = open)
     addValText = { '' }, addValNum = { 0 }, addSet = nil, addPrio = { 0 }, _openAdd = false,
@@ -1890,6 +1921,7 @@ local COND_COLORS = {
     skill = { 0.55, 0.85, 0.55, 1.0 },
     magictype = { 0.45, 0.80, 0.75, 1.0 }, abilitytype = { 0.45, 0.80, 0.75, 1.0 },
     ragetype = { 0.45, 0.80, 0.75, 1.0 },   -- a class of pact (v175), abilityType's colour
+    readytype = { 0.45, 0.80, 0.75, 1.0 },  -- a class of Ready move (v179), the same
     element = { 0.95, 0.70, 0.45, 1.0 },  songtype = { 0.80, 0.85, 0.50, 1.0 },
     dayweatherbonus = { 0.60, 0.90, 0.90, 1.0 },
     weathermatch = { 0.55, 0.80, 0.95, 1.0 },
@@ -3014,7 +3046,7 @@ local function renderTrigAddPopup()
         imgui.OpenPopup('##trgcondmenu');
     end
     if imgui.IsItemHovered() then
-        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / TP / buffs / sub job; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals, and\nAvatar-Ward matches any Blood Pact: Ward.');
+        imgui.SetTooltip('Pick the condition type. Player and Pet cascade into their\nparameter lists (HP / MP / TP / buffs / sub job; pet out / status / name /\nthe pet\'s element against the day and weather). On PetAction,\nAvatar-Rage cascades into what a Blood Pact: Rage deals,\nAvatar-Ward matches any Blood Pact: Ward, and Pet-Ready (where the\nserver tells dlac its moves) cascades into what a Ready move does.');
     end
     if imgui.BeginPopup('##trgcondmenu') then
         local function pickDef(di)
@@ -3045,7 +3077,9 @@ local function renderTrigAddPopup()
         else
             for di, d in ipairs(defs) do
                 local cs = CASCADES[d.kind];
-                if cs ~= nil then
+                if cs ~= nil and not cascadeListed(cs) then
+                    -- no server pack answers this cascade here: leave it out
+                elseif cs ~= nil then
                     -- Every cascade shares one shape; only the parameter list
                     -- and the picked-index slot differ (v63, v175).
                     if hasMenu then
@@ -4054,7 +4088,7 @@ local function bpEdit(index)
     trig.addPrio[1] = e.rule.priority or 0;
     trig.addSwap = nil;
     trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
-    trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
+    trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig._addReady = 1; trig.addValNum[1] = 0;
     trig._openAdd = true;
 end
 
@@ -5653,14 +5687,14 @@ function M.render(job, level)
             trig.addPrio[1] = r.priority or 0;
             trig.addSwap = nil;
             trig._addDef = 1; trig.addValText[1] = ''; trig._addValSel = nil;
-            trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
+            trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig._addReady = 1; trig.addValNum[1] = 0;
             trig._openAdd = true;
         end
         if imgui.Button('+ Add rule##trgadd_' .. h, { 0, require('dlac\\ui\\uiscale').px(28) }) then
             trig.addFor = h; trig.addConds = {}; trig.addCases = {}; trig.addBodyOp = '&'; trig._addDef = 1;
             trig.addNote, trig.addSwap = nil, nil;
             trig.addValText[1] = ''; trig._addValSel = nil; trig.addSet = nil; trig.addPrio[1] = 0;
-            trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig.addValNum[1] = 0;
+            trig._addPlayer = 1; trig._addPet = 1; trig._addRage = 1; trig._addReady = 1; trig.addValNum[1] = 0;
             trig.editIdx, trig._editEquip, trig._bpEdit = nil, nil, nil;   -- fresh add, not an edit
             trig._openAdd = true;
         end
