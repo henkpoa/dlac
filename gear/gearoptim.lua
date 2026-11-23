@@ -476,10 +476,11 @@ local activeWeights;         -- forward: the mode-resolved scoring table (points
 -- planned with the job's stance up, so the pack's stance bonuses join Stats
 -- and weighted builds; 'composure', the same for Red Mage's support stance
 -- (2026-10-22); 'divineguard' and 'divinefury', Paladin's two stances
--- (2026-10-25). It replaced the Stance Set checkbox, whose ticked sets load
+-- (2026-10-25); 'hasso' and 'seigan', Samurai's two (2026-11-23). It replaced the Stance Set checkbox, whose ticked sets load
 -- as 'stance'. The stance ids equal gear\stancestats' TYPES
 -- (tests/stance_sets.lua), listed here so this file loads without it.
-local STANCE_TYPES = { stance = true, composure = true, divineguard = true, divinefury = true };
+local STANCE_TYPES = { stance = true, composure = true, divineguard = true, divinefury = true,
+    hasso = true, seigan = true };
 M.SET_TYPES = { normal = true, ws1 = true };
 for id in pairs(STANCE_TYPES) do M.SET_TYPES[id] = true; end
 
@@ -498,10 +499,10 @@ end
 
 -- The Set Type menu for a job: Normal, 1-Hit WS, and each stance the pack
 -- has gear for on that job (RDM: Composure, Duelist Stance; PLD: Divine
--- Guard, Divine Fury). A set already typed with a stance keeps its row on a
+-- Guard, Divine Fury; SAM: Hasso, Seigan). A set already typed with a stance keeps its row on a
 -- job without one, so it can be set back.
 local STANCE_FALLBACK = { stance = 'Stance', composure = 'Composure',
-    divineguard = 'Divine Guard', divinefury = 'Divine Fury' };
+    divineguard = 'Divine Guard', divinefury = 'Divine Fury', hasso = 'Hasso', seigan = 'Seigan' };
 function M.setTypeOptions(job, current)
     local opts = {
         { id = 'normal', label = 'Normal', tip = 'Nothing special.' },

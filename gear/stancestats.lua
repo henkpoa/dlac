@@ -16,7 +16,7 @@ end
 
 -- The Set Type ids that plan with a stance, in menu order. gear\gearoptim's
 -- STANCE_TYPES must hold exactly these (tests/stance_sets.lua).
-M.TYPES = { 'composure', 'stance', 'divineguard', 'divinefury' };
+M.TYPES = { 'composure', 'stance', 'divineguard', 'divinefury', 'hasso', 'seigan' };
 
 -- The job's table for a stance type ('stance' when nil), or nil.
 local function stanceOf(job, typeId)

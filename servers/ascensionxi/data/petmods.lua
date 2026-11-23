@@ -477,6 +477,12 @@ return {
     [20022] = {
         Wyvern = { StoreTP = 4 },
     },
+    [20032] = {
+        Avatar = { Accuracy = 5, Attack = 5 },
+    },
+    [20035] = {
+        Wyvern = { StoreTP = 5 },
+    },
     [20516] = {
         Automaton = { Refresh = 4, Regen = 4 },
     },
@@ -1125,6 +1131,9 @@ return {
     },
     [26540] = {
         All = { Accuracy = 52, Enmity = 12, Haste = 4, RangedAccuracy = 52 },
+    },
+    [26586] = {
+        All = { Regen = 1 },
     },
     [26593] = {
         All = { Accuracy = 42, Enmity = 10, Haste = 4, RangedAccuracy = 42 },

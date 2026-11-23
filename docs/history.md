@@ -12640,3 +12640,29 @@ same name in the Gear Vault.
   lists the pair.
 - Tests: tests/gear_repair.lua NR1-NR11. Run over a real saved file holding
   the old name: one line changed. Not checked in game.
+
+## 2026-11-23: AscensionXI Samurai refresh, Set Types Hasso and Seigan (`2026.11.23b`)
+
+Henrik: "SAM is coming out, so need to fix the new AFs, relic, forsaken
+weapons etc." The pack is regenerated from AscensionXI main `73f4aa1b14`;
+[ascensionxi-catalog-refresh.md](reference/ascensionxi-catalog-refresh.md)
+lists the records.
+
+- **Set Types Hasso and Seigan.** Samurai's Artifact and relic pieces each
+  carry a Hasso line and a Seigan line, status-effect latents on effects 353
+  and 354. `stancestats.TYPES` and gearoptim's `STANCE_TYPES` gain `hasso`
+  and `seigan`; the pack's `stances.lua` holds the rows. The Set Type menu on
+  Samurai reads Normal / 1-Hit WS / Hasso / Seigan. Following Paladin's two
+  (`2026.10.25a`); the names and the choice to add them in a refresh are the
+  agent's.
+- **Stance Gates.** Hasso and Seigan are offered in the Behaviour popup on
+  Samurai, by their buff names.
+- The Awakened Rapier joins Duelist Stance and Composure. tests/stance_sets
+  failed without it: the parity check reads the generated latent rows.
+- The pack's `statdefs.lua` names Skill Chain TP Bonus, TP Counter and Third
+  Eye Counter Dmg. for the Stats view and the weights editor. The hover
+  card's stance lines print raw keys, as they do for every stat.
+- The legacy `stancePerSet` block in the weights file still lists only plain
+  `stance` sets, so it never names a Hasso or Seigan set.
+- Tests: tests/stance_sets.lua (parity for both tables, totals, the menu,
+  the gates, labels). Not checked in game.
