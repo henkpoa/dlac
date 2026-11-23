@@ -219,6 +219,22 @@ return {
                     Attack = 10,
                 }
             },
+            AwakenedKnuckles = {
+                Name = "Awakened Knuckles",
+                Level = 40,
+                Id = 20024,
+                Model = 901,
+                Jobs = {"MNK"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 19,
+                    Delay = 570,
+                    STR = 5,
+                    Haste = 5,
+                    StoreTP = 5,
+                }
+            },
             Baghnakhs = {
                 Name = "Baghnakhs",
                 Level = 24,
@@ -5895,6 +5911,39 @@ return {
                     DMG = 23,
                     Delay = 201,
                     CHR = 2,
+                }
+            },
+            AwakenedDagger = {
+                Name = "Awakened Dagger",
+                Level = 40,
+                Id = 20028,
+                Model = 905,
+                Jobs = {"THF"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 19,
+                    Delay = 190,
+                    STR = 4,
+                    DEX = 4,
+                    AGI = 4,
+                    CriticalHitRate = 4,
+                }
+            },
+            AwakenedJambiya = {
+                Name = "Awakened Jambiya",
+                Level = 40,
+                Id = 20029,
+                Model = 906,
+                Jobs = {"DNC"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 18,
+                    Delay = 190,
+                    DEX = 5,
+                    CHR = 5,
+                    StepAccuracy = 10,
                 }
             },
             Azoth = {
@@ -12669,6 +12718,35 @@ return {
                     DMG = 17,
                     Delay = 224,
                     Accuracy = 2,
+                }
+            },
+            AwakenedRapier = {
+                Name = "Awakened Rapier",
+                Level = 40,
+                Id = 20027,
+                Model = 904,
+                Jobs = {"RDM"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 30,
+                    Delay = 215,
+                }
+            },
+            AwakenedSword = {
+                Name = "Awakened Sword",
+                Level = 40,
+                Id = 20030,
+                Model = 907,
+                Jobs = {"PLD"},
+                OneHanded = true,
+                Type = "Sword",
+                Stats = {
+                    DMG = 35,
+                    Delay = 240,
+                    VIT = 5,
+                    Enmity = 5,
+                    ShieldSkill = 5,
                 }
             },
             Badelaire = {
@@ -19871,6 +19949,22 @@ return {
                     Delay = 480,
                 }
             },
+            AwkGreatSword = {
+                Name = "Awk. Great Sword",
+                Level = 40,
+                Id = 20031,
+                Model = 908,
+                Jobs = {"PLD"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 69,
+                    Delay = 444,
+                    STR = 5,
+                    Accuracy = 5,
+                    Attack = 5,
+                }
+            },
             Bahadur = {
                 Name = "Bahadur",
                 Level = 73,
@@ -23792,6 +23886,22 @@ return {
                     Delay = 276,
                 }
             },
+            AwakenedAxe = {
+                Name = "Awakened Axe",
+                Level = 40,
+                Id = 20034,
+                Model = 914,
+                Jobs = {"BST"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 37,
+                    Delay = 276,
+                    STR = 5,
+                    CHR = 5,
+                    Accuracy = 5,
+                }
+            },
             Aymur = {
                 Name = "Aymur",
                 Level = 75,
@@ -27439,6 +27549,22 @@ return {
                 Stats = {
                     DMG = 1,
                     Delay = 504,
+                }
+            },
+            AwkGreatAxe = {
+                Name = "Awk. Great Axe",
+                Level = 40,
+                Id = 20023,
+                Model = 900,
+                Jobs = {"WAR"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 80,
+                    Delay = 490,
+                    STR = 5,
+                    Accuracy = 5,
+                    Retaliation = 5,
                 }
             },
             AxeOfTrials = {
@@ -31240,6 +31366,21 @@ return {
                     Delay = 528,
                 }
             },
+            AwakenedSickle = {
+                Name = "Awakened Sickle",
+                Level = 40,
+                Id = 20026,
+                Model = 903,
+                Jobs = {"BLM"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 68,
+                    Delay = 470,
+                    INT = 7,
+                    ElementalMagicSkill = 5,
+                }
+            },
             BahamutZaghnal = {
                 Name = "Bahamut Zaghnal",
                 Level = 75,
@@ -34511,6 +34652,21 @@ return {
                 Stats = {
                     DMG = 257,
                     Delay = 396,
+                }
+            },
+            AwakenedLance = {
+                Name = "Awakened Lance",
+                Level = 40,
+                Id = 20035,
+                Model = 916,
+                Jobs = {"DRG"},
+                OneHanded = false,
+                Type = "Polearm",
+                Stats = {
+                    DMG = 72,
+                    Delay = 492,
+                    STR = 5,
+                    Accuracy = 5,
                 }
             },
             Barchha = {
@@ -42684,6 +42840,22 @@ return {
                     Delay = 450,
                 }
             },
+            AwkGrKatana = {
+                Name = "Awk. Gr. Katana",
+                Level = 40,
+                Id = 20040,
+                Model = 917,
+                Jobs = {"SAM"},
+                OneHanded = false,
+                Type = "GreatKatana",
+                Stats = {
+                    DMG = 67,
+                    Delay = 450,
+                    STR = 5,
+                    Accuracy = 5,
+                    StoreTP = 5,
+                }
+            },
             Azukinagamitsu = {
                 Name = "Azukinagamitsu",
                 Level = 99,
@@ -42950,6 +43122,19 @@ return {
                 Type = "GreatKatana",
                 Stats = {
                     DMG = 1,
+                    Delay = 450,
+                }
+            },
+            ForsakenGrKatana = {
+                Name = "Forsaken Gr. Katana",
+                Level = 10,
+                Id = 20036,
+                Model = 145,
+                Jobs = {"SAM"},
+                OneHanded = false,
+                Type = "GreatKatana",
+                Stats = {
+                    DMG = 17,
                     Delay = 450,
                 }
             },
@@ -44212,17 +44397,19 @@ return {
             },
             Magoroku = {
                 Name = "Magoroku",
-                Level = 42,
+                Level = 40,
                 Id = 17812,
                 Model = 146,
                 Jobs = {"SAM"},
                 OneHanded = false,
                 Type = "GreatKatana",
                 Stats = {
-                    DMG = 56,
+                    DMG = 63,
                     Delay = 450,
-                    STR = 1,
-                    AGI = 1,
+                    STR = 3,
+                    DEX = 2,
+                    Accuracy = 3,
+                    StoreTP = 2,
                 }
             },
             Masamune = {
@@ -44855,6 +45042,54 @@ return {
                 Stats = {
                     DMG = 77,
                     Delay = 450,
+                }
+            },
+            RkndlGrKatana = {
+                Name = "Rkndl. Gr. Katana",
+                Level = 10,
+                Id = 20037,
+                Model = 392,
+                Jobs = {"SAM"},
+                OneHanded = false,
+                Type = "GreatKatana",
+                Stats = {
+                    DMG = 33,
+                    Delay = 450,
+                    STR = 2,
+                    Accuracy = 2,
+                    StoreTP = 2,
+                }
+            },
+            RkndlGrKatana_1 = {
+                Name = "Rkndl. Gr. Katana +1",
+                Level = 20,
+                Id = 20038,
+                Model = 392,
+                Jobs = {"SAM"},
+                OneHanded = false,
+                Type = "GreatKatana",
+                Stats = {
+                    DMG = 40,
+                    Delay = 450,
+                    STR = 3,
+                    Accuracy = 3,
+                    StoreTP = 3,
+                }
+            },
+            RkndlGrKatana_2 = {
+                Name = "Rkndl. Gr. Katana +2",
+                Level = 30,
+                Id = 20039,
+                Model = 392,
+                Jobs = {"SAM"},
+                OneHanded = false,
+                Type = "GreatKatana",
+                Stats = {
+                    DMG = 58,
+                    Delay = 450,
+                    STR = 4,
+                    Accuracy = 4,
+                    StoreTP = 4,
                 }
             },
             SakonjiNoTachi = {
@@ -45961,6 +46196,21 @@ return {
                 Stats = {
                     DMG = 221,
                     Delay = 340,
+                }
+            },
+            AwakenedClub = {
+                Name = "Awakened Club",
+                Level = 40,
+                Id = 20025,
+                Model = 902,
+                Jobs = {"WHM"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 30,
+                    Delay = 310,
+                    MND = 7,
+                    HealingMagicSkill = 5,
                 }
             },
             BaguaWand = {
@@ -52237,6 +52487,20 @@ return {
                 Stats = {
                     DMG = 94,
                     Delay = 402,
+                }
+            },
+            AwakenedStaff = {
+                Name = "Awakened Staff",
+                Level = 40,
+                Id = 20032,
+                Model = 910,
+                Jobs = {"SMN"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 42,
+                    Delay = 366,
+                    SummoningMagicSkill = 5,
                 }
             },
             BahamutsStaff = {
@@ -64298,6 +64562,22 @@ return {
                 Stats = {
                     DMG = 314,
                     Delay = 600,
+                }
+            },
+            AwakenedBow = {
+                Name = "Awakened Bow",
+                Level = 40,
+                Id = 20033,
+                Model = 149,
+                Jobs = {"RNG"},
+                Type = "Archery",
+                Pair = "25:0",
+                Stats = {
+                    DMG = 68,
+                    Delay = 540,
+                    AGI = 5,
+                    RangedAccuracy = 5,
+                    RangedAttack = 19,
                 }
             },
             Bateleur = {
@@ -78384,7 +78664,7 @@ return {
         },
         PetFoodAlpha = {
             Name = "Pet Food Alpha",
-            Level = 12,
+            Level = 10,
             Id = 17016,
             Jobs = {"All"},
             Type = "Ammo",
@@ -96407,15 +96687,16 @@ return {
         },
         MyochinKabuto = {
             Name = "Myochin Kabuto",
-            Level = 60,
+            Level = 50,
             Id = 13868,
             Model = 86,
             Jobs = {"SAM"},
             Type = "Head",
             Stats = {
-                DEF = 20,
-                HP = 10,
-                MND = 5,
+                DEF = 21,
+                HP = 15,
+                STR = 3,
+                Accuracy = 4,
                 MeditateDuration = 4,
                 WardingCircleDuration = 90,
                 WardingCirclePotency = 2,
@@ -100532,11 +100813,11 @@ return {
             Jobs = {"SAM"},
             Type = "Head",
             Stats = {
-                DEF = 25,
+                DEF = 26,
                 HP = 20,
+                STR = 5,
                 Accuracy = 10,
-                RangedAccuracy = 5,
-                Enmity = 1,
+                StoreTP = 2,
             }
         },
         SapphireMask = {
@@ -106988,6 +107269,16 @@ return {
                 Snapshot = 2,
             }
         },
+        CompanionsPendant = {
+            Name = "Companion's Pendant",
+            Level = 30,
+            Id = 26586,
+            Jobs = {"BST", "DRG", "SMN", "PUP"},
+            Type = "Neck",
+            Stats = {
+                HP = 20,
+            }
+        },
         ConsummTorque = {
             Name = "Consumm. Torque",
             Level = 99,
@@ -107670,7 +107961,7 @@ return {
         },
         FangNecklace = {
             Name = "Fang Necklace",
-            Level = 21,
+            Level = 20,
             Id = 13076,
             Jobs = {"All"},
             Type = "Neck",
@@ -110682,7 +110973,7 @@ return {
         },
         SpikeNecklace = {
             Name = "Spike Necklace",
-            Level = 21,
+            Level = 20,
             Id = 13061,
             Jobs = {"All"},
             Type = "Neck",
@@ -134935,16 +135226,18 @@ return {
         },
         MyochinDomaru = {
             Name = "Myochin Domaru",
-            Level = 58,
+            Level = 50,
             Id = 13781,
             Model = 86,
             Jobs = {"SAM"},
             Type = "Body",
             Stats = {
-                DEF = 41,
-                HP = 10,
-                VIT = 3,
-                DarkResistance = 15,
+                DEF = 42,
+                HP = 20,
+                STR = 4,
+                VIT = 4,
+                Attack = 8,
+                StoreTP = 2,
             }
         },
         MythMskLivery = {
@@ -139377,11 +139670,13 @@ return {
             Jobs = {"SAM"},
             Type = "Body",
             Stats = {
-                DEF = 50,
+                DEF = 51,
                 HP = 34,
+                STR = 6,
                 VIT = 6,
-                StoreTP = 3,
-                Enmity = 1,
+                Attack = 10,
+                Haste = 2,
+                StoreTP = 5,
             }
         },
         SapphirePlatemail = {
@@ -158794,16 +159089,17 @@ return {
         },
         MyochinKote = {
             Name = "Myochin Kote",
-            Level = 56,
+            Level = 50,
             Id = 13972,
             Model = 86,
             Jobs = {"SAM"},
             Type = "Hands",
             Stats = {
-                DEF = 15,
+                DEF = 16,
                 HP = 15,
+                STR = 3,
                 DEX = 4,
-                Enmity = 2,
+                Accuracy = 5,
             }
         },
         MyrmexMittens = {
@@ -162344,11 +162640,12 @@ return {
             Jobs = {"SAM"},
             Type = "Hands",
             Stats = {
-                DEF = 21,
-                HP = 10,
+                DEF = 22,
+                HP = 16,
+                STR = 4,
+                DEX = 4,
                 Attack = 10,
-                Enmity = 1,
-                MeditateDuration = 4,
+                Haste = 1,
             }
         },
         SapphireGauntlets = {
@@ -168940,6 +169237,22 @@ return {
             Type = "Ring",
             Stats = {
                 INT = 5,
+            }
+        },
+        EquilibriumRing = {
+            Name = "Equilibrium Ring",
+            Level = 30,
+            Id = 26585,
+            Jobs = {"All"},
+            Type = "Ring",
+            Stats = {
+                STR = 2,
+                DEX = 2,
+                VIT = 2,
+                AGI = 2,
+                INT = 2,
+                MND = 2,
+                CHR = 2,
             }
         },
         EremitesRing = {
@@ -178194,6 +178507,19 @@ return {
             Stats = {
                 DEF = 8,
                 Attack = 5,
+            }
+        },
+        SanguineCape = {
+            Name = "Sanguine Cape",
+            Level = 30,
+            Id = 26584,
+            Jobs = {"WHM", "BLM", "RDM", "BRD", "SMN", "BLU", "PUP", "SCH", "GEO"},
+            Type = "Back",
+            Stats = {
+                DEF = 3,
+                MP = 15,
+                INT = 3,
+                Enmity = -2,
             }
         },
         SapientCape = {
@@ -198946,17 +199272,18 @@ return {
         },
         MyochinHaidate = {
             Name = "Myochin Haidate",
-            Level = 54,
+            Level = 50,
             Id = 14225,
             Model = 86,
             Jobs = {"SAM"},
             Type = "Legs",
             Stats = {
-                DEF = 30,
+                DEF = 31,
                 HP = 15,
                 STR = 3,
-                EarthResistance = 10,
-                ParryingSkill = 5,
+                DEX = 2,
+                Attack = 4,
+                StoreTP = 2,
             }
         },
         MystagogSlacks = {
@@ -202445,7 +202772,7 @@ return {
                 HP = 33,
                 AGI = 4,
                 Enmity = 1,
-                ThirdEyeCounter = 15,
+                ThirdEyeCounterDamage = 15,
             }
         },
         SaoHaidate_2 = {
@@ -202472,11 +202799,12 @@ return {
             Jobs = {"SAM"},
             Type = "Legs",
             Stats = {
-                DEF = 40,
+                DEF = 41,
                 HP = 18,
-                AGI = 3,
-                Enmity = 1,
-                ThirdEyeCounter = 15,
+                STR = 4,
+                DEX = 5,
+                Accuracy = 6,
+                Haste = 2,
             }
         },
         SapphireTrousers = {
@@ -221188,17 +221516,17 @@ return {
         },
         MyochinSuneAte = {
             Name = "Myochin Sune-Ate",
-            Level = 52,
+            Level = 50,
             Id = 14100,
             Model = 86,
             Jobs = {"SAM"},
             Type = "Feet",
             Stats = {
-                DEF = 13,
+                DEF = 14,
                 HP = 20,
-                Enmity = 5,
-                EvasionSkill = 5,
-                FireResistance = 10,
+                STR = 2,
+                DEX = 3,
+                Accuracy = 3,
             }
         },
         MythrilLeggings = {
@@ -224762,11 +225090,12 @@ return {
             Jobs = {"SAM"},
             Type = "Feet",
             Stats = {
-                DEF = 18,
+                DEF = 19,
                 HP = 23,
+                STR = 3,
                 DEX = 5,
+                Accuracy = 5,
                 Attack = 8,
-                Enmity = 1,
             }
         },
         SapientiaSabots = {

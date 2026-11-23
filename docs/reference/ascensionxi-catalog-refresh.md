@@ -4,6 +4,59 @@ A log of AscensionXI catalog refreshes, newest first. To get one from DLAC main 
 
 ---
 
+# AscensionXI catalog refresh, November 23, 2026
+
+DLAC `2026.11.23b` regenerates the complete pack from AscensionXI main
+`73f4aa1b14` (after #1324), for the Samurai release. The generator had
+already been taught Samurai's three stats on the AscensionXI side
+(`modtable.py`, #1374 and #1380). The `tools/dlac-pack` tests pass (80).
+15,516 records (21 added, 15 changed, none removed), 21 new icons. Every
+other generated file is identical apart from line endings, except
+`latentstats` (11 more items) and `petmods` (3 more).
+
+- **Samurai's Artifact and relic gear (#1374, #1380):** the five Myochin
+  pieces are level 50 with the server's new stats, the five Saotome pieces
+  carry theirs, and all ten have a Hasso line and a Seigan line (status
+  latents on effects 353 and 354). Saotome Haidate no longer has a Third Eye
+  counter rate; Sao. Haidate +1 reads Third Eye counter damage.
+- **Magoroku (#1374):** level 40, DMG 63, with its new stats.
+- **Samurai's Onslaught great katanas (#1374):** Forsaken Gr. Katana (20036),
+  Rkndl. Gr. Katana, +1 and +2 (20037 to 20039).
+- **Awakened weapons (#1324):** fourteen level 40 weapons, ids 20023 to
+  20035 and Awk. Gr. Katana 20040, with the Awakened Club's Afflatus lines,
+  the Awakened Rapier's stance lines and the Staff's and Lance's pet stats.
+- **Onslaught T4 rewards (#1324):** Sanguine Cape (26584), Equilibrium Ring
+  (26585) and Companion's Pendant (26586, Regen for every pet).
+- **Spike Necklace and Fang Necklace (#1372):** level 20.
+- **Pet Food Alpha (#1345):** level 10.
+
+Hand-kept, in the same change:
+
+- `stances.lua`: the Awakened Rapier joins Red Mage's Duelist Stance and
+  Composure tables. Samurai gets a `hasso` and a `seigan` table (the ten
+  Artifact and relic pieces, plus the two level 99 Kasuga pieces that carry
+  the same latents and never count under the cap) and both as Stance Gates.
+- `gear\stancestats` and `gear\gearoptim`: Set Types `hasso` and `seigan`,
+  offered on Samurai. This is general client code, as Paladin's two were on
+  October 25.
+- `statdefs.lua` (the pack's): labels for Skill Chain TP Bonus, TP Counter
+  and Third Eye Counter Dmg.
+
+The Awakened Club's Afflatus lines stay raw (`JUDGEMENT_BONUS`,
+`REGEN_BONUS`), as the Rekindled Clubs' are: the generator has no name for
+them.
+
+Client DATs: the worktree's LFS files were hydrated before generating, and
+all 15,516 records take their name from the tracked DATs, none from the
+fallback.
+
+Verification, offline only: all 47 DLAC CI commands (core 8,201, UI smoke
+1,849), pack lint (ascensionxi 50, cexi 39). `tests/stance_sets.lua` holds
+the Samurai tables to the generated latent rows both ways. Not checked in
+game.
+
+---
+
 # AscensionXI catalog refresh, November 16, 2026
 
 DLAC `2026.11.16b` regenerates the complete pack from AscensionXI main

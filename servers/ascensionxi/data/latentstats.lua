@@ -633,6 +633,10 @@ return {
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 2 },
         { stat = "Regen", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 19 },
     },
+    [13781] = {
+        { stat = "Attack", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+        { stat = "HP", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+    },
     [13789] = {
         { stat = "Attack", add = 12, cond = "HP_UNDER_PERCENT", param = 25 },
         { stat = "DEF", add = 44, cond = "HP_UNDER_PERCENT", param = 25 },
@@ -646,6 +650,10 @@ return {
     },
     [13852] = {
         { stat = "Regen", add = 2, cond = "WATERSDAY", param = 0 },
+    },
+    [13868] = {
+        { stat = "Enmity", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "Zanshin", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
     },
     [13870] = {
         { stat = "CHR", add = 14, cond = "FOOD_ACTIVE", param = 4468 },
@@ -772,6 +780,7 @@ return {
         { stat = "VIT", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
     },
     [13972] = {
+        { stat = "Accuracy", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
         { stat = "AquanKiller", add = 4, cond = "FOOD_ACTIVE", param = 4604 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "Attack", add = 50, cond = "FOOD_ACTIVE", param = 4278 },
@@ -790,6 +799,7 @@ return {
         { stat = "DEF", add = 40, cond = "FOOD_ACTIVE", param = 5929 },
         { stat = "DoubleAttack", add = 1, cond = "FOOD_ACTIVE", param = 4277 },
         { stat = "DoubleAttack", add = 2, cond = "FOOD_ACTIVE", param = 4278 },
+        { stat = "Enmity", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
         { stat = "TripleAttack", add = 1, cond = "FOOD_ACTIVE", param = 5928 },
         { stat = "TripleAttack", add = 2, cond = "FOOD_ACTIVE", param = 5929 },
     },
@@ -902,6 +912,10 @@ return {
         { stat = "Attack", add = 2, cond = "PLD_STANCE_EXACTLY", param = 2 },
         { stat = "ShieldSkill", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
     },
+    [14100] = {
+        { stat = "Enmity", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "Zanshin", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+    },
     [14101] = {
         { stat = "MovementSpeed", add = 24, cond = "TIME_OF_DAY", param = 1 },
     },
@@ -981,6 +995,10 @@ return {
         { stat = "Attack", add = 6, cond = "PLD_STANCE_EXACTLY", param = 2 },
         { stat = "DEX", add = 3, cond = "PLD_STANCE_EXACTLY", param = 2 },
         { stat = "Enmity", add = 2, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
+    [14225] = {
+        { stat = "ParryingSkill", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "StoreTP", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
     },
     [14226] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
@@ -1393,6 +1411,12 @@ return {
         { stat = "RampartDuration", add = 15, cond = "PLD_STANCE_EXACTLY", param = 1 },
         { stat = "SkillchainDamage", add = 5, cond = "PLD_STANCE_EXACTLY", param = 2 },
     },
+    [15083] = {
+        { stat = "Enmity", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "MeditateDuration", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+        { stat = "ThirdEyeCounterDamage", add = 15, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "Zanshin", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+    },
     [15084] = {
         { stat = "ParryingSkill", add = 10, cond = "TIME_OF_DAY", param = 1 },
     },
@@ -1416,12 +1440,23 @@ return {
         { stat = "STR", add = 8, cond = "WEAPON_DRAWN", param = 0 },
         { stat = "VIT", add = 8, cond = "WEAPON_DRAWN", param = 0 },
     },
+    [15098] = {
+        { stat = "Enmity", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "HP", add = 40, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "SAMChainTPBonus", add = 50, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+        { stat = "SAMSeiganCounterTP", add = 50, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "StoreTP", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+    },
     [15108] = {
         { stat = "Accuracy", add = 4, cond = "PLD_STANCE_EXACTLY", param = 2 },
         { stat = "Enmity", add = 3, cond = "PLD_STANCE_EXACTLY", param = 1 },
         { stat = "Haste", add = 2, cond = "PLD_STANCE_EXACTLY", param = 2 },
         { stat = "ShieldBash", add = 10, cond = "PLD_STANCE_EXACTLY", param = 1 },
         { stat = "VIT", add = 5, cond = "PLD_STANCE_EXACTLY", param = 1 },
+    },
+    [15113] = {
+        { stat = "Accuracy", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+        { stat = "Enmity", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
     },
     [15114] = {
         { stat = "Haste", add = 4, cond = "TIME_OF_DAY", param = 1 },
@@ -1447,6 +1482,11 @@ return {
         { stat = "STR", add = -8, cond = "WEAPON_SHEATHED", param = 0 },
         { stat = "VIT", add = -8, cond = "WEAPON_SHEATHED", param = 0 },
     },
+    [15128] = {
+        { stat = "Enmity", add = 1, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "ParryingSkill", add = 8, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
+        { stat = "Zanshin", add = 3, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+    },
     [15129] = {
         { stat = "Evasion", add = 10, cond = "TIME_OF_DAY", param = 1 },
     },
@@ -1462,6 +1502,10 @@ return {
     },
     [15139] = {
         { stat = "DEFP", add = 10, cond = "STATUS_EFFECT_ACTIVE", param = 64 },
+    },
+    [15143] = {
+        { stat = "Attack", add = 5, cond = "STATUS_EFFECT_ACTIVE", param = 353 },
+        { stat = "Enmity", add = 2, cond = "STATUS_EFFECT_ACTIVE", param = 354 },
     },
     [15144] = {
         { stat = "DEX", add = 7, cond = "TIME_OF_DAY", param = 1 },
@@ -3358,6 +3402,16 @@ return {
         { stat = "EnspellDamage", add = 4, cond = "RDM_STANCE_AT_LEAST", param = 2 },
         { stat = "INT", add = 6, cond = "RDM_STANCE_EXACTLY", param = 1 },
         { stat = "MND", add = 6, cond = "RDM_STANCE_EXACTLY", param = 1 },
+    },
+    [20025] = {
+        { stat = "JUDGEMENT_BONUS", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 418 },
+        { stat = "REGEN_BONUS", add = 4, cond = "STATUS_EFFECT_ACTIVE", param = 417 },
+    },
+    [20027] = {
+        { stat = "EnhancingMagicSkill", add = 6, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "EnspellDamage", add = 5, cond = "RDM_STANCE_AT_LEAST", param = 2 },
+        { stat = "INT", add = 7, cond = "RDM_STANCE_EXACTLY", param = 1 },
+        { stat = "MND", add = 7, cond = "RDM_STANCE_EXACTLY", param = 1 },
     },
     [20482] = {
         { stat = "Accuracy", add = 30, cond = "STATUS_EFFECT_ACTIVE", param = 59 },

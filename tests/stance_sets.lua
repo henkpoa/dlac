@@ -56,7 +56,8 @@ assert(optim.setSetType('stance'))
 -- latent rows, both ways. Duelist Stance = latent 30000 (RDM_STANCE_AT_LEAST)
 -- at power 2, Focus or Trance; Composure = latent 30001 (RDM_STANCE_EXACTLY)
 -- at power 1; Divine Guard and Divine Fury = latent 30002
--- (PLD_STANCE_EXACTLY) at power 1 and 2.
+-- (PLD_STANCE_EXACTLY) at power 1 and 2; Hasso and Seigan = the status-effect
+-- latent (STATUS_EFFECT_ACTIVE) on effects 353 and 354.
 local packStances = dofile('servers/ascensionxi/stances.lua')
 local rdm, pld = packStances.RDM, packStances.PLD
 local latents = dofile('servers/ascensionxi/data/latentstats.lua')
@@ -90,6 +91,9 @@ parity(rdm.stance, 'RDM_STANCE_AT_LEAST', 2, 'Duelist Stance')
 parity(rdm.composure, 'RDM_STANCE_EXACTLY', 1, 'Composure')
 parity(pld.divineguard, 'PLD_STANCE_EXACTLY', 1, 'Divine Guard')
 parity(pld.divinefury, 'PLD_STANCE_EXACTLY', 2, 'Divine Fury')
+local sam = packStances.SAM
+parity(sam.hasso, 'STATUS_EFFECT_ACTIVE', 353, 'Hasso')
+parity(sam.seigan, 'STATUS_EFFECT_ACTIVE', 354, 'Seigan')
 -- Every stance latent row in the pack belongs to one of those tables: a new
 -- power (Trance only, say) or a new job's stance latent needs a decision.
 for id, rows in pairs(latents) do
@@ -133,6 +137,30 @@ assert(stance.apply(valorHead,valorHead.Stats,{level=72,job='PLD',stanceSet=true
     'a piece above the planned level adds nothing')
 assert(stance.apply(gallant.Head,{},{level=75,job='RDM',stanceSet=true,stanceType='divineguard'}).VIT == nil,
     'Paladin rows are Paladin only')
+-- Samurai (2026-11-23): Hasso and Seigan, each with its own rows.
+optim.bindSetWeights('SAM','TP')
+assert(optim.setSetType('hasso'))
+local hctx = optim.stanceContext(75)
+assert(hctx.stanceSet and hctx.stanceType == 'hasso' and hctx.job == 'SAM')
+local saotome = {}
+for slot,id in pairs({Head=15083,Body=15098,Hands=15113,Legs=15128,Feet=15143}) do
+    saotome[slot]={Id=id,Level=75,Stats={}}
+end
+local htotals = oracle.setStats(saotome,hctx).stats
+assert(htotals.Zanshin == 6 and htotals.StoreTP == 3 and htotals.Accuracy == 4 and htotals.Attack == 5
+    and htotals.MeditateDuration == 4 and htotals.SAMChainTPBonus == 50, 'Hasso counts the Saotome rows')
+assert(not htotals.Enmity and not htotals.HP and not htotals.ThirdEyeCounterDamage, "and not Seigan's")
+assert(optim.setSetType('seigan'))
+local sctx = optim.stanceContext(75)
+assert(sctx.stanceSet and sctx.stanceType == 'seigan')
+local stotals = oracle.setStats(saotome,sctx).stats
+assert(stotals.Enmity == 10 and stotals.HP == 40 and stotals.ParryingSkill == 8
+    and stotals.ThirdEyeCounterDamage == 15 and stotals.SAMSeiganCounterTP == 50, 'Seigan counts the Saotome rows')
+assert(not stotals.Zanshin and not stotals.StoreTP, "and not Hasso's")
+assert(stance.apply(saotome.Body,{},{level=75,job='WAR',stanceSet=true,stanceType='hasso'}).StoreTP == nil,
+    'Samurai rows are Samurai only')
+assert(stance.apply({Id=23297,Level=99,Stats={}},{},hctx).Haste == nil, 'a level 99 piece adds nothing at 75')
+optim.setSetType('normal')
 optim.bindSetWeights('RDM','Melee')
 optim.bindSetWeights('RDM','WS')
 assert(optim.setSetType('ws1'))
@@ -190,6 +218,9 @@ assert(labels('BLM','stance') == 'Normal / 1-Hit WS / Stance', 'a stance set els
 assert(labels('BLM','composure') == 'Normal / 1-Hit WS / Composure', 'a Composure set too')
 assert(labels('PLD') == 'Normal / 1-Hit WS / Divine Guard / Divine Fury', labels('PLD'))
 assert(labels('WAR','divinefury') == 'Normal / 1-Hit WS / Berserk / Divine Fury', 'a Paladin stance set elsewhere can be set back')
+assert(labels('SAM') == 'Normal / 1-Hit WS / Hasso / Seigan', labels('SAM'))
+assert(labels('BLM','seigan') == 'Normal / 1-Hit WS / Seigan', 'a Samurai stance set elsewhere can be set back')
+assert(stance.label('SAM','hasso') == 'Hasso' and stance.label('SAM','seigan') == 'Seigan' and stance.label('SAM') == nil)
 assert(stance.label('RDM','composure') == 'Composure' and stance.label('RDM') == 'Duelist Stance')
 assert(stance.label('PLD','divineguard') == 'Divine Guard' and stance.label('PLD','divinefury') == 'Divine Fury')
 assert(stance.label('PLD') == nil, 'Paladin has no plain stance table')
@@ -202,6 +233,15 @@ assert(lines(12644) == 'Divine Guard: VIT+4 Enmity+2 Shield Skill+5 | Divine Fur
 assert(lines(16678) == 'Berserk: Attack+10', lines(16678))
 assert(lines(19978) == 'Composure: INT+4 MND+4 | Duelist Stance: Enhancing Magic Skill+4 EnspellDamage+2'
     or lines(19978) == 'Composure: INT+4 MND+4 | Duelist Stance: EnspellDamage+2 Enhancing Magic Skill+4', lines(19978))
+assert(lines(20027) == 'Composure: INT+7 MND+7 | Duelist Stance: Enhancing Magic Skill+6 EnspellDamage+5'
+    or lines(20027) == 'Composure: INT+7 MND+7 | Duelist Stance: EnspellDamage+5 Enhancing Magic Skill+6', lines(20027))
+assert(lines(15098):find('^Hasso: ') and lines(15098):find('SAMChainTPBonus+50', 1, true)
+    and lines(15098):find(' | Seigan: ', 1, true) and lines(15098):find('SAMSeiganCounterTP+50', 1, true), lines(15098))
+-- The Stats view and the weights editor name Samurai's three server stats as
+-- the item text does (the pack's statdefs.lua).
+local sd = require('dlac\\gear\\statdefs')
+assert(sd.get('SAMChainTPBonus').label == 'Skill Chain TP Bonus' and sd.get('SAMSeiganCounterTP').label == 'TP Counter'
+    and sd.get('ThirdEyeCounterDamage').label == 'Third Eye Counter Dmg.' and sd.get('ThirdEyeCounterDamage').percent == true)
 assert(lines(99999) == '', 'a piece without stance gear gets no line')
 assert(fmt.stanceLines({}) and #fmt.stanceLines({}) == 0 and #fmt.stanceLines(nil) == 0)
 assert(#stance.bonusesOf({Id=15078, Level=75}) == 2, 'Valor Coronet: both stances, read without a level')
@@ -211,6 +251,7 @@ assert(#stance.bonusesOf({Id=15078, Level=75}) == 2, 'Valor Coronet: both stance
 assert(table.concat(stance.gates('RDM'), ',') == "Composure,Duelist's Focus,Duelist's Trance", 'RDM stance gates')
 assert(table.concat(stance.gates('WHM'), ',') == 'Afflatus Solace,Afflatus Misery', 'WHM stance gates')
 assert(table.concat(stance.gates('PLD'), ',') == 'Divine Guard,Divine Fury', 'PLD stance gates')
+assert(table.concat(stance.gates('SAM'), ',') == 'Hasso,Seigan', 'SAM stance gates')
 assert(stance.gates('WAR') == nil and stance.gates('BLM') == nil, 'no gates where the pack names none')
 assert(#optim.setTypeOptions('WHM', 'normal') == 2, 'WHM keeps Normal and 1-Hit WS only')
 assert(stance.label('WHM') == nil, 'a gates-only job has no Set Type stance')
@@ -218,7 +259,8 @@ sp.active = function() return 'cexi' end
 assert(stance.apply(hat,hat.Stats,ctx)==hat.Stats, 'AXI only')
 assert(stance.label('RDM') == nil and stance.label('RDM','composure') == nil, 'no stance menu row off AXI')
 assert(stance.label('PLD','divineguard') == nil, 'nor a Paladin one')
+assert(stance.label('SAM','hasso') == nil and stance.gates('SAM') == nil, 'nor a Samurai one')
 assert(lines(12644) == '' and #stance.bonusesOf({Id=12515}) == 0, 'no stance lines off AXI')
 assert(stance.gates('RDM') == nil and stance.gates('PLD') == nil, 'no stance gates off AXI')
 os.remove(tmp)
-print('OK -- Set Type: stance, Composure, Divine Guard and Divine Fury scoring, totals, defaults, persistence, migration, rename, export/import, the menu, the hover card and the stance gates')
+print('OK -- Set Type: stance, Composure, Divine Guard, Divine Fury, Hasso and Seigan scoring, totals, defaults, persistence, migration, rename, export/import, the menu, the hover card and the stance gates')
