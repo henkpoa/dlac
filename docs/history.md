@@ -12611,6 +12611,7 @@ types of their own.
   move whose script changes type needs the same.
 - Tests: run_tests RDY1-RDY27 and NEB15-NEB17, smoke_ui TRD1-TRD9. Suites
   8201 and 1849. RDY1 seen failing with one row changed. Not checked in game.
+
 ## 2026-11-23: a renamed item takes its new name in saved gear (`2026.11.23a`)
 
 AXI-157 (Fallen): the equipment window's card still said "Courier's Ring" for
