@@ -1545,7 +1545,14 @@ end
 -- Pure catalog repair of the generated gear.lua shape. Splice whole entries
 -- to their catalog slot, changing only equipment metadata; leave instance
 -- details and comments intact. Unknown IDs are never inferred from names.
-function M.computeCatalogRepairs(text, catalog)
+--
+-- nameOf (optional): id -> the name THIS client has for the item. A saved Name
+-- is what equips match against the bags and what every card shows, and a
+-- server can rename an item after a character saved it (AscensionXI's Courier's
+-- Ring became the Lifter's Ring: AXI-157), so the entry takes the client's
+-- name. The key stays: saved sets point at it. Plain printable names only, so
+-- the written line reads back as the same name and a repair is never repeated.
+function M.computeCatalogRepairs(text, catalog, nameOf)
     local report = { changed = 0, moves = {} };
     if type(catalog) ~= 'table' or next(catalog) == nil then return text, report; end
     local env = setmetatable({}, { __index = _G });
@@ -1629,6 +1636,14 @@ function M.computeCatalogRepairs(text, catalog)
                 for _, j in ipairs(c.Jobs) do jobs[#jobs + 1] = string.format('%q', j); end
                 changes.Jobs = '{' .. table.concat(jobs, ', ') .. '}';
             end
+            local want = nil;
+            if type(nameOf) == 'function' then want = nameOf(e.Id); end
+            if type(want) == 'string' and want ~= r.Name and type(r.Name) == 'string'
+               and e.Name == r.Name and e.NameLine ~= nil
+               and want:match('^[\32-\126]+$') ~= nil and want:find('["\\]') == nil
+               and lines[e.NameLine]:match('^' .. string.rep(' ', e.indent + 4) .. 'Name%s*=%s*"[^"]*"') ~= nil then
+                changes.Name = string.format('%q', want);
+            end
             if parent ~= e.parent then
                 if r.Type ~= nil or c.Slot == 'Main' or c.Slot == 'Range' then
                     changes.Type = string.format('%q', parent:match('%.(.+)$') or c.Type or c.Slot);
@@ -1645,7 +1660,7 @@ function M.computeCatalogRepairs(text, catalog)
                     local pad = string.rep(' ', e.indent + 4);
                     local prefix = '(\n' .. pad .. field .. '%s*=%s*)';
                     local valuePattern = field == 'Jobs' and '%b{}'
-                        or (field == 'Type' and '"[^"]*"' or (field == 'OneHanded' and '%a+' or '%-?%d+'));
+                        or ((field == 'Type' or field == 'Name') and '"[^"]*"' or (field == 'OneHanded' and '%a+' or '%-?%d+'));
                     local n;
                     block, n = block:gsub(prefix .. valuePattern, function(p) return p .. changes[field]; end, 1);
                     if n == 0 then
@@ -1910,7 +1925,16 @@ function M.repairCatalog()
     local text = readFile(gpath);
     if text == nil then return 0; end   -- first login: there may be no file yet
     local _, catalog = ci.flat();
-    local ok, fixed, report = pcall(M.computeCatalogRepairs, text, catalog);
+    -- The client's own name for an id (nil off the client: names stay).
+    local function clientName(id)
+        local name = nil;
+        pcall(function()
+            local res = AshitaCore:GetResourceManager():GetItemById(id);
+            if res ~= nil and res.Name ~= nil then name = decodeName(res.Name[1]); end
+        end);
+        return name;
+    end
+    local ok, fixed, report = pcall(M.computeCatalogRepairs, text, catalog, clientName);
     if not ok or fixed == nil then
         print('[dlac] gear repair skipped: ' .. tostring(ok and report or fixed) .. '. Your file was not changed.');
         return 0;

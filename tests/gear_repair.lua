@@ -240,4 +240,54 @@ sfDirty.configure({ hasUnsavedGearEdits = function() return true; end,
     callImport = function() error('repair must not run while set edits are pending'); end });
 assert(sfDirty.repairGear() == 0 and #queued == 1);
 package.loaded['dlac\\lib\\cmdqueue'] = realQueue;
+
+-- A renamed item (AXI-157): AscensionXI's Courier's Ring became the Lifter's
+-- Ring after characters had saved it. The entry takes the client's name; its
+-- key, and so every saved set pointing at it, stays.
+local ringBody = [[
+        CouriersRing = { -- my warp ring
+            Name = "Courier's Ring",
+            Id = 26582,
+            Level = 1,
+            Jobs = {"All"},
+            Stats = {},
+        },
+        Unknown = {
+            Name = "Unknown",
+            Id = 65534,
+            Level = 60,
+            Jobs = {"WHM"},
+        },
+]];
+local ringText = base:gsub('    Ring = {\n', '    Ring = {\n' .. ringBody, 1);
+assert(ringText ~= base, 'the fixture must hold the ring');
+local function names(map) return function(id) return map[id]; end end
+local lifter = names({ [26582] = "Lifter's Ring", [65534] = 'Renamed Unknown' });
+local renamed, rr = gi.computeCatalogRepairs(ringText, catalog, lifter);
+assert(renamed, rr);
+local rg = run(renamed);
+assert(rr.changed == 1, 'NR1 one entry is renamed');
+assert(rg.Ring.CouriersRing.Name == "Lifter's Ring", 'NR2 the entry takes the client name');
+assert(rg.Ring.CouriersRing.Id == 26582 and rg.Ring.CouriersRing.Level == 1, 'NR3 the rest of the entry stays');
+assert(renamed:find('CouriersRing = { -- my warp ring', 1, true) ~= nil, 'NR4 the key and its comment stay');
+assert(next(rr.moves) == nil, 'NR5 a rename moves nothing');
+assert(rg.Ring.Unknown.Name == 'Unknown', 'NR6 an id the catalog does not know keeps its name');
+local again, ar = gi.computeCatalogRepairs(renamed, catalog, lifter);
+assert(again == renamed and ar.changed == 0, 'NR7 the second pass changes nothing');
+local same, sr = gi.computeCatalogRepairs(ringText, catalog, names({ [26582] = "Courier's Ring" }));
+assert(same == ringText and sr.changed == 0, 'NR8 a matching name changes nothing');
+local none, nr = gi.computeCatalogRepairs(ringText, catalog);
+assert(none == ringText and nr.changed == 0, 'NR9 without the client, names stay');
+for _, odd in ipairs({ 'Lifter"s Ring', 'Lifter\\s Ring', 'Lifter\195\169 Ring', '', 'Two\nLines' }) do
+    local kept, kr = gi.computeCatalogRepairs(ringText, catalog, names({ [26582] = odd }));
+    assert(kept == ringText and kr.changed == 0, 'NR10 a name that may not read back is not written');
+end
+-- A name written as an expression is left alone, and the rest still repairs.
+local expr = ringText:gsub('Name = "Courier\'s Ring"', 'Name = "Courier\'s" .. " Ring"', 1)
+    :gsub('Level = 1,', 'Level = 9,', 1);
+local exprFixed, er = gi.computeCatalogRepairs(expr, catalog, lifter);
+assert(exprFixed, er);
+local eg = run(exprFixed);
+assert(eg.Ring.CouriersRing.Name == "Courier's Ring" and eg.Ring.CouriersRing.Level == 1,
+    'NR11 an expression name is kept while the level is corrected');
 print('OK -- saved gear repairs and reference preservation');
