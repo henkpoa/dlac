@@ -170,6 +170,7 @@ function M.producerOf(op)
         local slot = op % 8;
         if slot == 1 then return 'dnc status'; end
         if slot == 2 then return 'pld gauge'; end
+        if slot == 3 then return 'rng gauge'; end
         return 'whm gauge';
     end
     return op;
