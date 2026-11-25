@@ -1654,6 +1654,19 @@ return {
                     SubtleBlow = 8,
                 }
             },
+            GMKnuckles = {
+                Name = "GM Knuckles",
+                Level = 1,
+                Id = 20042,
+                Model = 472,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "HandToHand",
+                Stats = {
+                    DMG = 1,
+                    Delay = 528,
+                }
+            },
             GemSainti = {
                 Name = "Gem Sainti",
                 Level = 70,
@@ -7860,6 +7873,19 @@ return {
                     Delay = 186,
                 }
             },
+            GMDagger = {
+                Name = "GM Dagger",
+                Level = 1,
+                Id = 20043,
+                Model = 975,
+                Jobs = {"All"},
+                OneHanded = true,
+                Type = "Dagger",
+                Stats = {
+                    DMG = 3,
+                    Delay = 183,
+                }
+            },
             GalkanDagger = {
                 Name = "Galkan Dagger",
                 Level = 49,
@@ -10669,7 +10695,7 @@ return {
                 Level = 69,
                 Id = 18018,
                 Model = 171,
-                Jobs = {"THF"},
+                Jobs = {"THF", "DNC"},
                 OneHanded = true,
                 Type = "Dagger",
                 Stats = {
@@ -21217,6 +21243,19 @@ return {
                     MDMG = 186,
                 }
             },
+            GMGreatSword = {
+                Name = "GM Great Sword",
+                Level = 1,
+                Id = 20044,
+                Model = 1180,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "GreatSword",
+                Stats = {
+                    DMG = 22,
+                    Delay = 444,
+                }
+            },
             Galatyn = {
                 Name = "Galatyn",
                 Level = 75,
@@ -25261,6 +25300,19 @@ return {
                     FireResistance = 8,
                 }
             },
+            GMAxe = {
+                Name = "GM Axe",
+                Level = 1,
+                Id = 20045,
+                Model = 978,
+                Jobs = {"All"},
+                OneHanded = true,
+                Type = "Axe",
+                Stats = {
+                    DMG = 8,
+                    Delay = 276,
+                }
+            },
             Ganelon = {
                 Name = "Ganelon",
                 Level = 99,
@@ -28780,6 +28832,19 @@ return {
                     Delay = 474,
                     Attack = 10,
                     ResistBlind = 2,
+                }
+            },
+            GMGreatAxe = {
+                Name = "GM Great Axe",
+                Level = 1,
+                Id = 20046,
+                Model = 976,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "GreatAxe",
+                Stats = {
+                    DMG = 19,
+                    Delay = 504,
                 }
             },
             GawainsAxe = {
@@ -32335,6 +32400,19 @@ return {
                     IceResistance = 6,
                 }
             },
+            GMScythe = {
+                Name = "GM Scythe",
+                Level = 1,
+                Id = 20047,
+                Model = 977,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "Scythe",
+                Stats = {
+                    DMG = 14,
+                    Delay = 480,
+                }
+            },
             GarudasSickle = {
                 Name = "Garuda's Sickle",
                 Level = 72,
@@ -35777,6 +35855,19 @@ return {
                     ITEM_ADDEFFECT_ELEMENT = 5,
                     ITEM_ADDEFFECT_TYPE = 1,
                     ITEM_SUBEFFECT = 5,
+                }
+            },
+            GMPolearm = {
+                Name = "GM Polearm",
+                Level = 1,
+                Id = 20048,
+                Model = 943,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "Polearm",
+                Stats = {
+                    DMG = 8,
+                    Delay = 396,
                 }
             },
             GaeAssail = {
@@ -39389,6 +39480,19 @@ return {
                     Delay = 190,
                     STR = 1,
                     AGI = 1,
+                }
+            },
+            GMUchigatana = {
+                Name = "GM Uchigatana",
+                Level = 1,
+                Id = 20049,
+                Model = 945,
+                Jobs = {"All"},
+                OneHanded = true,
+                Type = "Katana",
+                Stats = {
+                    DMG = 4,
+                    Delay = 190,
                 }
             },
             Ganko = {
@@ -43167,6 +43271,19 @@ return {
                     Delay = 480,
                     DEX = 8,
                     StoreTP = 8,
+                }
+            },
+            GMKatana = {
+                Name = "GM Katana",
+                Level = 1,
+                Id = 20041,
+                Model = 1195,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "GreatKatana",
+                Stats = {
+                    DMG = 12,
+                    Delay = 420,
                 }
             },
             Gekkei = {
@@ -47740,6 +47857,19 @@ return {
                 Type = "Club",
                 Stats = {
                     DMG = 7,
+                    Delay = 264,
+                }
+            },
+            GMClub = {
+                Name = "GM Club",
+                Level = 1,
+                Id = 20050,
+                Model = 972,
+                Jobs = {"All"},
+                OneHanded = true,
+                Type = "Club",
+                Stats = {
+                    DMG = 4,
                     Delay = 264,
                 }
             },
@@ -53901,6 +54031,19 @@ return {
                     DEX = 15,
                     VIT = 15,
                     AGI = 15,
+                }
+            },
+            GMStaff = {
+                Name = "GM Staff",
+                Level = 1,
+                Id = 20051,
+                Model = 973,
+                Jobs = {"All"},
+                OneHanded = false,
+                Type = "Staff",
+                Stats = {
+                    DMG = 5,
+                    Delay = 366,
                 }
             },
             GelongStaff = {
