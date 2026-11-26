@@ -341,6 +341,13 @@ local function nativeOn()
 end
 M.nativeOn = nativeOn;
 
+-- Only AscensionXI has the server-side one-shot queue. Other packs retain
+-- their existing action lifetime and ignore native ranged-start packets.
+local function queuedRangedOn()
+    local ok, pack = pcall(require, 'dlac\\gear\\serverpack');
+    return ok and type(pack) == 'table' and type(pack.active) == 'function' and pack.active() == 'ascensionxi';
+end
+
 -- ---------------------------------------------------------------------------
 -- snapshot building (Ashita-facing)
 -- ---------------------------------------------------------------------------
@@ -813,7 +820,7 @@ function M.handleAction(str)
         Type = route.type, route = route, Resource = res, Target = a.target,
         Completion = M.completionOf(route, res ~= nil and res.CastTime or nil, M.SETTINGS, now),
     };
-    M.state.rangedRequest = route.type == 'Ranged' and M.state.action or nil;
+    M.state.rangedRequest = queuedRangedOn() and route.type == 'Ranged' and M.state.action or nil;
     M.fireEvent(route.pre, route.preStyle, M.state.action);
     reinject(0x1A, str);
     if route.mid ~= nil then
@@ -974,7 +981,7 @@ function M.isEncumbered(equipIdx)
 end
 
 function M.handleIncoming(e)
-    if e.id == 0x00A or e.id == 0x00B then
+    if (e.id == 0x00A or e.id == 0x00B) and queuedRangedOn() then
         M.state.rangedRequest = nil;
         M.state.rangedInFlight = false;
         M.state.action = nil;
@@ -997,7 +1004,12 @@ function M.handleIncoming(e)
             myId = AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0);
         end);
         if myId ~= nil and a.userId == myId then
-            if a.actionType == 2 and M.state.rangedInFlight then
+            local queuedRanged = queuedRangedOn();
+            if not queuedRanged then
+                M.state.rangedRequest = nil;
+                M.state.rangedInFlight = false;
+            end
+            if queuedRanged and a.actionType == 2 and M.state.rangedInFlight then
                 if M.state.rangedRequest == nil then M.state.action = nil; end
                 M.state.rangedInFlight = false;
                 -- A second /ra may already be queued. Its context must survive
@@ -1006,7 +1018,7 @@ function M.handleIncoming(e)
                 M.state.action = nil;
                 M.state.rangedRequest = nil;
                 M.state.rangedInFlight = false;
-            elseif a.actionType == 12 then
+            elseif queuedRanged and a.actionType == 12 then
                 M.state.rangedInFlight = true;
                 -- The server may queue /ra behind melee recovery. The request's
                 -- fallback can expire before aim starts; restore Midshot using

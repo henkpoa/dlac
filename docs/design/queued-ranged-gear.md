@@ -1,5 +1,10 @@
 # Gear for a queued ranged attack
 
+**AscensionXI only:** `serverpack.active() == 'ascensionxi'` gates request
+retention, ranged-start handling and the added zone cleanup. CEXI, unknown
+and absent packs keep the original engine behavior. The focused test covers
+each inactive case and switching away with an AXI request pending.
+
 AscensionXI can hold one engaged Ranger `/ra` until existing melee/shot
 recovery ends. The request equips Preshot, sends the command, then equips
 Midshot as before. The server snapshots Preshot delay reductions. A long
@@ -21,7 +26,7 @@ duplicate starts, actor isolation and cancellation. Also run
 `lua tests/ascensionxi_rnggauge.lua` for the unchanged gauge protocol.
 
 Local implementation, pending client playtest and release. Version
-2026.11.26c; distribute from this source commit through AscensionXI's addon
+2026.11.26d; distribute from this source commit through AscensionXI's addon
 catalog. Never patch an installed copy as source. Rollback is the previous
 catalog pin. Test a queued shot after melee with both crossbows, and a long
 wait with Preshot/Midshot sets configured; Midshot must be active at release.

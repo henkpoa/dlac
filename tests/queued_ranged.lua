@@ -1,5 +1,7 @@
 -- lua tests/queued_ranged.lua -- native packet lifecycle for delayed /ra.
 package.loaded['dlac\\profiles'] = { nativeMode = function() return true; end };
+local activePack = 'ascensionxi';
+package.loaded['dlac\\gear\\serverpack'] = { active = function() return activePack; end };
 local engine = dofile('feature/equipengine.lua');
 local now, events, sent = 0, {}, 0;
 os.clock = function() return now; end;
@@ -94,3 +96,39 @@ incoming(12, 28787);
 assert(engine.state.action == nil and engine.state.rangedRequest == nil and not engine.state.rangedInFlight,
     'interrupting the active shot must discard its queued successor');
 print('RA-to-RA gear lifecycle: passed');
+
+-- CEXI, unknown and absent packs keep the pre-queue action lifecycle.
+for _, pack in ipairs({ 'cexi', 'unknown', false }) do
+    activePack = pack or nil;
+    outgoing(0x10);
+    local original = engine.state.action;
+    count = #events;
+    incoming(12);
+    assert(engine.state.action == original and #events == count,
+        'non-AXI native start must not redispatch Midshot or refresh its timer');
+    assert(engine.state.rangedRequest == nil and not engine.state.rangedInFlight);
+    engine.handleIncoming({ id = 0x00A });
+    engine.handleIncoming({ id = 0x00B });
+    assert(engine.state.action == original, 'non-AXI zoning keeps its original engine behavior');
+    outgoing(0x10);
+    incoming(2);
+    assert(engine.state.action == nil, 'non-AXI finish must clear the action as before');
+    outgoing(0x10);
+    expire();
+    count = #events;
+    incoming(12);
+    assert(engine.state.action == nil and #events == count, 'non-AXI expiry cannot restore old gear');
+end
+
+activePack = 'ascensionxi';
+outgoing(0x10);
+incoming(12);
+outgoing(0x10);
+activePack = 'cexi';
+count = #events;
+incoming(12);
+assert(engine.state.rangedRequest == nil and not engine.state.rangedInFlight and #events == count,
+    'switching away from AXI discards its pending context without redispatch');
+incoming(2);
+assert(engine.state.action == nil);
+print('Queued ranged server-pack isolation: passed');
