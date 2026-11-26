@@ -306,6 +306,7 @@ end
 M.state = {
     action     = nil,    -- { Type, Resource, Target, Completion, route }
     rangedRequest = nil, -- request context survives the fallback until native start/cancel
+    rangedInFlight = false, -- a finish belongs to the current shot, not its queued successor
     petAction  = nil,    -- pet timing (0x028-driven)
     encumbered = {},     -- [slot]=true (incoming 0x1B bits)
     disabled   = {},     -- [slot]=true (/dl-level slot disable, future surface)
@@ -975,6 +976,7 @@ end
 function M.handleIncoming(e)
     if e.id == 0x00A or e.id == 0x00B then
         M.state.rangedRequest = nil;
+        M.state.rangedInFlight = false;
         M.state.action = nil;
     end
     -- 0x01B is handled AHEAD of the engine gate, unlike everything below it.
@@ -995,14 +997,22 @@ function M.handleIncoming(e)
             myId = AshitaCore:GetMemoryManager():GetParty():GetMemberServerId(0);
         end);
         if myId ~= nil and a.userId == myId then
-            if M.ACTION_COMPLETE_TYPES[a.actionType] or a.interrupted then
+            if a.actionType == 2 and M.state.rangedInFlight then
+                if M.state.rangedRequest == nil then M.state.action = nil; end
+                M.state.rangedInFlight = false;
+                -- A second /ra may already be queued. Its context must survive
+                -- the FIRST shot's result, ready for the next native start.
+            elseif M.ACTION_COMPLETE_TYPES[a.actionType] or a.interrupted then
                 M.state.action = nil;
                 M.state.rangedRequest = nil;
-            elseif a.actionType == 12 and M.state.rangedRequest ~= nil then
+                M.state.rangedInFlight = false;
+            elseif a.actionType == 12 then
+                M.state.rangedInFlight = true;
                 -- The server may queue /ra behind melee recovery. The request's
                 -- fallback can expire before aim starts; restore Midshot using
                 -- the native start, without repeating Preshot or sending /ra.
                 local request = M.state.rangedRequest;
+                if request == nil then return; end
                 M.state.rangedRequest = nil;
                 M.state.action = request;
                 request.Completion = M.completionOf(request.route, nil, M.SETTINGS, os.clock());

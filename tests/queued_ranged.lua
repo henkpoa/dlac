@@ -72,3 +72,25 @@ for _, cancel in ipairs({
     assert(#events == count, 'cancelled request must never restore Midshot');
 end
 print('Queued ranged lifecycle: passed');
+
+-- A successor requested while the current shot aims must survive its result.
+outgoing(0x10);
+incoming(12);
+outgoing(0x10);
+local successor = engine.state.rangedRequest;
+incoming(2);
+assert(engine.state.action == successor and engine.state.rangedRequest == successor,
+    'finishing the current shot must retain its queued successor');
+expire();
+incoming(12);
+assert(engine.state.action == successor and events[#events] == 'Midshot');
+incoming(2);
+assert(engine.state.action == nil and engine.state.rangedRequest == nil);
+
+outgoing(0x10);
+incoming(12);
+outgoing(0x10);
+incoming(12, 28787);
+assert(engine.state.action == nil and engine.state.rangedRequest == nil and not engine.state.rangedInFlight,
+    'interrupting the active shot must discard its queued successor');
+print('RA-to-RA gear lifecycle: passed');

@@ -10,7 +10,10 @@ from that fallback. The player's native category-12 start restores its Midshot
 dispatch and refreshes its fallback. It sends no new action and does not repeat
 Preshot. The cached context is consumed once, replaced by the next outgoing
 action, and discarded on completion, interruption, item use or zoning.
-Other actors' packets cannot restore it. No custom packet or new setting.
+A native ranged start also marks the current shot in flight. If another
+request arrives before its finish, that finish preserves the successor's
+context and active Midshot hold. The next native start consumes it once.
+Interruption clears both. Other actors' packets cannot restore it. No custom packet or new setting.
 
 Run `lua tests/queued_ranged.lua` from the addon root (LuaJIT supported).
 It exercises serialized outgoing/incoming packets, expiry, restoration,
