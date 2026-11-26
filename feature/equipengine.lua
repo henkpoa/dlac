@@ -305,6 +305,7 @@ end
 
 M.state = {
     action     = nil,    -- { Type, Resource, Target, Completion, route }
+    rangedRequest = nil, -- request context survives the fallback until native start/cancel
     petAction  = nil,    -- pet timing (0x028-driven)
     encumbered = {},     -- [slot]=true (incoming 0x1B bits)
     disabled   = {},     -- [slot]=true (/dl-level slot disable, future surface)
@@ -811,6 +812,7 @@ function M.handleAction(str)
         Type = route.type, route = route, Resource = res, Target = a.target,
         Completion = M.completionOf(route, res ~= nil and res.CastTime or nil, M.SETTINGS, now),
     };
+    M.state.rangedRequest = route.type == 'Ranged' and M.state.action or nil;
     M.fireEvent(route.pre, route.preStyle, M.state.action);
     reinject(0x1A, str);
     if route.mid ~= nil then
@@ -821,6 +823,7 @@ end
 
 -- One blocked 0x037 (item use).
 function M.handleItemUse(str)
+    M.state.rangedRequest = nil;
     local u = M.parseItemUse(str);
     local now = os.clock();
     local res, castTime = nil, nil;
@@ -970,6 +973,10 @@ function M.isEncumbered(equipIdx)
 end
 
 function M.handleIncoming(e)
+    if e.id == 0x00A or e.id == 0x00B then
+        M.state.rangedRequest = nil;
+        M.state.action = nil;
+    end
     -- 0x01B is handled AHEAD of the engine gate, unlike everything below it.
     -- These bits are a pure READ of server state -- nothing is sent, nothing is
     -- blocked -- and the floating bar's cross draws from them, so they have to
@@ -990,6 +997,16 @@ function M.handleIncoming(e)
         if myId ~= nil and a.userId == myId then
             if M.ACTION_COMPLETE_TYPES[a.actionType] or a.interrupted then
                 M.state.action = nil;
+                M.state.rangedRequest = nil;
+            elseif a.actionType == 12 and M.state.rangedRequest ~= nil then
+                -- The server may queue /ra behind melee recovery. The request's
+                -- fallback can expire before aim starts; restore Midshot using
+                -- the native start, without repeating Preshot or sending /ra.
+                local request = M.state.rangedRequest;
+                M.state.rangedRequest = nil;
+                M.state.action = request;
+                request.Completion = M.completionOf(request.route, nil, M.SETTINGS, os.clock());
+                M.fireEvent(request.route.mid, request.route.midStyle, request);
             end
             return;
         end
