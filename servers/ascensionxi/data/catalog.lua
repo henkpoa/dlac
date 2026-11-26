@@ -25197,7 +25197,7 @@ return {
                 OneHanded = true,
                 Type = "Axe",
                 Stats = {
-                    DMG = 14,
+                    DMG = 30,
                     Delay = 288,
                 }
             },
