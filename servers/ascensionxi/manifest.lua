@@ -40,7 +40,7 @@ return {
     counts = {
         catalog      = 15527,
         spells       = 537,
-        abilities    = 561,
+        abilities    = 562,
         zones        = 300,
         gearsets     = 126,
         latentstats  = 895,

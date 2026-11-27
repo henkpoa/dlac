@@ -360,6 +360,7 @@ return {
     { Name = "Pet Commands", Jobs = { BST = 1 } },
     { Name = "Petrifying Decoy Shot", Jobs = { RNG = 60 }, MainOnly = true },
     { Name = "Pflug", Jobs = { RUN = 40 } },
+    { Name = "Phantom Oath", Jobs = { PLD = 40 }, MainOnly = true },
     { Name = "Phantom Roll", Jobs = { COR = 5 } },
     { Name = "Pianissimo", Jobs = { BRD = 20 } },
     { Name = "Poison Nails", Jobs = { SMN = 5 } },
